@@ -16,8 +16,8 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/SdKay/obsidian-rich-table?style=flat-square" alt="许可证" />
   </a>
-  <a href="https://obsidian.md">
-    <img src="https://img.shields.io/badge/Obsidian-%3E%3D1.4.10-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian 兼容性" />
+  <a href="https://obsidian.md/plugins?id=rich-table">
+    <img src="https://img.shields.io/badge/Obsidian-社区插件-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian 社区插件" />
   </a>
 </p>
 
@@ -208,13 +208,17 @@ styles:
 
 ## 安装
 
+**推荐 — 社区插件浏览器：**
+
 1. 打开 **设置 → 第三方插件 → 浏览**。
 2. 搜索 **Rich Table** 并安装。
 3. 启用插件。
 
-手动安装：将 `main.js`、`manifest.json`、`styles.css` 复制到 `<vault>/.obsidian/plugins/rich-table/`。
+或直接跳转：[在 Obsidian 中打开](https://obsidian.md/plugins?id=rich-table)
 
-最低 Obsidian 版本：**1.4.10**
+**手动安装：** 将 `main.js`、`manifest.json`、`styles.css` 复制到 `<vault>/.obsidian/plugins/rich-table/`。
+
+最低 Obsidian 版本：**1.8.7**
 
 ---
 
@@ -257,6 +261,21 @@ styles:
 - **行方向表格**（`direction: row`）：将类型绑定到行而非列。
 - **行分组**：可折叠的行分组，通过 `group:` 列或 YAML 定义。
 - **自定义类型可视化 UI**：用图形化界面替换当前的 JSON 文本框。
+
+---
+
+## Claude Code Skill
+
+仓库中附带了 [`SKILL.md`](SKILL.md)，可与 [Claude Code](https://claude.ai/code) 配合使用。
+安装后，Claude agent 可以直接在 vault 中创建和修改 `rich-table` 块——添加行、设置样式、定义合并——无需记忆语法。
+
+**安装 Skill：**
+
+```bash
+cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
+```
+
+之后告诉 Claude："在我的笔记里用 rich-table 创建一个项目看板"，它会自动生成对应的代码块。
 
 ---
 

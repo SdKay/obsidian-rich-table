@@ -16,8 +16,8 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/SdKay/obsidian-rich-table?style=flat-square" alt="License" />
   </a>
-  <a href="https://obsidian.md">
-    <img src="https://img.shields.io/badge/Obsidian-%3E%3D1.4.10-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian compatibility" />
+  <a href="https://obsidian.md/plugins?id=rich-table">
+    <img src="https://img.shields.io/badge/Obsidian-Community_Plugin-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian community plugin" />
   </a>
 </p>
 
@@ -208,13 +208,17 @@ Hover near the bottom edge of the table to reveal a **+** strip for appending a 
 
 ## Installation
 
+**Recommended — community plugin browser:**
+
 1. Open **Settings → Community plugins → Browse**.
 2. Search for **Rich Table** and install.
 3. Enable the plugin.
 
-Or install manually: copy `main.js`, `manifest.json`, and `styles.css` to `<vault>/.obsidian/plugins/rich-table/`.
+Or install directly: [Open in Obsidian](https://obsidian.md/plugins?id=rich-table)
 
-Minimum Obsidian version: **1.4.10**
+**Manual install:** copy `main.js`, `manifest.json`, and `styles.css` to `<vault>/.obsidian/plugins/rich-table/`.
+
+Minimum Obsidian version: **1.8.7**
 
 ---
 
@@ -257,6 +261,22 @@ Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-r
 - **Row-direction tables** (`direction: row`): attach types to rows instead of columns.
 - **Row grouping**: collapsible row groups with a toggle, defined by a `group:` column or YAML.
 - **Custom choice type UI**: visual add/remove UI for custom types, replacing the raw-JSON textarea.
+
+---
+
+## Claude Code skill
+
+A [`SKILL.md`](SKILL.md) is included for use with [Claude Code](https://claude.ai/code).
+Once installed, Claude agents can create, read, and modify `rich-table` blocks directly in your vault — adding rows, applying styles, defining merges, and more — without you having to remember the syntax.
+
+**Install the skill:**
+
+```bash
+# Copy to your Claude skills directory
+cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
+```
+
+Then ask Claude: *"Create a project tracker table in my note using rich-table"* and it will generate the block automatically.
 
 ---
 
