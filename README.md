@@ -236,7 +236,26 @@ Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-r
 
 ## Planned
 
+### Interaction & editing
+- **Keyboard navigation**: arrow keys move between cells; Tab advances to the next editable cell.
+- **Bulk paste from CSV / Excel**: paste clipboard table data directly into the grid.
+- **Column resize by drag**: drag the column border to resize width, written back to `columns[].width`.
+
+### Data & display
+- **Row sorting**: click a column header to sort rows; sort state optionally persisted in YAML.
+- **Row filtering**: filter rows by column value (e.g. show only `status = done`); toggle without losing data.
+- **Aggregate footer row**: automatic SUM / COUNT / AVG for numeric and choice columns, rendered below the table.
+- **Conditional formatting**: rule-based automatic styles — e.g. red background when `priority = high` and `status ≠ done`.
+- **Progress bar column type**: renders a filled bar based on a `0–100` numeric value.
+- **Color scale**: gradient background across a numeric column from min to max, like Excel color scales.
+
+### Annotations
+- **Cell comments**: double-click to attach a floating note to any cell; rendered as a small corner badge; shown on hover. Comment text and position saved in YAML.
+- **Arrow annotations** *(advanced)*: SVG overlay with ellipse highlight on the annotated cell, Bezier arrow to a freely draggable comment box outside the table.
+
+### Structure
 - **Row-direction tables** (`direction: row`): attach types to rows instead of columns.
+- **Row grouping**: collapsible row groups with a toggle, defined by a `group:` column or YAML.
 - **Custom choice type UI**: visual add/remove UI for custom types, replacing the raw-JSON textarea.
 
 ---
