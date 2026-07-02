@@ -218,6 +218,12 @@ styles:
 
 ---
 
+## 许可证
+
+**非商业用途**免费使用，遵循 [Polyform Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) 协议。
+
+**商业用途**请联系授权：sdkxyx@gmail.com
+
 ## 支持与反馈
 
 问题反馈与功能建议：[GitHub Issues](https://github.com/SdKay/obsidian-better-table/issues)

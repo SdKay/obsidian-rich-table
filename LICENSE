@@ -1,5 +1,24 @@
-Copyright (C) 2020-2025 by Dynalist Inc.
+Copyright (c) 2026 sdking.xing
 
-Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
+Portions of the build tooling and project scaffolding are derived from
+obsidian-sample-plugin (https://github.com/obsidianmd/obsidian-sample-plugin),
+released under the 0-BSD license by Dynalist Inc.
 
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+---
+
+This software is licensed under the Polyform Noncommercial License 1.0.0
+for non-commercial use:
+
+  https://polyformproject.org/licenses/noncommercial/1.0.0/
+
+You may use, copy, modify, and distribute this software for any
+noncommercial purpose. You may not use this software for commercial
+purposes without a separate commercial license.
+
+For commercial licensing, contact: sdkxyx@gmail.com
+
+---
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM USE OF THE SOFTWARE.

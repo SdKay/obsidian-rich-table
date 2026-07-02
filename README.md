@@ -218,6 +218,12 @@ Minimum Obsidian version: **1.4.10**
 
 ---
 
+## License
+
+Free for **non-commercial use** under the [Polyform Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) license.
+
+For **commercial use**, contact: sdkxyx@gmail.com
+
 ## Support & feedback
 
 Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-better-table/issues)
