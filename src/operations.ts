@@ -36,7 +36,7 @@ export function applyStructuralOp(model: TableModel, op: StructuralOp): void {
 			for (const idx of op.colIndices) {
 				const col = model.columns[idx];
 				if (col !== undefined) {
-					// eslint-disable-next-line @typescript-eslint/no-unused-vars
+					// eslint-disable-next-line @typescript-eslint/no-unused-vars -- _h is intentionally discarded to remove the hidden key via rest spread
 				const { hidden: _h, ...rest } = col;
 					model.columns[idx] = rest;
 				}

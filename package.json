@@ -1,6 +1,6 @@
 {
-	"name": "obsidian-better-table",
-	"version": "0.1.1",
+	"name": "obsidian-rich-table",
+	"version": "0.1.2",
 	"description": "Rich tables with merges, styles, and choice columns inside fenced code blocks.",
 	"main": "main.js",
 	"type": "module",

@@ -1,9 +1,9 @@
 {
-	"id": "better-table",
-	"name": "Better Table",
-	"version": "0.1.1",
+	"id": "rich-table",
+	"name": "Rich Table",
+	"version": "0.1.2",
 	"minAppVersion": "1.8.7",
-	"description": "Rich tables with merges, styles, and choice columns inside fenced code blocks.",
+	"description": "Interactive tables with merges, typed columns, styles, and wikilinks inside fenced code blocks.",
 	"author": "sdking.xing",
 	"authorUrl": "https://github.com/SdKay",
 	"isDesktopOnly": false

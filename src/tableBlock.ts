@@ -130,7 +130,7 @@ export class TableBlock extends MarkdownRenderChild {
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			tmp.empty();
-			tmp.createDiv({ cls: 'bt-error', text: `Better Table: ${msg}` });
+			tmp.createDiv({ cls: 'bt-error', text: `Rich Table: ${msg}` });
 		}
 
 		// Update cache with the freshly rendered (non-interactive) snapshot

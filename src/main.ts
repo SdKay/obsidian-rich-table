@@ -12,7 +12,7 @@ export default class BetterTablePlugin extends Plugin {
 		await this.loadSettings();
 		this.choiceRegistry = new ChoiceRegistry(this.settings.customChoices);
 
-		this.registerMarkdownCodeBlockProcessor('better-table', (source, el, ctx) => {
+		this.registerMarkdownCodeBlockProcessor('rich-table', (source, el, ctx) => {
 			const info = ctx.getSectionInfo(el);
 			const cacheKey = info ? `${ctx.sourcePath}:${info.lineStart}` : ctx.sourcePath;
 			const block = new TableBlock(el, source, this, ctx.sourcePath, ctx, cacheKey);

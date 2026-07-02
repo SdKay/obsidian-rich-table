@@ -1,20 +1,20 @@
 ---
-name: better-table
+name: rich-table
 description: >
-  Create, read, and modify better-table fenced code blocks in Obsidian vault notes.
+  Create, read, and modify rich-table fenced code blocks in Obsidian vault notes.
   Use this skill whenever the user asks to create a table, add rows or columns,
   apply styles, merge cells, set column types, add a title or footer, or otherwise
-  work with the better-table plugin format. Also use when reading or analysing
-  existing better-table blocks in vault files.
+  work with the rich-table plugin format. Also use when reading or analysing
+  existing rich-table blocks in vault files.
 ---
 
-# Better Table — Agent Reference
+# Rich Table — Agent Reference
 
-`better-table` is an Obsidian plugin that renders rich interactive tables inside
+`rich-table` is an Obsidian plugin that renders rich interactive tables inside
 fenced code blocks. This skill covers everything an agent needs to create and
 modify these tables in Markdown files.
 
-> **Obsidian-only.** The `better-table` block will not render in standard
+> **Obsidian-only.** The `rich-table` block will not render in standard
 > Markdown editors or GitHub previews.
 
 ---
@@ -22,7 +22,7 @@ modify these tables in Markdown files.
 ## Block structure
 
 ````markdown
-```better-table
+```rich-table
 ---
 title: Optional table title
 columns:
@@ -196,7 +196,7 @@ the grid header row alone (no types, widths, or merges).
 
 ### Minimal table (no YAML)
 ````markdown
-```better-table
+```rich-table
 | Name   | Role      | Team  |
 | ------ | --------- | ----- |
 | Alice  | Engineer  | Core  |
@@ -206,7 +206,7 @@ the grid header row alone (no types, widths, or merges).
 
 ### Task board
 ````markdown
-```better-table
+```rich-table
 ---
 title: Sprint 12
 columns:
@@ -228,7 +228,7 @@ footer: "Sprint ends 2025-02-14"
 
 ### Merged header groups
 ````markdown
-```better-table
+```rich-table
 ---
 columns:
   - { name: Project, width: 180 }
@@ -250,7 +250,7 @@ styles:
 
 ### Highlighted cells with custom font size
 ````markdown
-```better-table
+```rich-table
 ---
 columns:
   - { name: Metric, width: 160 }
@@ -280,12 +280,12 @@ styles:
 
 ```
 old_string: "## My Section\n\n"
-new_string: "## My Section\n\n```better-table\n---\ncolumns:\n  - { name: Task }\n  - { name: Status, type: task-status }\n---\n| Task | Status |\n| ---- | ------ |\n|      | todo   |\n```\n\n"
+new_string: "## My Section\n\n```rich-table\n---\ncolumns:\n  - { name: Task }\n  - { name: Status, type: task-status }\n---\n| Task | Status |\n| ---- | ------ |\n|      | todo   |\n```\n\n"
 ```
 
 ## Modifying an existing table
 
-1. Read the file and locate the ` ```better-table ` block
+1. Read the file and locate the ` ```rich-table ` block
 2. Edit the YAML frontmatter or grid rows as needed
 3. Write back with `Edit`
 

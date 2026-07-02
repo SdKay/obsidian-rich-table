@@ -1,20 +1,20 @@
 <div align="center">
 
-<img src="./docs/banner.png" alt="Better Table" />
+<img src="./docs/banner.png" alt="Rich Table" />
 
 <p>
   <b>🔀 Merge &nbsp;·&nbsp; 🎨 Style &nbsp;·&nbsp; 🏷️ Type &nbsp;·&nbsp; 🔗 Wikilink &nbsp;·&nbsp; ↕️ Reorder</b>
 </p>
 
 <p>
-  <a href="https://github.com/SdKay/obsidian-better-table/releases/latest">
-    <img src="https://img.shields.io/github/v/release/SdKay/obsidian-better-table?style=flat-square&color=7c3aed" alt="Latest release" />
+  <a href="https://github.com/SdKay/obsidian-rich-table/releases/latest">
+    <img src="https://img.shields.io/github/v/release/SdKay/obsidian-rich-table?style=flat-square&color=7c3aed" alt="Latest release" />
   </a>
-  <a href="https://github.com/SdKay/obsidian-better-table/releases">
-    <img src="https://img.shields.io/github/downloads/SdKay/obsidian-better-table/total?style=flat-square&color=brightgreen" alt="Total downloads" />
+  <a href="https://github.com/SdKay/obsidian-rich-table/releases">
+    <img src="https://img.shields.io/github/downloads/SdKay/obsidian-rich-table/total?style=flat-square&color=brightgreen" alt="Total downloads" />
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/SdKay/obsidian-better-table?style=flat-square" alt="License" />
+    <img src="https://img.shields.io/github/license/SdKay/obsidian-rich-table?style=flat-square" alt="License" />
   </a>
   <a href="https://obsidian.md">
     <img src="https://img.shields.io/badge/Obsidian-%3E%3D1.4.10-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian compatibility" />
@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <a href="#-why-better-table">Why?</a> ·
+  <a href="#-why-rich-table">Why?</a> ·
   <a href="#-demo">Demo</a> ·
   <a href="#-format">Format</a> ·
   <a href="#-features">Features</a> ·
@@ -37,17 +37,17 @@
 
 </div>
 
-> **Obsidian-only plugin.** The `better-table` fenced code block is a custom Obsidian renderer — it will not display in standard Markdown editors, GitHub previews, or any non-Obsidian environment.
+> **Obsidian-only plugin.** The `rich-table` fenced code block is a custom Obsidian renderer — it will not display in standard Markdown editors, GitHub previews, or any non-Obsidian environment.
 
 Rich, interactive tables for Obsidian — with **cell merges**, inline editing, wikilink autocomplete, typed columns, title & footer, drag-to-reorder, and more. Everything that native Obsidian tables and most community table plugins simply can't do.
 
 ---
 
-## Why Better Table?
+## Why Rich Table?
 
-Obsidian's built-in tables are plain GFM — no merges, no types, no interactive editing. Most community table plugins work around the same limitation. Better Table takes a different approach: a dedicated fenced code block that gives you a **spreadsheet-like experience inside your notes**.
+Obsidian's built-in tables are plain GFM — no merges, no types, no interactive editing. Most community table plugins work around the same limitation. Rich Table takes a different approach: a dedicated fenced code block that gives you a **spreadsheet-like experience inside your notes**.
 
-| Pain point | Native tables | Better Table |
+| Pain point | Native tables | Rich Table |
 | --- | --- | --- |
 | Cell merging (rowspan / colspan) | ✗ | ✓ |
 | Inline click-to-edit | ✗ | ✓ |
@@ -64,7 +64,7 @@ Obsidian's built-in tables are plain GFM — no merges, no types, no interactive
 
 **1 · Quick start from template** — empty block → insert template → edit title
 
-<!-- record: open empty better-table block, click Insert template, single-click title to rename (~6s) -->
+<!-- record: open empty rich-table block, click Insert template, single-click title to rename (~6s) -->
 ![Quick start demo](docs/demo-01-template.gif)
 
 **2 · Merge cells** — drag-select → Merge in popup
@@ -97,7 +97,7 @@ Obsidian's built-in tables are plain GFM — no merges, no types, no interactive
 ## Format
 
 ````markdown
-```better-table
+```rich-table
 ---
 title: Project tracker
 columns:
@@ -175,7 +175,7 @@ Attach a type to any column. Values render as colored pill badges. Single-click 
 | `effort` | XS · S · M · L · XL |
 | `approval` | approved · pending · rejected |
 
-Custom types can be defined in **Settings → Better Table**.
+Custom types can be defined in **Settings → Rich Table**.
 
 ### Double-click panel
 Double-clicking any cell (or right-clicking a header) opens a unified panel with three sections:
@@ -209,10 +209,10 @@ Hover near the bottom edge of the table to reveal a **+** strip for appending a 
 ## Installation
 
 1. Open **Settings → Community plugins → Browse**.
-2. Search for **Better Table** and install.
+2. Search for **Rich Table** and install.
 3. Enable the plugin.
 
-Or install manually: copy `main.js`, `manifest.json`, and `styles.css` to `<vault>/.obsidian/plugins/better-table/`.
+Or install manually: copy `main.js`, `manifest.json`, and `styles.css` to `<vault>/.obsidian/plugins/rich-table/`.
 
 Minimum Obsidian version: **1.4.10**
 
@@ -226,7 +226,7 @@ For **commercial use**, contact: sdkxyx@gmail.com
 
 ## Support & feedback
 
-Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-better-table/issues)
+Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-rich-table/issues)
 
 ---
 
@@ -253,11 +253,11 @@ npm run lint       # ESLint with obsidianmd rules
 Deploy to vault after build:
 
 ```bash
-cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/better-table/"
+cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/rich-table/"
 ```
 
 ---
 
 ## Star history
 
-[![Star History Chart](https://api.star-history.com/svg?repos=SdKay/obsidian-better-table&type=Date)](https://star-history.com/#SdKay/obsidian-better-table&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=SdKay/obsidian-rich-table&type=Date)](https://star-history.com/#SdKay/obsidian-rich-table&Date)

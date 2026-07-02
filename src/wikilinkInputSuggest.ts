@@ -157,6 +157,22 @@ export class WikilinkInputSuggest extends AbstractInputSuggest<SuggestionItem> {
 
 	// ── Bracket auto-pairing ─────────────────────────────────────────────────
 
+	/** Insert text at the current cursor position and fire an input event so
+	 *  AbstractInputSuggest updates its suggestion list. */
+	private insertAtCursor(text: string): void {
+		const sel = activeWindow.getSelection();
+		if (!sel || sel.rangeCount === 0) return;
+		const range = sel.getRangeAt(0);
+		range.deleteContents();
+		const node = activeDocument.createTextNode(text);
+		range.insertNode(node);
+		range.setStartAfter(node);
+		range.setEndAfter(node);
+		sel.removeAllRanges();
+		sel.addRange(range);
+		this.divEl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+	}
+
 	private handleBracketPairing(evt: InputEvent): void {
 		if (evt.data === '[') {
 			evt.preventDefault();
@@ -166,12 +182,10 @@ export class WikilinkInputSuggest extends AbstractInputSuggest<SuggestionItem> {
 				// Cursor ends up between [[ and ] immediately, so AbstractInputSuggest
 				// receives the input event with triggered=true and opens the popup at once.
 				// The orphaned ] is consumed by insertItem or skipped when user types ]].
-				// eslint-disable-next-line @typescript-eslint/no-deprecated
-				activeDocument.execCommand('insertText', false, '[');
+				this.insertAtCursor('[');
 			} else {
 				// Normal → insert [|]
-				// eslint-disable-next-line @typescript-eslint/no-deprecated
-				activeDocument.execCommand('insertText', false, '[]');
+				this.insertAtCursor('[]');
 				this.moveCursor('backward', 1);
 			}
 		} else if (evt.data === ']' && this.getCharAfter() === ']') {
@@ -246,7 +260,7 @@ export class WikilinkInputSuggest extends AbstractInputSuggest<SuggestionItem> {
 
 	private moveCursor(direction: 'forward' | 'backward', count: number): void {
 		// sel.modify is non-standard (Chromium/Electron)
-		// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- sel.modify is non-standard; cast needed to access Chromium/Electron extension
 		const sel = activeWindow.getSelection() as unknown as SelectionWithModify | null;
 		if (!sel) return;
 		for (let i = 0; i < count; i++) {

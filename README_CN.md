@@ -1,20 +1,20 @@
 <div align="center">
 
-<img src="./docs/banner.png" alt="Better Table" />
+<img src="./docs/banner.png" alt="Rich Table" />
 
 <p>
   <b>🔀 合并单元格 &nbsp;·&nbsp; 🎨 样式设置 &nbsp;·&nbsp; 🏷️ 类型列 &nbsp;·&nbsp; 🔗 双链补全 &nbsp;·&nbsp; ↕️ 拖拽排序</b>
 </p>
 
 <p>
-  <a href="https://github.com/SdKay/obsidian-better-table/releases/latest">
-    <img src="https://img.shields.io/github/v/release/SdKay/obsidian-better-table?style=flat-square&color=7c3aed" alt="最新版本" />
+  <a href="https://github.com/SdKay/obsidian-rich-table/releases/latest">
+    <img src="https://img.shields.io/github/v/release/SdKay/obsidian-rich-table?style=flat-square&color=7c3aed" alt="最新版本" />
   </a>
-  <a href="https://github.com/SdKay/obsidian-better-table/releases">
-    <img src="https://img.shields.io/github/downloads/SdKay/obsidian-better-table/total?style=flat-square&color=brightgreen" alt="总下载量" />
+  <a href="https://github.com/SdKay/obsidian-rich-table/releases">
+    <img src="https://img.shields.io/github/downloads/SdKay/obsidian-rich-table/total?style=flat-square&color=brightgreen" alt="总下载量" />
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/SdKay/obsidian-better-table?style=flat-square" alt="许可证" />
+    <img src="https://img.shields.io/github/license/SdKay/obsidian-rich-table?style=flat-square" alt="许可证" />
   </a>
   <a href="https://obsidian.md">
     <img src="https://img.shields.io/badge/Obsidian-%3E%3D1.4.10-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian 兼容性" />
@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <a href="#为什么选择-better-table">为什么？</a> ·
+  <a href="#为什么选择-rich-table">为什么？</a> ·
   <a href="#功能演示">演示</a> ·
   <a href="#格式说明">格式</a> ·
   <a href="#功能详解">功能</a> ·
@@ -37,17 +37,17 @@
 
 </div>
 
-> **仅限 Obsidian 使用。** `better-table` 围栏代码块是专为 Obsidian 定制的渲染器，在标准 Markdown 编辑器、GitHub 预览页或任何非 Obsidian 环境中均无法正常显示。
+> **仅限 Obsidian 使用。** `rich-table` 围栏代码块是专为 Obsidian 定制的渲染器，在标准 Markdown 编辑器、GitHub 预览页或任何非 Obsidian 环境中均无法正常显示。
 
 为 Obsidian 打造的富交互表格插件 —— 支持**单元格合并**、内联编辑、双链自动补全、类型列、标题与备注、行列拖拽排序等功能。这些是原生 Obsidian 表格以及大多数社区表格插件无法实现的。
 
 ---
 
-## 为什么选择 Better Table？
+## 为什么选择 Rich Table？
 
-Obsidian 内置表格本质上是纯 GFM 格式——没有合并单元格、没有列类型、没有可视化编辑。大多数社区插件也绕不开这个限制。Better Table 采用全新思路：通过独立的围栏代码块，在笔记中提供**接近电子表格的体验**。
+Obsidian 内置表格本质上是纯 GFM 格式——没有合并单元格、没有列类型、没有可视化编辑。大多数社区插件也绕不开这个限制。Rich Table 采用全新思路：通过独立的围栏代码块，在笔记中提供**接近电子表格的体验**。
 
-| 痛点 | 原生表格 | Better Table |
+| 痛点 | 原生表格 | Rich Table |
 | --- | --- | --- |
 | 单元格合并（rowspan / colspan） | ✗ | ✓ |
 | 内联点击编辑 | ✗ | ✓ |
@@ -64,7 +64,7 @@ Obsidian 内置表格本质上是纯 GFM 格式——没有合并单元格、没
 
 **1 · 模板快速开始** — 空代码块 → 插入模板 → 单击修改标题
 
-<!-- 录制：打开空 better-table 块，点击"插入模板"，单击标题重命名（约 6 秒） -->
+<!-- 录制：打开空 rich-table 块，点击"插入模板"，单击标题重命名（约 6 秒） -->
 ![快速开始演示](docs/demo-01-template.gif)
 
 **2 · 合并单元格** — 拖选 → 弹窗点 Merge
@@ -97,7 +97,7 @@ Obsidian 内置表格本质上是纯 GFM 格式——没有合并单元格、没
 ## 格式说明
 
 ````markdown
-```better-table
+```rich-table
 ---
 title: 项目看板
 columns:
@@ -175,7 +175,7 @@ footer: "* 数据为估算值 · 最后更新 2025-01"
 | `effort` | XS · S · M · L · XL |
 | `approval` | approved · pending · rejected |
 
-自定义类型可在 **设置 → Better Table** 中添加。
+自定义类型可在 **设置 → Rich Table** 中添加。
 
 ### 双击操作面板
 双击任意单元格（或右键点击标题格）弹出统一操作面板，包含三个区域：
@@ -209,10 +209,10 @@ styles:
 ## 安装
 
 1. 打开 **设置 → 第三方插件 → 浏览**。
-2. 搜索 **Better Table** 并安装。
+2. 搜索 **Rich Table** 并安装。
 3. 启用插件。
 
-手动安装：将 `main.js`、`manifest.json`、`styles.css` 复制到 `<vault>/.obsidian/plugins/better-table/`。
+手动安装：将 `main.js`、`manifest.json`、`styles.css` 复制到 `<vault>/.obsidian/plugins/rich-table/`。
 
 最低 Obsidian 版本：**1.4.10**
 
@@ -226,7 +226,7 @@ styles:
 
 ## 支持与反馈
 
-问题反馈与功能建议：[GitHub Issues](https://github.com/SdKay/obsidian-better-table/issues)
+问题反馈与功能建议：[GitHub Issues](https://github.com/SdKay/obsidian-rich-table/issues)
 
 ---
 
@@ -253,11 +253,11 @@ npm run lint       # ESLint（obsidianmd 规则）
 构建后部署到 vault：
 
 ```bash
-cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/better-table/"
+cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/rich-table/"
 ```
 
 ---
 
 ## Star 增长趋势
 
-[![Star History Chart](https://api.star-history.com/svg?repos=SdKay/obsidian-better-table&type=Date)](https://star-history.com/#SdKay/obsidian-better-table&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=SdKay/obsidian-rich-table&type=Date)](https://star-history.com/#SdKay/obsidian-rich-table&Date)
