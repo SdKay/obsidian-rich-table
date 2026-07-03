@@ -569,7 +569,15 @@ export async function renderTable(
 		rowSel.addEventListener('mouseenter', () => { if (selHideTimer) { window.clearTimeout(selHideTimer); selHideTimer = null; } });
 		rowSel.addEventListener('mouseleave', scheduleSelHide);
 
+		let selectorPanel: HTMLElement | null = null;
+		const closeSelectorPanel = () => {
+			selectorPanel?.remove();
+			selectorPanel = null;
+		};
+
 		const startDrag = (axis: 'col' | 'row', idx: number, e: PointerEvent, wrap: HTMLElement) => {
+			closeSelectorPanel();
+			selAxis = null; selI1 = selI2 = -1; // clear old highlight before new drag
 			e.stopPropagation(); e.preventDefault();
 			wrap.setPointerCapture(e.pointerId);
 			selAxis = axis; selI1 = selI2 = idx;
@@ -609,14 +617,16 @@ export async function renderTable(
 			const rule = model.styles.find(s => s.target === target);
 			const existing = { bg: rule?.bg, color: rule?.color, size: rule?.size };
 
-			selAxis = null; selI1 = selI2 = -1;
-			rebuild();
+			// Keep selAxis/selI1/selI2 so highlights stay visible while the panel is open.
+			// They are cleared in onClose so the highlight disappears when the panel closes.
+			closeSelectorPanel();
+			rebuild(); // re-render strip cells with is-sel, keep table highlights
 
 			const label = axis === 'col'
 				? styleEntireColsLabel(lo, hi, colIndexToLetter)
 				: styleEntireRowsLabel(lo, hi);
 
-			openCellPanel({
+			selectorPanel = openCellPanel({
 				anchor, els,
 				styleTarget: target,
 				existingStyle: existing,
@@ -624,6 +634,11 @@ export async function renderTable(
 				showTextColor: true,
 				cellOps: [{ icon: 'info', label, action: () => { /* info only */ } }],
 				onApplyStyle: (bg, color, size) => void onStructuralOp({ type: 'set-range-style', target, bg, color, size }),
+				onClose: () => {
+					selectorPanel = null;
+					selAxis = null; selI1 = selI2 = -1;
+					rebuild(); // clears table highlights and strip is-sel
+				},
 			});
 		};
 
