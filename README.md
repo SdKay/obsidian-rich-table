@@ -47,7 +47,7 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 
 | Feature | Native tables | Rich Table |
 | --- | --- | --- |
-| Cell merging (rowspan / colspan) | ✗ | ✓ |
+| Cell merging | ✗ | ✓ |
 | Click-to-edit cells inline | ✗ | ✓ |
 | `[[wikilink]]` autocomplete in cells | ✗ | ✓ |
 | Typed columns (status, priority…) | ✗ | ✓ |
@@ -114,6 +114,16 @@ footer: "Updated weekly · click any cell to edit"
 
 The block starts with an optional YAML header (title, columns, merges, styles, footer), followed by a standard Markdown table grid.
 
+**Coordinate notation** used in `merges` and `styles` targets:
+
+| Notation | Meaning |
+| -------- | ------- |
+| `A1` | Cell — column A, row 1 (header) |
+| `A2:B4` | Range |
+| `B*` | Entire column B |
+| `*3` | Entire row 3 |
+| `2:4` | Row range |
+
 ---
 
 ## Features
@@ -134,7 +144,7 @@ Custom types can be defined in **Settings → Rich Table**.
 Set background color, text color, and font size on any cell, row, column, or range — either via the double-click panel or directly in the YAML `styles` field.
 
 **Merges**
-Drag-select across cells and click **Merge** in the popup. Or declare merges in YAML (e.g. `A2:B3`). Obsidian coordinates: column A = first column, row 1 = header row.
+Drag-select across cells and click **Merge** in the popup. Or declare merges in YAML (e.g. `A2:B3`).
 
 **Reorder & resize**
 - Drag the ⠿ handle on any header cell to reorder columns; drag the ⠿ handle on any data row to reorder rows.
@@ -162,11 +172,27 @@ Minimum Obsidian version: **1.8.7**
 
 ---
 
-## License
+## Planned
 
-[AGPL-3.0](LICENSE) — derivatives must be open-sourced under the same license.
+**Editing**
+- Keyboard navigation — arrow keys to move between cells, Tab to advance
+- Paste from clipboard — paste a copied Excel / CSV table directly into the grid
 
-For **commercial licensing**: sdkxyx@gmail.com
+**Data & display**
+- Row sorting — click a column header to sort
+- Row filtering — show only rows matching a condition (e.g. `status = done`)
+- Conditional formatting — auto-apply background color based on cell value rules
+- Progress bar column type — visualize a 0–100 numeric value as a filled bar
+- Aggregate row — automatic SUM / COUNT for numeric and choice columns
+
+**Annotations**
+- Cell comments — attach a floating note to any cell; shown on hover
+
+**Structure**
+- Row grouping — collapsible groups of rows
+- Custom type editor — visual UI to add/edit choice types (replacing the JSON textarea)
+
+---
 
 ## Claude Code Skill
 
@@ -179,6 +205,12 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 Then ask Claude: *"Create a project tracker table in my note using rich-table"*.
 
 ---
+
+## License
+
+[AGPL-3.0](LICENSE) — derivatives must be open-sourced under the same license.
+
+For **commercial licensing**: sdkxyx@gmail.com
 
 ## Feedback
 
