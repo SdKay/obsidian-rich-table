@@ -80,6 +80,17 @@ columns:
   - { name: Owner,    width: 120 }
 ```
 
+> **Quote column names containing YAML special characters.**  
+> In flow-mapping style (`{ name: ... }`), the characters `[ ] { } : , # &` have
+> special meaning in YAML and cause a parse error if unquoted.
+> ```yaml
+> # ❌ parse error — [] is YAML flow-sequence syntax
+> - { name: rx_buf[] type, width: 160 }
+> # ✅ quoted
+> - { name: "rx_buf[] type", width: 160 }
+> ```
+> **Rule:** when a `name` value contains any of `[ ] { } : , #`, wrap it in double quotes.
+
 ### `merges` (array, optional)
 Each entry is a cell range in Excel-style notation. Merges must be rectangular.
 If two merges overlap, the plugin automatically expands to the minimum
