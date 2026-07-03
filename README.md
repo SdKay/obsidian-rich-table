@@ -22,11 +22,11 @@
 </p>
 
 <p>
-  <a href="#-why-rich-table">Why?</a> ·
-  <a href="#-demo">Demo</a> ·
-  <a href="#-format">Format</a> ·
-  <a href="#-features">Features</a> ·
-  <a href="#-installation">Install</a> ·
+  <a href="#why-rich-table">Why?</a> ·
+  <a href="#demo">Demo</a> ·
+  <a href="#format">Format</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#installation">Install</a> ·
   <a href="README_CN.md">中文</a>
 </p>
 
@@ -37,64 +37,52 @@
 
 </div>
 
-> **Obsidian-only plugin.** The `rich-table` fenced code block is a custom Obsidian renderer — it will not display in standard Markdown editors, GitHub previews, or any non-Obsidian environment.
+> **Obsidian only.** The `rich-table` fenced code block is rendered by the plugin — it won't display in standard Markdown editors or GitHub previews.
 
-Rich, interactive tables for Obsidian — with **cell merges**, inline editing, wikilink autocomplete, typed columns, title & footer, drag-to-reorder, and more. Everything that native Obsidian tables and most community table plugins simply can't do.
+Rich, interactive tables for Obsidian — with cell merges, inline editing, wikilink autocomplete, typed columns, drag-to-reorder, and more.
 
 ---
 
 ## Why Rich Table?
 
-Obsidian's built-in tables are plain GFM — no merges, no types, no interactive editing. Most community table plugins work around the same limitation. Rich Table takes a different approach: a dedicated fenced code block that gives you a **spreadsheet-like experience inside your notes**.
-
-| Pain point | Native tables | Rich Table |
+| Feature | Native tables | Rich Table |
 | --- | --- | --- |
 | Cell merging (rowspan / colspan) | ✗ | ✓ |
-| Inline click-to-edit | ✗ | ✓ |
+| Click-to-edit cells inline | ✗ | ✓ |
 | `[[wikilink]]` autocomplete in cells | ✗ | ✓ |
 | Typed columns (status, priority…) | ✗ | ✓ |
-| Per-cell style (bg, color, font size) | ✗ | ✓ |
+| Per-cell style (bg color, font size…) | ✗ | ✓ |
 | Table title & footer notes | ✗ | ✓ |
 | Drag to reorder rows / columns | ✗ | ✓ |
-| Add / hide / delete rows & columns | ✗ | ✓ |
 | Drag to resize column width / row height | ✗ | ✓ |
+| Insert / hide / delete rows & columns | ✗ | ✓ |
 
 ---
 
 ## Demo
 
-**1 · Quick start from template** — empty block → insert template → edit title
+**1 · Quick start from template**
 
-<!-- record: open empty rich-table block, click Insert template, single-click title to rename (~6s) -->
 ![Quick start demo](docs/demo-01-template.gif)
 
 **2 · Merge cells** — drag-select → Merge in popup
 
-<!-- record: drag across 3 cells, popup appears, click Merge, result visible (~6s) -->
 ![Merge cells demo](docs/demo-02-merge.gif)
 
-**3 · Typed columns & cell style** — click to switch value, double-click to set bg / font size
+**3 · Typed columns & cell style** — click to pick value, double-click to set style
 
-<!-- record: click a task-status cell → pick "done", then double-click another cell → set bg color + size → Apply (~7s) -->
 ![Typed columns and style demo](docs/demo-03-style.gif)
 
-**4 · Wikilink autocomplete** — `[[` triggers file suggest, `#` for headings
+**4 · Drag to reorder & row/column ops** — ⠿ handle + double-click menu
 
-<!-- record: single-click a cell, type [[, select a file, type #, select a heading (~6s) -->
-![Wikilink autocomplete demo](docs/demo-04-wikilink.gif)
-
-**5 · Drag to reorder & row/column ops** — ⠿ handle + double-click menu
-
-<!-- record: drag a row handle to reorder, then double-click a cell → insert row below (~6s) -->
 ![Reorder and ops demo](docs/demo-05-reorder.gif)
 
-**6 · Drag to resize** — drag column header right edge to resize width · drag row bottom edge to resize height
+**5 · Drag to resize** — column header right edge · row bottom edge
 
 ![Resize demo](docs/demo-06-resize.gif)
 
-**7 · Title & footer** — click to edit inline, Shift+Enter for multi-line footer
+**6 · Title & footer** — click to edit, Shift+Enter for multi-line
 
-<!-- record: click title to rename, click footer → add a second line with Enter → Shift+Enter to save (~6s) -->
 ![Title and footer demo](docs/demo-07-title-footer.gif)
 
 ---
@@ -106,128 +94,69 @@ Obsidian's built-in tables are plain GFM — no merges, no types, no interactive
 ---
 title: Project tracker
 columns:
-  - { name: Task,     width: 200 }
-  - { name: Status,   type: task-status }
+  - { name: Task,   width: 200 }
+  - { name: Status, type: task-status }
   - { name: Owner }
-  - { name: Priority, type: priority, align: center }
 merges:
   - A3:A4
 styles:
   - { target: "1:1", bold: true, bg: "#e8f0fe" }
-  - { target: "B*",  bg: "#e6f4ea" }
-  - { target: "D2",  size: 14, color: "#c0392b" }
 footer: "Updated weekly · click any cell to edit"
 ---
-| Task     | Status  | Owner        | Priority |
-| -------- | ------- | ------------ | -------- |
-| Design   | done    | [[Alice]]    | high     |
-| Build    | pending | [[teammate]] | medium   |
-| Test     | todo    |              | low      |
-| Deploy   | todo    |              | low      |
+| Task   | Status  | Owner     |
+| ------ | ------- | --------- |
+| Design | done    | [[Alice]] |
+| Build  | pending | [[Bob]]   |
+| Test   | todo    |           |
+| Deploy | todo    |           |
 ```
 ````
 
-### Coordinate system
-
-Excel-style, 1-indexed. Row 1 = header row.
-
-| Notation | Meaning |
-| -------- | ------- |
-| `A1`     | Column A, row 1 (header) |
-| `A1:B3`  | Cell range |
-| `B*`     | Entire column B |
-| `*2`     | Entire row 2 |
-| `1:3`    | Row range |
+The block starts with an optional YAML header (title, columns, merges, styles, footer), followed by a standard Markdown table grid.
 
 ---
 
 ## Features
 
-### Title & footer
-Add a table title above and notes below using YAML fields. Both support inline Markdown (bold, italic, wikilinks). Click either to edit inline.
+**Editing**
+- Single-click any cell to edit inline — supports plain text, `[[wikilinks]]`, bold, italic
+- `[[` inside a cell triggers Obsidian's native file & heading autocomplete
+- Double-click (or right-click a header) opens a panel to insert/delete/hide rows & columns, merge cells, set styles, or change the column type
 
-```yaml
-title: My Project Board
-footer: "* estimates only · last updated 2025-01"
-```
+**Typed columns**
+Assign a type to a column; values render as colored pill badges. Single-click to pick from a dropdown — no typing needed.
 
-Multiple footer lines via YAML array. Shift+Enter adds a line break while editing.
-
-### Cell merging
-Define any rectangular merge region in YAML. During interactive editing, drag across cells and click **Merge** in the popup. The plugin automatically expands to the minimum valid bounding box if a new merge partially overlaps an existing one.
-
-### Inline editing
-Single-click any cell to open an inline editor. Supports plain text, wikilinks, bold/italic, and all inline Markdown. `Enter` saves; `Escape` cancels.
-
-### Wikilink autocomplete
-Type `[[` inside any cell editor to trigger Obsidian's native file suggest:
-- `[[filename` — file search
-- `[[filename#heading` — heading links
-- `[[filename#^blockid` — block references
-- `[[filename|alias` — link aliases
-
-### Typed columns
-Attach a type to any column. Values render as colored pill badges. Single-click a cell to choose from the dropdown — no typing needed.
-
-**Built-in types:**
-
-| Type | Values |
-| ---- | ------ |
-| `task-status` | todo · pending · done · cancel |
-| `priority` | high · medium · low |
-| `boolean` | yes · no |
-| `rating` | ★ through ★★★★★ |
-| `effort` | XS · S · M · L · XL |
-| `approval` | approved · pending · rejected |
+Built-in types: `task-status` · `priority` · `boolean` · `rating` · `effort` · `approval`
 
 Custom types can be defined in **Settings → Rich Table**.
 
-### Double-click panel
-Double-clicking any cell (or right-clicking a header) opens a unified panel with three sections:
+**Styles**
+Set background color, text color, and font size on any cell, row, column, or range — either via the double-click panel or directly in the YAML `styles` field.
 
-1. **Cell operations** — insert/delete/hide rows & columns; unmerge merged cells. For merged cells the range covers all spanned rows/columns automatically.
-2. **Style** — set background color, text color, and font size with live preview. Cancel to restore; Apply to persist. Clear format removes all cell-level styles.
-3. **Change type** — header cells only; cascading submenu to switch the column type.
+**Merges**
+Drag-select across cells and click **Merge** in the popup. Or declare merges in YAML (e.g. `A2:B3`). Obsidian coordinates: column A = first column, row 1 = header row.
 
-**Ctrl+drag** to select a range without opening the panel (for visual inspection). When the popup does appear after dragging, it also shows **Merge cells** as the first action.
+**Reorder & resize**
+- Drag the ⠿ handle on any header cell to reorder columns; drag the ⠿ handle on any data row to reorder rows.
+- Drag a column header's right edge to resize its width; drag a row's bottom edge to resize its height.
+- Hover near the table's bottom or right edge to reveal **+** strips for appending rows/columns.
 
-### Style rules
-Apply styles in YAML to any target: single cells, ranges, entire rows, or columns.
-
-```yaml
-styles:
-  - { target: "1:1",   bold: true, bg: "#f0f4ff" }
-  - { target: "B*",    bg: "#e6f4ea" }
-  - { target: "A2:A5", color: "#555", size: 13 }
-```
-
-Supported properties: `bg`, `color`, `bold`, `italic`, `size` (px).
-
-### Drag to reorder
-Six-dot drag handles appear on hover — top of header cells for columns, left side of data cells for rows. Merge regions fully contained within the moved row/column travel with it; cross-boundary merges stay in place.
-
-### Resize columns and rows
-Hover over the right edge of any column header to reveal a resize handle — drag left or right to adjust the column width. Hover over the bottom edge of any row to resize its height. A full-span indicator line tracks the border as you drag.
-
-- Typed columns enforce a minimum width based on their widest option label so badges are never clipped.
-- Width and height are persisted in the YAML front matter (`columns[].width`, `rowHeights`).
-
-### Edge strips
-Hover near the bottom edge of the table to reveal a **+** strip for appending a new row. Hover near the right edge to append a new column.
+**Title & footer**
+Add a centered title above the table and notes below. Click either to edit inline. Multi-line footers supported.
 
 ---
 
 ## Installation
 
-**Recommended — community plugin browser:**
+**Community plugin browser (recommended):**
 
-1. Open **Settings → Community plugins → Browse**.
-2. Search for **Rich Table** and install.
-3. Enable the plugin.
+1. Open **Settings → Community plugins → Browse**
+2. Search for **Rich Table** and install
+3. Enable the plugin
 
-Or install directly: [Open in Obsidian](https://obsidian.md/plugins?id=rich-table)
+Or: [Open in Obsidian](https://obsidian.md/plugins?id=rich-table)
 
-**Manual install:** copy `main.js`, `manifest.json`, and `styles.css` to `<vault>/.obsidian/plugins/rich-table/`.
+**Manual:** copy `main.js`, `manifest.json`, `styles.css` to `<vault>/.obsidian/plugins/rich-table/`
 
 Minimum Obsidian version: **1.8.7**
 
@@ -235,78 +164,14 @@ Minimum Obsidian version: **1.8.7**
 
 ## License
 
-Licensed under [AGPL-3.0](LICENSE). Derivatives must be open-sourced under the same license.
+[AGPL-3.0](LICENSE) — derivatives must be open-sourced under the same license.
 
-For **commercial licensing**, contact: sdkxyx@gmail.com
+For **commercial licensing**: sdkxyx@gmail.com
 
-## Support & feedback
+## Feedback
 
 Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-rich-table/issues)
 
 ---
-
-## Known issues
-
-- **Hidden column indicator width**: the `▶N` indicator column expands to fill available space in some themes due to theme CSS overriding `width` on `th` elements.
-
-## Planned
-
-### Interaction & editing
-- **Keyboard navigation**: arrow keys move between cells; Tab advances to the next editable cell.
-- **Bulk paste from CSV / Excel**: paste clipboard table data directly into the grid.
-
-### Data & display
-- **Row sorting**: click a column header to sort rows; sort state optionally persisted in YAML.
-- **Row filtering**: filter rows by column value (e.g. show only `status = done`); toggle without losing data.
-- **Aggregate footer row**: automatic SUM / COUNT / AVG for numeric and choice columns, rendered below the table.
-- **Conditional formatting**: rule-based automatic styles — e.g. red background when `priority = high` and `status ≠ done`.
-- **Progress bar column type**: renders a filled bar based on a `0–100` numeric value.
-- **Color scale**: gradient background across a numeric column from min to max, like Excel color scales.
-
-### Annotations
-- **Cell comments**: double-click to attach a floating note to any cell; rendered as a small corner badge; shown on hover. Comment text and position saved in YAML.
-- **Arrow annotations** *(advanced)*: SVG overlay with ellipse highlight on the annotated cell, Bezier arrow to a freely draggable comment box outside the table.
-
-### Structure
-- **Row-direction tables** (`direction: row`): attach types to rows instead of columns.
-- **Row grouping**: collapsible row groups with a toggle, defined by a `group:` column or YAML.
-- **Custom choice type UI**: visual add/remove UI for custom types, replacing the raw-JSON textarea.
-
----
-
-## Claude Code skill
-
-A [`SKILL.md`](SKILL.md) is included for use with [Claude Code](https://claude.ai/code).
-Once installed, Claude agents can create, read, and modify `rich-table` blocks directly in your vault — adding rows, applying styles, defining merges, and more — without you having to remember the syntax.
-
-**Install the skill:**
-
-```bash
-# Copy to your Claude skills directory
-cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
-```
-
-Then ask Claude: *"Create a project tracker table in my note using rich-table"* and it will generate the block automatically.
-
----
-
-## Development
-
-```bash
-npm install
-npm run dev        # watch mode — rebuilds on change
-npm run build      # production build (tsc + minified main.js)
-npm run lint       # ESLint with obsidianmd rules
-```
-
-Deploy to vault after build:
-
-```bash
-cp main.js manifest.json styles.css "<vault>/.obsidian/plugins/rich-table/"
-```
-
----
-
-## Star history
 
 [![Star History Chart](https://api.star-history.com/svg?repos=SdKay/obsidian-rich-table&type=Date)](https://star-history.com/#SdKay/obsidian-rich-table&Date)

@@ -21,6 +21,9 @@ data.json
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 
+# local scratch / design drafts — not tracked
+tmp/
+
 # local Claude config (contains personal vault paths)
 CLAUDE.md
 # Windows Alternate Data Streams
