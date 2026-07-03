@@ -8,6 +8,7 @@ export function serializeTable(model: TableModel): string {
 		!!model.footer ||
 		model.columns.some(c => !!(c.type || c.width || c.align || c.hidden)) ||
 		(model.hiddenRows?.length ?? 0) > 0 ||
+		(model.rowHeights?.length ?? 0) > 0 ||
 		model.merges.length > 0 ||
 		model.styles.length > 0;
 
@@ -39,6 +40,10 @@ function buildYamlBlock(model: TableModel): string {
 
 	if ((model.hiddenRows?.length ?? 0) > 0) {
 		obj.hiddenRows = model.hiddenRows;
+	}
+
+	if ((model.rowHeights?.length ?? 0) > 0) {
+		obj.rowHeights = model.rowHeights;
 	}
 
 	if (model.merges.length > 0) {

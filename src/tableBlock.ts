@@ -42,6 +42,7 @@ footer: "单击编辑 · 双击弹出操作菜单 · 拖拽 ⠿ 排序"
 | 合并单元格 | 拖拽选中多个格 → 双击弹窗点 Merge                | todo    |                   |
 | 样式设置   | 双击 → 设置背景色/颜色/字号                      | todo    |                   |
 | 拖拽排序   | 拖拽行左侧或列顶部的 ⠿ 手柄                     | todo    |                   |
+| 调整宽高   | 拖拽列标题右边缘调列宽 · 拖拽行底边缘调行高      | todo    |                   |
 `;
 	}
 	return `\
@@ -69,12 +70,21 @@ footer: "Single-click to edit · double-click for cell menu · drag ⠿ to reord
 | Merge cells   | Drag-select → Merge in the double-click popup    | todo    |                   |
 | Cell style    | Double-click → set bg / color / font size        | todo    |                   |
 | Reorder       | Drag ⠿ handle on row left side or column top    | todo    |                   |
+| Resize        | Drag column header right edge · row bottom edge  | todo    |                   |
 `;
 }
 
 
 export class TableBlock extends MarkdownRenderChild {
 	private model: TableModel | null = null;
+	// Serialised write chain — every write is chained so they execute
+	// strictly in order and can never interleave (same pattern as
+	// obsidian-better-tables' queueWrite).
+	private writeChain: Promise<void> = Promise.resolve();
+	// Batch queue: ops that arrive in the same JS tick are collected so
+	// only a single vault.process call is made for the whole batch.
+	private pendingOps: StructuralOp[] = [];
+	private writeBackScheduled = false;
 
 	constructor(
 		container: HTMLElement,
@@ -145,11 +155,33 @@ export class TableBlock extends MarkdownRenderChild {
 
 	private async handleStructuralOp(op: StructuralOp): Promise<void> {
 		if (!this.model) return;
-		applyStructuralOp(this.model, op);
+		// Queue the op — it will be applied along with any other ops that
+		// arrive in the same JS tick before the single write-back fires.
+		this.pendingOps.push(op);
+		if (this.writeBackScheduled) return; // already scheduled by an earlier op
+		this.writeBackScheduled = true;
+
+		await new Promise<void>(resolve => { window.setTimeout(resolve, 0); });
+		this.writeBackScheduled = false;
+
+		// Apply all queued ops at once.
+		for (const pending of this.pendingOps) applyStructuralOp(this.model, pending);
+		this.pendingOps = [];
+
+		// Capture line info NOW (while containerEl is still attached to DOM).
 		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
 		if (!(file instanceof TFile)) return;
-		await new Promise<void>(resolve => { window.setTimeout(resolve, 0); });
-		await writeBackModel(this.model, this.containerEl, this.ctx, this.plugin.app.vault, file);
+		const info = this.ctx.getSectionInfo(this.containerEl);
+
+		// Chain onto the write queue so concurrent write-backs never interleave.
+		const model = this.model;
+		const ctx   = this.ctx;
+		const el    = this.containerEl;
+		const vault = this.plugin.app.vault;
+		this.writeChain = this.writeChain.then(
+			() => writeBackModel(model, el, ctx, vault, file, info),
+			() => writeBackModel(model, el, ctx, vault, file, info),
+		);
 	}
 
 	private async handleColTypeChange(colIdx: number, newType: string | undefined): Promise<void> {

@@ -17,7 +17,9 @@ export type StructuralOp =
 	| { type: 'set-cell-style';  rowIdx: number;  colIdx: number; bg: string | null; color: string | null; size: number | null }
 	| { type: 'set-range-style'; target: string;                 bg: string | null; color: string | null; size: number | null }
 	| { type: 'set-title';       title:  string | undefined }
-	| { type: 'set-footer';      footer: string | string[] | undefined };
+	| { type: 'set-footer';      footer: string | string[] | undefined }
+	| { type: 'set-col-width';   colIdx: number; width: number }
+	| { type: 'set-row-height';  rowIdx: number; height: number };
 
 export function applyStructuralOp(model: TableModel, op: StructuralOp): void {
 	switch (op.type) {
@@ -139,6 +141,20 @@ export function applyStructuralOp(model: TableModel, op: StructuralOp): void {
 		case 'set-footer': {
 			if (op.footer !== undefined) model.footer = op.footer;
 			else delete model.footer;
+			break;
+		}
+		case 'set-col-width': {
+			const col = model.columns[op.colIdx];
+			if (col) col.width = op.width;
+			break;
+		}
+		case 'set-row-height': {
+			const heights = model.rowHeights ?? (model.rowHeights = []);
+			while (heights.length <= op.rowIdx) heights.push(0);
+			heights[op.rowIdx] = op.height;
+			// Trim trailing zeros
+			while (heights.length > 0 && heights[heights.length - 1] === 0) heights.pop();
+			if (heights.length === 0) delete model.rowHeights;
 			break;
 		}
 		case 'set-range-style': {

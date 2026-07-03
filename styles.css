@@ -199,20 +199,70 @@
 	cursor: grabbing;
 }
 
-/* 6-dot drag icon: 2 cols × 3 rows grid */
-.bt-drag-dots {
-	display: grid;
-	grid-template-columns: 3px 3px;
-	grid-template-rows: 3px 3px 3px;
-	gap: 2px;
+/* Drag handle icon sizing */
+.bt-col-drag-handle svg,
+.bt-row-drag-handle svg {
+	width: 12px;
+	height: 12px;
+	color: var(--text-muted);
 }
 
-.bt-drag-dots > span {
-	display: block;
-	width: 3px;
-	height: 3px;
-	border-radius: 50%;
-	background: var(--text-muted);
+/* ── Row height: height on td/th acts as minimum row height ─────────────── */
+.bt-table .bt-th,
+.bt-table .bt-td {
+	height: var(--bt-row-height, auto);
+}
+
+/* ── Column / row resize handles ─────────────────────────────────────────── */
+.bt-col-resize-handle {
+	position: absolute;
+	top: 0;
+	right: -3px;
+	width: 7px;
+	height: 100%;
+	cursor: col-resize;
+	z-index: 3;
+	background: transparent;
+	transition: background 100ms ease;
+}
+
+.bt-row-resize-handle {
+	position: absolute;
+	bottom: -3px;
+	left: 0;
+	width: 100%;
+	height: 7px;
+	cursor: row-resize;
+	z-index: 3;
+	background: transparent;
+	transition: background 100ms ease;
+}
+
+/* Handles are invisible — the full-span indicator line provides all visual feedback */
+
+/* Full-column / full-row indicator line; --bt-ri-opacity set via setCssProps (hover: 0.4, drag: 0.75) */
+.bt-resize-indicator {
+	position: fixed;
+	z-index: var(--layer-popover);
+	pointer-events: none;
+	background: var(--interactive-accent);
+	opacity: var(--bt-ri-opacity, 0.75);
+}
+
+.bt-resize-indicator-col {
+	top:    var(--ri-top,  0px);
+	left:   var(--ri-x,   0px);
+	width:  2px;
+	height: var(--ri-height, 100px);
+	transform: translateX(-1px);
+}
+
+.bt-resize-indicator-row {
+	left:   var(--ri-left,  0px);
+	top:    var(--ri-y,     0px);
+	width:  var(--ri-width, 100px);
+	height: 2px;
+	transform: translateY(-1px);
 }
 
 /* Drop indicators — higher specificity to override table cell borders */
@@ -228,7 +278,8 @@
 
 .bt-table {
 	border-collapse: collapse;
-	width: 100%;
+	table-layout: fixed;
+	width: auto;
 	font-size: var(--font-ui-medium);
 }
 
@@ -238,7 +289,7 @@
 	padding: var(--size-4-2) var(--size-4-3);
 	border: 1px solid var(--table-border-color, var(--background-modifier-border));
 	vertical-align: middle;
-	min-width: var(--bt-col-width, 40px);
+	min-width: 40px;
 	text-align: center;
 }
 

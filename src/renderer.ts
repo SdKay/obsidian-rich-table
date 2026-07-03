@@ -53,6 +53,18 @@ export async function renderTable(
 	const wrapper = container.createDiv({ cls: 'bt-table-wrapper' });
 	const table = wrapper.createEl('table', { cls: 'bt-table' });
 
+	// <colgroup> for precise column widths (required by table-layout:fixed)
+	const colgroup = table.createEl('colgroup');
+	const visibleCols: { colEl: HTMLElement; colIdx: number }[] = [];
+	for (let ci = 0; ci < model.columns.length; ci++) {
+		const col = model.columns[ci];
+		if (!col || col.hidden) continue;
+		const colEl = colgroup.createEl('col');
+		colEl.style.setProperty('width', `${Math.max(colMinWidth(col, registry), col.width ?? 120)}px`);
+		colEl.dataset.col = String(ci);
+		visibleCols.push({ colEl, colIdx: ci });
+	}
+
 	// ── Drag-to-select for cell merging ──────────────────────────────────────
 	// sel tracks the current drag selection; hasMoved prevents click handlers
 	// from opening edit mode when the user dragged across cells.
@@ -163,6 +175,9 @@ export async function renderTable(
 		if (evt.button !== 0) return;
 		// Don't start merge selection when clicking a drag handle
 		if ((evt.target as HTMLElement).closest('.bt-row-drag-handle')) return;
+		// Don't interfere when clicking inside an active cell editor —
+		// preventDefault would block the browser from placing the cursor
+		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
 		const td = (evt.target as HTMLElement).closest<HTMLElement>('td[data-row][data-col]');
 		if (!td) return;
 		const row = parseInt(td.dataset.row ?? '-1');
@@ -530,15 +545,16 @@ async function renderRow(
 
 		applyColStyle(el, col);
 		applyStyleRules(el, rowIdx, colIdx, model.styles);
+		// Apply stored row height (height on td acts as minimum row height)
+		const rh = model.rowHeights?.[rowIdx];
+		if (rh) el.style.setProperty('--bt-row-height', `${rh}px`);
+		else el.style.removeProperty('--bt-row-height');
 
 		const value = rowCells[colIdx] ?? '';
 
 		// ── Drag-reorder handles ─────────────────────────────────────────────
 		if (onStructuralOp) {
-			const makeDots = (parent: HTMLElement) => {
-				const grid = parent.createDiv({ cls: 'bt-drag-dots' });
-				for (let i = 0; i < 6; i++) grid.createSpan();
-			};
+			const makeDots = (parent: HTMLElement) => setIcon(parent, 'grip-vertical');
 			if (isHeader) {
 				// Column drag handle: top-center of header cell, cursor:grab
 				const cdh = el.createDiv({
@@ -567,9 +583,28 @@ async function renderRow(
 		}
 
 		if (isHeader) {
-			renderHeaderCell(el, value, col, colIdx, getRegistry, app, sourcePath, model, onCellChange, onColTypeChange, onStructuralOp);
+			renderHeaderCell(el, value, col, colIdx, getRegistry, app, sourcePath, model, component, onCellChange, onColTypeChange, onStructuralOp);
 		} else {
 			await renderDataCell(el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model, onCellChange, onStructuralOp);
+			// Row-height resize handle on bottom edge of the first visible cell
+			if (onStructuralOp && isFirstVisible) {
+				const rowHandle = el.createDiv({ cls: 'bt-row-resize-handle', attr: { 'aria-hidden': 'true' } });
+				const tbl = tr.closest<HTMLElement>('table') ?? el;
+				bindResizeHandle(
+					rowHandle, tbl,
+					`data-row="${rowIdx}"`, '--bt-row-height', 24,
+					(h) => void onStructuralOp({ type: 'set-row-height', rowIdx, height: h }),
+					component,
+					/* onDrag — reposition edge strips to follow the new table bottom */
+					() => {
+						const r = tbl.getBoundingClientRect();
+						const rowStrip = activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-row.bt-strip-visible');
+						const colStrip = activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-col.bt-strip-visible');
+						rowStrip?.setCssProps({ '--strip-top': `${r.bottom + 2}px`, '--strip-left': `${r.left}px`, '--strip-width': `${r.width}px` });
+						colStrip?.setCssProps({ '--strip-top': `${r.top}px`, '--strip-left': `${r.right + 2}px`, '--strip-height': `${r.height}px` });
+					},
+				);
+			}
 		}
 		c++;
 	}
@@ -584,6 +619,7 @@ function renderHeaderCell(
 	app: App,
 	sourcePath: string,
 	model: TableModel,
+	component: Component,
 	onCellChange?: CellChangeHandler,
 	onColTypeChange?: ColTypeChangeHandler,
 	onStructuralOp?: StructuralOpHandler,
@@ -649,6 +685,98 @@ function renderHeaderCell(
 		if (el.hasClass('bt-editing')) return;
 		openPanel(evt);
 	});
+
+	// Column-width resize handle on right edge of header cell
+	if (onStructuralOp) {
+		const handle = el.createDiv({ cls: 'bt-col-resize-handle', attr: { 'aria-hidden': 'true' } });
+		const tbl = el.closest<HTMLElement>('table');
+		if (tbl) {
+			const thisCol  = tbl.querySelector<HTMLElement>(`col[data-col="${colIdx}"]`);
+			const allCols  = Array.from(tbl.querySelectorAll<HTMLElement>('col[data-col]'));
+			const nextCol  = allCols.find(c => parseInt(c.dataset.col ?? '-1') > colIdx) ?? null;
+
+			if (thisCol) {
+				// Shared hover+drag indicator line
+				let colLine: HTMLElement | null = null;
+				let colDragging = false;
+				const hideColLine = () => { colLine?.remove(); colLine = null; };
+				component.register(hideColLine);
+
+				const makeColLine = (tblRect: DOMRect): HTMLElement => {
+					const line = activeDocument.body.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-col' });
+					line.setCssProps({
+						'--ri-x':      `${el.getBoundingClientRect().right}px`,
+						'--ri-top':    `${tblRect.top}px`,
+						'--ri-height': `${tblRect.height}px`,
+					});
+					return line;
+				};
+
+				handle.addEventListener('mouseenter', () => {
+					if (colLine || colDragging) return;
+					colLine = makeColLine(tbl.getBoundingClientRect());
+					colLine.setCssProps({ '--bt-ri-opacity': '0.4' });
+				});
+				handle.addEventListener('mouseleave', () => {
+					if (!colDragging) hideColLine();
+				});
+
+				handle.addEventListener('pointerdown', (e: PointerEvent) => {
+					if (e.button !== 0) return;
+					e.stopPropagation();
+					e.preventDefault();
+					handle.setPointerCapture(e.pointerId);
+					colDragging = true;
+
+					const startX     = e.clientX;
+					const startW     = parseInt(thisCol.style.width) || (col.width ?? 120);
+					const startNextW = nextCol ? (parseInt(nextCol.style.width) || 120) : null;
+					const nextColIdx = nextCol ? parseInt(nextCol.dataset.col ?? '-1') : -1;
+					const MIN        = colMinWidth(col, getRegistry());
+					const tblRect    = tbl.getBoundingClientRect();
+
+					// Upgrade hover line or create fresh one at full drag opacity
+					if (colLine) colLine.setCssProps({ '--bt-ri-opacity': '0.75' });
+					else { colLine = makeColLine(tblRect); colLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
+
+					const onMove = (ev: PointerEvent) => {
+						const delta = ev.clientX - startX;
+						const newW  = Math.max(MIN, startW + delta);
+						thisCol.style.setProperty('width', `${newW}px`);
+						if (nextCol && startNextW !== null) {
+							const nextMIN = nextColIdx >= 0
+								? colMinWidth(model.columns[nextColIdx] ?? { name: '' }, getRegistry())
+								: 40;
+							nextCol.style.setProperty('width', `${Math.max(nextMIN, startNextW - delta)}px`);
+						}
+						if (colLine) colLine.setCssProps({ '--ri-x': `${el.getBoundingClientRect().right}px` });
+						// Reposition edge strips — column narrowing can trigger text wrap and change table height
+						const r = tbl.getBoundingClientRect();
+						activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-row.bt-strip-visible')
+							?.setCssProps({ '--strip-top': `${r.bottom + 2}px`, '--strip-left': `${r.left}px`, '--strip-width': `${r.width}px` });
+						activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-col.bt-strip-visible')
+							?.setCssProps({ '--strip-top': `${r.top}px`, '--strip-left': `${r.right + 2}px`, '--strip-height': `${r.height}px` });
+					};
+
+					const onUp = (ev: PointerEvent) => {
+						handle.removeEventListener('pointermove', onMove);
+						colDragging = false;
+						hideColLine();
+						const delta = ev.clientX - startX;
+						if (delta === 0) return;
+						void onStructuralOp({ type: 'set-col-width', colIdx, width: Math.max(MIN, startW + delta) });
+						if (nextCol && startNextW !== null && nextColIdx >= 0) {
+							const nextMIN = colMinWidth(model.columns[nextColIdx] ?? { name: '' }, getRegistry());
+							void onStructuralOp({ type: 'set-col-width', colIdx: nextColIdx, width: Math.max(nextMIN, startNextW - delta) });
+						}
+					};
+
+					handle.addEventListener('pointermove', onMove);
+					handle.addEventListener('pointerup', onUp, { once: true });
+				});
+			}
+		}
+	}
 }
 
 async function renderDataCell(
@@ -1221,10 +1349,12 @@ function enterLineEdit(
 	});
 
 	editor.focus();
-	const range = activeDocument.createRange();
-	range.selectNodeContents(editor);
-	activeWindow.getSelection()?.removeAllRanges();
-	activeWindow.getSelection()?.addRange(range);
+	if (activeDocument.contains(editor)) {
+		const range = activeDocument.createRange();
+		range.selectNodeContents(editor);
+		activeWindow.getSelection()?.removeAllRanges();
+		activeWindow.getSelection()?.addRange(range);
+	}
 }
 
 /**
@@ -1302,15 +1432,114 @@ function enterEditMode(
 
 	// Focus and select all existing text
 	editor.focus();
-	const range = activeDocument.createRange();
-	range.selectNodeContents(editor);
-	activeWindow.getSelection()?.removeAllRanges();
-	activeWindow.getSelection()?.addRange(range);
+	if (activeDocument.contains(editor)) {
+		const range = activeDocument.createRange();
+		range.selectNodeContents(editor);
+		activeWindow.getSelection()?.removeAllRanges();
+		activeWindow.getSelection()?.addRange(range);
+	}
 }
 
 function applyColStyle(el: HTMLElement, col: ColumnDef): void {
-	if (col.width) el.setCssProps({ '--bt-col-width': `${col.width}px` });
+	// Width is now controlled solely by <colgroup>/<col> — no CSS variable needed
 	if (col.align) el.addClass(`bt-align-${col.align}`);
+}
+
+/**
+ * Minimum column width based on content.
+ * For typed columns the widest option label determines the minimum so choice
+ * pills are never cut off.  Uses ~8px per character + 24px padding/chrome.
+ */
+function colMinWidth(col: ColumnDef, registry: ChoiceRegistry): number {
+	const base = 40;
+	if (!col.type || SPECIAL_TYPES.has(col.type)) return base;
+	const ct = registry.get(col.type);
+	if (!ct || ct.options.length === 0) return base;
+	const maxLen = Math.max(...ct.options.map(o => (o.label ?? o.value).length));
+	return Math.max(base, maxLen * 8 + 24);
+}
+
+function bindResizeHandle(
+	handle: HTMLElement,
+	table: HTMLElement,
+	dataAttr: string,
+	cssVar: string,
+	minSize: number,
+	onCommit: (size: number) => void,
+	component: Component,
+	onDrag?: () => void,
+): void {
+	// Shared hover+drag indicator line
+	let rowLine: HTMLElement | null = null;
+	let rowDragging = false;
+	const hideRowLine = () => { rowLine?.remove(); rowLine = null; };
+	component.register(hideRowLine);
+
+	const makeRowLine = (targets: HTMLElement[], tblRect: DOMRect): HTMLElement => {
+		const line = activeDocument.body.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-row' });
+		const firstCell = targets[0];
+		const borderY = firstCell ? firstCell.getBoundingClientRect().bottom : tblRect.bottom;
+		line.setCssProps({ '--ri-y': `${borderY}px`, '--ri-left': `${tblRect.left}px`, '--ri-width': `${tblRect.width}px` });
+		return line;
+	};
+
+	handle.addEventListener('mouseenter', () => {
+		if (rowLine || rowDragging) return;
+		const targets = Array.from(table.querySelectorAll<HTMLElement>(`[${dataAttr}]`));
+		rowLine = makeRowLine(targets, table.getBoundingClientRect());
+		rowLine.setCssProps({ '--bt-ri-opacity': '0.4' });
+	});
+	handle.addEventListener('mouseleave', () => {
+		if (!rowDragging) hideRowLine();
+	});
+
+	handle.addEventListener('pointerdown', (e: PointerEvent) => {
+		if (e.button !== 0) return;
+		e.stopPropagation();
+		e.preventDefault();
+		handle.setPointerCapture(e.pointerId);
+		rowDragging = true;
+
+		const startCoord = e.clientY;
+		// Collect cells at drag start (they're in the live DOM now)
+		const targets   = Array.from(table.querySelectorAll<HTMLElement>(`[${dataAttr}]`));
+		const firstCell = targets[0];
+		const tblRect   = table.getBoundingClientRect();
+
+		// Read actual height at drag time — avoids the detached-div zero issue
+		const actualStart = (firstCell?.offsetHeight ?? 0) || minSize;
+		let lastSize = actualStart;
+		let hasMoved = false;
+
+		// Upgrade hover line or create fresh one
+		if (rowLine) rowLine.setCssProps({ '--bt-ri-opacity': '0.75' });
+		else { rowLine = makeRowLine(targets, tblRect); rowLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
+
+		const onMove = (ev: PointerEvent) => {
+			const delta = ev.clientY - startCoord;
+			lastSize = Math.max(minSize, Math.round(actualStart + delta));
+			for (const cell of targets) cell.style.setProperty(cssVar, `${lastSize}px`);
+			// Track actual cell bottom edge live — handles content min-height correctly
+			if (rowLine && firstCell) {
+				rowLine.setCssProps({ '--ri-y': `${firstCell.getBoundingClientRect().bottom}px` });
+			}
+			onDrag?.();
+			hasMoved = true;
+		};
+
+		const onUp = () => {
+			handle.removeEventListener('pointermove', onMove);
+			rowDragging = false;
+			hideRowLine();
+			if (!hasMoved) return;
+			onCommit(lastSize);
+			// Block the click event synthesized after pointerup from opening the cell editor
+			handle.addEventListener('click', ev => ev.stopPropagation(), { once: true });
+		};
+
+		handle.addEventListener('pointermove', onMove);
+		handle.addEventListener('pointerup', onUp, { once: true });
+	});
 }
 
 function applyStyleRules(el: HTMLElement, row: number, col: number, styles: StyleRule[]): void {

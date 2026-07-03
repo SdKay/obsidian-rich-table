@@ -3,7 +3,7 @@
 <img src="./docs/banner.png" alt="Rich Table" />
 
 <p>
-  <b>🔀 Merge &nbsp;·&nbsp; 🎨 Style &nbsp;·&nbsp; 🏷️ Type &nbsp;·&nbsp; 🔗 Wikilink &nbsp;·&nbsp; ↕️ Reorder</b>
+  <b>🔀 Merge &nbsp;·&nbsp; 🎨 Style &nbsp;·&nbsp; 🏷️ Type &nbsp;·&nbsp; 🔗 Wikilink &nbsp;·&nbsp; ↕️ Reorder &nbsp;·&nbsp; ↔️ Resize</b>
 </p>
 
 <p>
@@ -57,6 +57,7 @@ Obsidian's built-in tables are plain GFM — no merges, no types, no interactive
 | Table title & footer notes | ✗ | ✓ |
 | Drag to reorder rows / columns | ✗ | ✓ |
 | Add / hide / delete rows & columns | ✗ | ✓ |
+| Drag to resize column width / row height | ✗ | ✓ |
 
 ---
 
@@ -87,10 +88,14 @@ Obsidian's built-in tables are plain GFM — no merges, no types, no interactive
 <!-- record: drag a row handle to reorder, then double-click a cell → insert row below (~6s) -->
 ![Reorder and ops demo](docs/demo-05-reorder.gif)
 
-**6 · Title & footer** — click to edit inline, Shift+Enter for multi-line footer
+**6 · Drag to resize** — drag column header right edge to resize width · drag row bottom edge to resize height
+
+![Resize demo](docs/demo-06-resize.gif)
+
+**7 · Title & footer** — click to edit inline, Shift+Enter for multi-line footer
 
 <!-- record: click title to rename, click footer → add a second line with Enter → Shift+Enter to save (~6s) -->
-![Title and footer demo](docs/demo-06-title-footer.gif)
+![Title and footer demo](docs/demo-07-title-footer.gif)
 
 ---
 
@@ -201,6 +206,12 @@ Supported properties: `bg`, `color`, `bold`, `italic`, `size` (px).
 ### Drag to reorder
 Six-dot drag handles appear on hover — top of header cells for columns, left side of data cells for rows. Merge regions fully contained within the moved row/column travel with it; cross-boundary merges stay in place.
 
+### Resize columns and rows
+Hover over the right edge of any column header to reveal a resize handle — drag left or right to adjust the column width. Hover over the bottom edge of any row to resize its height. A full-span indicator line tracks the border as you drag.
+
+- Typed columns enforce a minimum width based on their widest option label so badges are never clipped.
+- Width and height are persisted in the YAML front matter (`columns[].width`, `rowHeights`).
+
 ### Edge strips
 Hover near the bottom edge of the table to reveal a **+** strip for appending a new row. Hover near the right edge to append a new column.
 
@@ -243,7 +254,6 @@ Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-r
 ### Interaction & editing
 - **Keyboard navigation**: arrow keys move between cells; Tab advances to the next editable cell.
 - **Bulk paste from CSV / Excel**: paste clipboard table data directly into the grid.
-- **Column resize by drag**: drag the column border to resize width, written back to `columns[].width`.
 
 ### Data & display
 - **Row sorting**: click a column header to sort rows; sort state optionally persisted in YAML.

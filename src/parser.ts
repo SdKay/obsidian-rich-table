@@ -18,10 +18,11 @@ export function parseTable(source: string): TableModel {
 	const merges     = extractMerges(yaml?.merges);
 	const styles     = extractStyles(yaml?.styles);
 	const hiddenRows = extractHiddenRows(yaml?.hiddenRows);
+	const rowHeights = extractRowHeights(yaml?.rowHeights);
 	const title      = typeof yaml?.title  === 'string' ? yaml.title  : undefined;
 	const footer     = extractFooter(yaml?.footer);
 
-	return { title, columns, rows, merges, styles, hiddenRows, footer };
+	return { title, columns, rows, merges, styles, hiddenRows, rowHeights, footer };
 }
 
 function splitFrontmatter(lines: string[]): [string | null, string[]] {
@@ -127,6 +128,14 @@ function extractMerges(raw: unknown): MergeRange[] {
 function extractHiddenRows(raw: unknown): number[] {
 	if (!Array.isArray(raw)) return [];
 	return raw.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0);
+}
+
+function extractRowHeights(raw: unknown): number[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const nums = (raw as unknown[]).map(n => (typeof n === 'number' && n > 0 ? n : 0));
+	const trimmed = [...nums];
+	while (trimmed.length > 0 && trimmed[trimmed.length - 1] === 0) trimmed.pop();
+	return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function extractFooter(raw: unknown): string | string[] | undefined {

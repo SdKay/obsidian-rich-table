@@ -43,6 +43,7 @@ export interface TableModel {
 	merges: MergeRange[];
 	styles: StyleRule[];
 	hiddenRows?: number[]; // 0-indexed model row indices (0 = header, never hidden)
+	rowHeights?: number[]; // per-row min-height in px, 0-indexed (0 = header)
 	footer?: string | string[];
 }
 
