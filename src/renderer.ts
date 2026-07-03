@@ -481,7 +481,27 @@ export async function renderTable(
 		let selAxis: 'col' | 'row' | null = null;
 		let selI1 = -1, selI2 = -1;
 
+		// Highlight table cells corresponding to the current selector selection.
+		// Uses data-sel-stripe to track our additions so we don't clobber the
+		// cell drag-to-select highlights.
+		const updateTableHighlights = () => {
+			table.querySelectorAll<HTMLElement>('[data-sel-stripe]').forEach(e => {
+				e.removeAttribute('data-sel-stripe');
+				e.removeClass('bt-selected');
+			});
+			if (selAxis === null) return;
+			const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
+			const selector = selAxis === 'col'
+				? Array.from({ length: hi - lo + 1 }, (_, i) => `[data-col="${lo + i}"]`).join(',')
+				: Array.from({ length: hi - lo + 1 }, (_, i) => `[data-row="${lo + i}"]`).join(',');
+			table.querySelectorAll<HTMLElement>(selector).forEach(e => {
+				e.setAttribute('data-sel-stripe', '1');
+				e.addClass('bt-selected');
+			});
+		};
+
 		const rebuild = () => {
+			updateTableHighlights();
 			const tbl = table.getBoundingClientRect();
 
 			// Column selector (above header row)
