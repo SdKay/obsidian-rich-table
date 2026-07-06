@@ -361,6 +361,19 @@
 	font-size: var(--font-ui-medium);
 }
 
+/* Off-screen table used to measure intrinsic content size for auto-fit */
+.bt-measure-table {
+	position: absolute;
+	visibility: hidden;
+	left: -9999px;
+	top: 0;
+	table-layout: auto;
+	width: auto;
+}
+.bt-measure-cell {
+	white-space: nowrap;
+}
+
 /* Use .bt-table prefix to outweigh Obsidian theme selectors */
 .bt-table .bt-th,
 .bt-table .bt-td {

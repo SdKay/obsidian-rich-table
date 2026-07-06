@@ -851,6 +851,13 @@ async function renderRow(
 						colStrip?.setCssProps({ '--strip-top': `${r.top}px`, '--strip-left': `${r.right + 2}px`, '--strip-height': `${r.height}px` });
 					},
 				);
+				// Double-click the seam → auto-fit this row's height to its content
+				rowHandle.addEventListener('dblclick', (e: MouseEvent) => {
+					e.stopPropagation();
+					e.preventDefault();
+					const fit = autoFitRowHeight(tbl, rowIdx, 24);
+					void onStructuralOp({ type: 'set-row-height', rowIdx, height: fit });
+				});
 			}
 		}
 		c++;
@@ -967,6 +974,15 @@ function renderHeaderCell(
 				});
 				handle.addEventListener('mouseleave', () => {
 					if (!colDragging) hideColLine();
+				});
+
+				// Double-click the seam → auto-fit this column's width to its content
+				handle.addEventListener('dblclick', (e: MouseEvent) => {
+					e.stopPropagation();
+					e.preventDefault();
+					hideColLine();
+					const fit = autoFitColWidth(tbl, colIdx, colMinWidth(col, getRegistry()));
+					void onStructuralOp({ type: 'set-col-width', colIdx, width: fit });
 				});
 
 				handle.addEventListener('pointerdown', (e: PointerEvent) => {
@@ -1768,6 +1784,49 @@ function colMinWidth(col: ColumnDef, registry: ChoiceRegistry): number {
 	if (!ct || ct.options.length === 0) return base;
 	const maxLen = Math.max(...ct.options.map(o => (o.label ?? o.value).length));
 	return Math.max(base, maxLen * 8 + 24);
+}
+
+/**
+ * Auto-fit a column's width to the widest content among its cells.
+ * Clones each cell into an off-screen auto-layout table with white-space:nowrap
+ * so the browser reports each cell's intrinsic single-line width; returns the max.
+ */
+function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number): number {
+	const cells = Array.from(tbl.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`));
+	if (cells.length === 0) return minW;
+
+	const measTable = activeDocument.body.createEl('table', { cls: 'bt-table bt-measure-table' });
+	const measRow = measTable.createEl('tbody').createEl('tr');
+
+	for (const cell of cells) {
+		const clone = cell.cloneNode(true) as HTMLElement;
+		// Drop interactive chrome that isn't part of the content width
+		clone.querySelectorAll('.bt-col-resize-handle, .bt-row-resize-handle, .bt-col-drag-handle, .bt-row-drag-handle')
+			.forEach(h => h.remove());
+		clone.addClass('bt-measure-cell');
+		clone.style.removeProperty('width');
+		measRow.appendChild(clone);
+	}
+
+	let max = minW;
+	for (const c of Array.from(measRow.children)) {
+		max = Math.max(max, (c as HTMLElement).offsetWidth + 2); // +2 buffer for borders
+	}
+	measTable.remove();
+	return Math.ceil(max);
+}
+
+/** Auto-fit a row's height to its content by measuring cells without a forced height. */
+function autoFitRowHeight(tbl: HTMLElement, rowIdx: number, minH: number): number {
+	const cells = Array.from(tbl.querySelectorAll<HTMLElement>(`[data-row="${rowIdx}"]`));
+	if (cells.length === 0) return minH;
+	// Temporarily clear the forced height so cells collapse to content, measure, restore.
+	const saved = cells.map(c => c.style.getPropertyValue('--bt-row-height'));
+	cells.forEach(c => c.style.removeProperty('--bt-row-height'));
+	let max = minH;
+	for (const c of cells) max = Math.max(max, c.offsetHeight);
+	cells.forEach((c, i) => { const s = saved[i]; if (s) c.style.setProperty('--bt-row-height', s); });
+	return Math.ceil(max);
 }
 
 function bindResizeHandle(
