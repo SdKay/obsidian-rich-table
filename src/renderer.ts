@@ -53,17 +53,36 @@ export async function renderTable(
 	const wrapper = container.createDiv({ cls: 'bt-table-wrapper' });
 	const table = wrapper.createEl('table', { cls: 'bt-table' });
 
-	// <colgroup> for precise column widths (required by table-layout:fixed)
+	// <colgroup> for precise column widths (required by table-layout:fixed).
+	// Each contiguous run of hidden columns collapses to ONE narrow <col> so the
+	// indicator cell (rendered once per group in renderRow) stays ~2 chars wide
+	// instead of absorbing the table's leftover width.
+	const HIDDEN_COL_WIDTH = 28;
 	const colgroup = table.createEl('colgroup');
 	const visibleCols: { colEl: HTMLElement; colIdx: number }[] = [];
+	let totalWidth = 0;
 	for (let ci = 0; ci < model.columns.length; ci++) {
 		const col = model.columns[ci];
-		if (!col || col.hidden) continue;
+		if (col?.hidden) {
+			// Skip the rest of this contiguous hidden group, emit one narrow <col>
+			while (ci < model.columns.length && model.columns[ci]?.hidden) ci++;
+			ci--; // loop will ++ again
+			colgroup.createEl('col').style.setProperty('width', `${HIDDEN_COL_WIDTH}px`);
+			totalWidth += HIDDEN_COL_WIDTH;
+			continue;
+		}
+		if (!col) continue;
 		const colEl = colgroup.createEl('col');
-		colEl.style.setProperty('width', `${Math.max(colMinWidth(col, registry), col.width ?? 120)}px`);
+		const w = Math.max(colMinWidth(col, registry), col.width ?? 120);
+		colEl.style.setProperty('width', `${w}px`);
 		colEl.dataset.col = String(ci);
+		totalWidth += w;
 		visibleCols.push({ colEl, colIdx: ci });
 	}
+	// Pin the table to the exact sum of column widths (inline style beats any
+	// theme `table { width: 100% }` rule). Without this, table-layout:fixed
+	// distributes leftover width across all columns — bloating hidden-col cells.
+	table.style.setProperty('width', `${totalWidth}px`);
 
 	// ── Drag-to-select for cell merging ──────────────────────────────────────
 	// sel tracks the current drag selection; hasMoved prevents click handlers
@@ -352,6 +371,7 @@ export async function renderTable(
 			while (r < model.rows.length && hiddenRows.has(r)) group.push(r++);
 
 			const indicatorTr = tbody.createEl('tr', { cls: 'bt-row-indicator' });
+			indicatorTr.dataset.hiddenGroup = JSON.stringify(group);
 			const td = indicatorTr.createEl('td', {
 				cls: 'bt-row-indicator-cell',
 				attr: { colspan: String(visibleCellCount) },
@@ -503,43 +523,63 @@ export async function renderTable(
 			updateTableHighlights();
 			const tbl = table.getBoundingClientRect();
 
-			// Column selector (above header row)
+			// Column selector (above header row) — iterate ALL header cells to include hidden groups
 			colSel.empty();
 			colSel.setCssProps({ '--cs-top': `${tbl.top - 22}px`, '--cs-left': `${tbl.left}px`, '--cs-w': `${tbl.width}px` });
-			for (const th of Array.from(thead.querySelectorAll<HTMLElement>('th[data-col]'))) {
+			for (const th of Array.from(thead.querySelectorAll<HTMLElement>('th'))) {
 				const r = th.getBoundingClientRect();
-				const ci = parseInt(th.dataset.col ?? '-1');
-				if (ci < 0) continue;
-				const cell = colSel.createDiv({ cls: 'bt-sel-cell' });
-				cell.dataset.idx = String(ci);
-				cell.setText(colIndexToLetter(ci));
-				cell.setCssProps({ '--cl': `${r.left - tbl.left}px`, '--cw': `${r.width}px` });
-				if (selAxis === 'col') {
-					const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
-					if (ci >= lo && ci <= hi) cell.addClass('is-sel');
+				if (th.hasClass('bt-col-indicator')) {
+					// Hidden column group — show a clickable gap indicator
+					const group = JSON.parse(th.dataset.hiddenGroup ?? '[]') as number[];
+					const cell = colSel.createDiv({ cls: 'bt-sel-cell bt-sel-hidden' });
+					cell.setAttribute('aria-label', `${group.length} hidden column${group.length > 1 ? 's' : ''} — click to show`);
+					cell.setAttribute('data-tooltip-position', 'top');
+					cell.setCssProps({ '--cl': `${r.left - tbl.left}px`, '--cw': `${r.width}px` });
+					cell.addEventListener('click', () => void onStructuralOp({ type: 'show-col-group', colIndices: group }));
+				} else {
+					const ci = parseInt(th.dataset.col ?? '-1');
+					if (ci < 0) continue;
+					const cell = colSel.createDiv({ cls: 'bt-sel-cell' });
+					cell.dataset.idx = String(ci);
+					cell.setText(colIndexToLetter(ci));
+					cell.setCssProps({ '--cl': `${r.left - tbl.left}px`, '--cw': `${r.width}px` });
+					if (selAxis === 'col') {
+						const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
+						if (ci >= lo && ci <= hi) cell.addClass('is-sel');
+					}
 				}
 			}
 
-			// Row selector (left of table)
+			// Row selector (left of table) — iterate ALL rows to include hidden-row indicators
 			rowSel.empty();
 			rowSel.setCssProps({ '--rs-top': `${tbl.top}px`, '--rs-left': `${tbl.left - 22}px`, '--rs-h': `${tbl.height}px` });
 			const allTrs = [
 				...Array.from(thead.querySelectorAll<HTMLElement>('tr')),
-				...Array.from(tbody.querySelectorAll<HTMLElement>('tr:not(.bt-row-indicator)')),
+				...Array.from(tbody.querySelectorAll<HTMLElement>('tr')),
 			];
 			for (const tr of allTrs) {
-				const firstCell = tr.querySelector<HTMLElement>('[data-row]');
-				if (!firstCell) continue;
-				const ri = parseInt(firstCell.dataset.row ?? '-1');
-				if (ri < 0) continue;
 				const r = tr.getBoundingClientRect();
-				const cell = rowSel.createDiv({ cls: 'bt-sel-cell' });
-				cell.dataset.idx = String(ri);
-				cell.setText(String(ri + 1));
-				cell.setCssProps({ '--rt': `${r.top - tbl.top}px`, '--rh': `${r.height}px` });
-				if (selAxis === 'row') {
-					const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
-					if (ri >= lo && ri <= hi) cell.addClass('is-sel');
+				if (tr.hasClass('bt-row-indicator')) {
+					// Hidden row group — show a clickable gap indicator
+					const group = JSON.parse(tr.dataset.hiddenGroup ?? '[]') as number[];
+					const cell = rowSel.createDiv({ cls: 'bt-sel-cell bt-sel-hidden' });
+					cell.setAttribute('aria-label', `${group.length} hidden row${group.length > 1 ? 's' : ''} — click to show`);
+					cell.setAttribute('data-tooltip-position', 'right');
+					cell.setCssProps({ '--rt': `${r.top - tbl.top}px`, '--rh': `${r.height}px` });
+					cell.addEventListener('click', () => void onStructuralOp({ type: 'show-row-group', rowIndices: group }));
+				} else {
+					const firstCell = tr.querySelector<HTMLElement>('[data-row]');
+					if (!firstCell) continue;
+					const ri = parseInt(firstCell.dataset.row ?? '-1');
+					if (ri < 0) continue;
+					const cell = rowSel.createDiv({ cls: 'bt-sel-cell' });
+					cell.dataset.idx = String(ri);
+					cell.setText(String(ri + 1));
+					cell.setCssProps({ '--rt': `${r.top - tbl.top}px`, '--rh': `${r.height}px` });
+					if (selAxis === 'row') {
+						const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
+						if (ri >= lo && ri <= hi) cell.addClass('is-sel');
+					}
 				}
 			}
 		};
@@ -670,6 +710,11 @@ export async function renderTable(
 			if (!colSel.hasClass('bt-strip-visible')) return;
 			rebuild();
 		}, { passive: true, capture: true });
+
+		// Column/row resize changes cell geometry → rebuild selector strips to follow
+		table.addEventListener('bt-layout-changed', () => {
+			if (colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible')) rebuild();
+		});
 	}
 }
 
@@ -713,6 +758,7 @@ async function renderRow(
 				indicator.setAttribute('aria-label',
 					`${group.length} hidden column${group.length > 1 ? 's' : ''}. Click to show.`);
 				indicator.setAttribute('data-tooltip-position', 'top');
+				indicator.dataset.hiddenGroup = JSON.stringify(group); // for selector strip
 				if (onStructuralOp) {
 					indicator.addEventListener('click', () =>
 						void onStructuralOp({ type: 'show-col-group', colIndices: group }));
@@ -951,13 +997,21 @@ function renderHeaderCell(
 								: 40;
 							nextCol.style.setProperty('width', `${Math.max(nextMIN, startNextW - delta)}px`);
 						}
+						// Re-pin the table to the new sum of column widths so table-layout:fixed
+						// does not redistribute leftover width (which would make the preview
+						// differ from the committed result, e.g. when resizing the last column).
+						const sum = Array.from(tbl.querySelectorAll<HTMLElement>('col'))
+							.reduce((s, c) => s + (parseInt(c.style.width) || 0), 0);
+						tbl.style.setProperty('width', `${sum}px`);
+
 						if (colLine) colLine.setCssProps({ '--ri-x': `${el.getBoundingClientRect().right}px` });
-						// Reposition edge strips — column narrowing can trigger text wrap and change table height
+						// Table width/height may change → reposition edge strips and selector strips
 						const r = tbl.getBoundingClientRect();
 						activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-row.bt-strip-visible')
 							?.setCssProps({ '--strip-top': `${r.bottom + 2}px`, '--strip-left': `${r.left}px`, '--strip-width': `${r.width}px` });
 						activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-col.bt-strip-visible')
 							?.setCssProps({ '--strip-top': `${r.top}px`, '--strip-left': `${r.right + 2}px`, '--strip-height': `${r.height}px` });
+						tbl.dispatchEvent(new CustomEvent('bt-layout-changed'));
 					};
 
 					const onUp = (ev: PointerEvent) => {
@@ -1781,6 +1835,8 @@ function bindResizeHandle(
 				rowLine.setCssProps({ '--ri-y': `${firstCell.getBoundingClientRect().bottom}px` });
 			}
 			onDrag?.();
+			// Row height change shifts cell geometry → rebuild selector strips to follow
+			table.dispatchEvent(new CustomEvent('bt-layout-changed'));
 			hasMoved = true;
 		};
 

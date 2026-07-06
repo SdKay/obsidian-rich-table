@@ -150,6 +150,20 @@
 	color: var(--text-on-accent);
 	border-color: var(--interactive-accent);
 }
+/* Hidden row/column group indicator in selector strips */
+.bt-sel-cell.bt-sel-hidden {
+	background: var(--background-modifier-border);
+	color: var(--text-faint);
+	border-style: dashed;
+	border-radius: 2px;
+	font-size: 7px;
+	overflow: hidden;
+}
+.bt-sel-cell.bt-sel-hidden:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--background-secondary));
+	color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
 .bt-col-selector .bt-sel-cell {
 	top: 0; height: 18px;
 	left:  var(--cl, 0px);
@@ -342,7 +356,8 @@
 .bt-table {
 	border-collapse: collapse;
 	table-layout: fixed;
-	width: auto;
+	/* width is pinned inline (JS) to the exact sum of column widths so
+	 * table-layout:fixed never distributes leftover width across columns. */
 	font-size: var(--font-ui-medium);
 }
 
@@ -455,17 +470,24 @@
 	box-sizing: border-box;
 }
 
-/* Hidden column indicator (TODO: width does not respect our CSS due to theme override) */
-.bt-col-indicator {
+/* Hidden column indicator — narrow ~2-char cell (width also set via <col> in colgroup) */
+.bt-table .bt-col-indicator {
 	text-align: center;
 	cursor: pointer;
 	background: var(--background-secondary);
 	border: 1px dashed var(--background-modifier-border);
 	color: var(--text-faint);
 	user-select: none;
+	padding-left: 2px;
+	padding-right: 2px;
+	white-space: nowrap;
+	overflow: hidden;
+	width: 28px;
+	min-width: 28px;
+	max-width: 28px;
 }
 
-.bt-col-indicator:hover {
+.bt-table .bt-col-indicator:hover {
 	color: var(--text-normal);
 	background: var(--background-modifier-hover);
 }
