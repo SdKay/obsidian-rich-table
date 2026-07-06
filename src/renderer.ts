@@ -2,7 +2,6 @@ import { App, Component, MarkdownRenderer, Menu, setIcon } from 'obsidian';
 import {
 	t, typeLabel,
 	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
-	styleEntireRowsLabel, styleEntireColsLabel,
 } from './i18n';
 import { WikilinkInputSuggest } from './wikilinkInputSuggest';
 import type { ColumnDef, MergeRange, StyleRule, TableModel } from './model';
@@ -617,14 +616,23 @@ export async function renderTable(
 			const rule = model.styles.find(s => s.target === target);
 			const existing = { bg: rule?.bg, color: rule?.color, size: rule?.size };
 
+			// Build hide / delete ops, matching the style of the cell selection panel.
+			const cellOps: CellOpDef[] = axis === 'col' ? [
+				{ icon: 'eye-off', label: hideColsLabel(lo, hi, colIndexToLetter),
+					action: () => { for (let ci = lo; ci <= hi; ci++) void onStructuralOp({ type: 'hide-col', colIdx: ci }); } },
+				{ icon: 'trash',   label: deleteColsLabel(lo, hi, colIndexToLetter), danger: true,
+					action: () => { for (let ci = hi; ci >= lo; ci--) void onStructuralOp({ type: 'delete-col', colIdx: ci }); } },
+			] : lo === 0 && hi === 0 ? [] : [  // no hide/delete for header row
+				{ icon: 'eye-off', label: hideRowsLabel(lo, hi),
+					action: () => { for (let ri = lo; ri <= hi; ri++) void onStructuralOp({ type: 'hide-row', rowIdx: ri }); } },
+				{ icon: 'trash',   label: deleteRowsLabel(lo, hi), danger: true,
+					action: () => { for (let ri = hi; ri >= lo; ri--) void onStructuralOp({ type: 'delete-row', rowIdx: ri }); } },
+			];
+
 			// Keep selAxis/selI1/selI2 so highlights stay visible while the panel is open.
 			// They are cleared in onClose so the highlight disappears when the panel closes.
 			closeSelectorPanel();
 			rebuild(); // re-render strip cells with is-sel, keep table highlights
-
-			const label = axis === 'col'
-				? styleEntireColsLabel(lo, hi, colIndexToLetter)
-				: styleEntireRowsLabel(lo, hi);
 
 			selectorPanel = openCellPanel({
 				anchor, els,
@@ -632,7 +640,7 @@ export async function renderTable(
 				existingStyle: existing,
 				inheritedStyle: {},
 				showTextColor: true,
-				cellOps: [{ icon: 'info', label, action: () => { /* info only */ } }],
+				cellOps,
 				onApplyStyle: (bg, color, size) => void onStructuralOp({ type: 'set-range-style', target, bg, color, size }),
 				onClose: () => {
 					selectorPanel = null;
@@ -1287,8 +1295,14 @@ function dataCellOps(
 	return ops;
 }
 
+// Module-level reference so any new openCellPanel call can close the previous one first.
+let closeActivePanel: (() => void) | null = null;
+
 /** Unified panel shown on double-click for all cell types (header / data / selection). */
 function openCellPanel(config: CellPanelConfig): HTMLElement {
+	// Close any panel that is currently open (restores preview styles on the old cells).
+	closeActivePanel?.();
+
 	const { anchor, els, existingStyle, inheritedStyle = {}, showTextColor, cellOps, typeSection, onApplyStyle } = config;
 
 	const saved = els.map(e => ({
@@ -1420,8 +1434,11 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 	const close = (restore: boolean) => {
 		if (!committed) { if (restore) restoreEls(); committed = true; }
 		panel.remove();
+		if (closeActivePanel === thisClose) closeActivePanel = null;
 		config.onClose?.();
 	};
+	const thisClose = () => close(true);
+	closeActivePanel = thisClose;
 	clearBtn.addEventListener('click', () => { committed = true; onApplyStyle(null, null, null); panel.remove(); config.onClose?.(); });
 	applyBtn.addEventListener('click', () => {
 		committed = true;
@@ -1432,13 +1449,30 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 		);
 		panel.remove(); config.onClose?.();
 	});
+	// Enter in the panel (not in size input) confirms; handled here for when a
+	// panel control has focus.
 	panel.addEventListener('keydown', (evt: KeyboardEvent) => {
-		if (evt.key === 'Escape') { evt.stopPropagation(); close(true); }
 		if (evt.key === 'Enter' && evt.target !== sizeInput) { evt.preventDefault(); applyBtn.click(); }
 	});
+	// Escape and outside-click close the panel regardless of where focus is.
 	window.setTimeout(() => {
-		const outside = (evt: MouseEvent) => { if (!panel.contains(evt.target as Node)) { close(true); activeDocument.removeEventListener('mousedown', outside); } };
+		const outside = (evt: MouseEvent) => {
+			if (!panel.contains(evt.target as Node)) {
+				close(true);
+				activeDocument.removeEventListener('mousedown', outside);
+				activeDocument.removeEventListener('keydown', escKey);
+			}
+		};
+		const escKey = (evt: KeyboardEvent) => {
+			if (evt.key === 'Escape') {
+				evt.stopPropagation();
+				close(true);
+				activeDocument.removeEventListener('keydown', escKey);
+				activeDocument.removeEventListener('mousedown', outside);
+			}
+		};
 		activeDocument.addEventListener('mousedown', outside);
+		activeDocument.addEventListener('keydown', escKey);
 	}, 0);
 	return panel;
 }
