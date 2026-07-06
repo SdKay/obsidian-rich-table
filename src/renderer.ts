@@ -537,6 +537,7 @@ export async function renderTable(
 
 		let selAxis: 'col' | 'row' | null = null;
 		let selI1 = -1, selI2 = -1;
+		let selDragging = false; // true only between pointerdown and pointerup
 
 		// Highlight table cells corresponding to the current selector selection.
 		// Uses data-sel-stripe to track our additions so we don't clobber the
@@ -693,10 +694,11 @@ export async function renderTable(
 			e.stopPropagation(); e.preventDefault();
 			wrap.setPointerCapture(e.pointerId);
 			selAxis = axis; selI1 = selI2 = idx;
+			selDragging = true;
 			rebuild();
 		};
 		const moveDrag = (axis: 'col' | 'row', e: PointerEvent) => {
-			if (selAxis !== axis) return;
+			if (!selDragging || selAxis !== axis) return;
 			const wrap = axis === 'col' ? colSel : rowSel;
 			for (const cell of Array.from(wrap.querySelectorAll<HTMLElement>('[data-idx]'))) {
 				const r = cell.getBoundingClientRect();
@@ -711,7 +713,8 @@ export async function renderTable(
 			}
 		};
 		const endDrag = (axis: 'col' | 'row') => {
-			if (selAxis !== axis) return;
+			if (!selDragging || selAxis !== axis) return;
+			selDragging = false;
 			const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
 			const target = axis === 'col'
 				? (lo === hi ? `${colIndexToLetter(lo)}*` : `${colIndexToLetter(lo)}:${colIndexToLetter(hi)}`)
