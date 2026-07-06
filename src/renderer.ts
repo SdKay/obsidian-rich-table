@@ -561,32 +561,45 @@ export async function renderTable(
 			updateTableHighlights();
 			const tbl = table.getBoundingClientRect();
 
-			// Column selector (above header row) — iterate ALL header cells to include hidden groups.
-			// Remove only label cells; the persistent resize handles stay.
+			// Column selector — one cell per physical column from <col> geometry,
+			// independent of any colspan merges in the header row.
 			colSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
 			colSel.setCssProps({ '--cs-top': `${tbl.top - 22}px`, '--cs-left': `${tbl.left}px`, '--cs-w': `${tbl.width}px` });
-			for (const th of Array.from(thead.querySelectorAll<HTMLElement>('th'))) {
-				const r = th.getBoundingClientRect();
-				if (th.hasClass('bt-col-indicator')) {
-					// Hidden column group — show a clickable gap indicator
-					const group = JSON.parse(th.dataset.hiddenGroup ?? '[]') as number[];
-					const cell = colSel.createDiv({ cls: 'bt-sel-cell bt-sel-hidden' });
-					cell.setAttribute('aria-label', `${group.length} hidden column${group.length > 1 ? 's' : ''} — click to show`);
-					cell.setAttribute('data-tooltip-position', 'top');
-					cell.setCssProps({ '--cl': `${r.left - tbl.left}px`, '--cw': `${r.width}px` });
-					cell.addEventListener('click', () => void onStructuralOp({ type: 'show-col-group', colIndices: group }));
-				} else {
-					const ci = parseInt(th.dataset.col ?? '-1');
-					if (ci < 0) continue;
+			// Pre-index hidden-group indicators from the header by their left-edge x
+			// so we can match each anonymous <col> to the right group.
+			const hiddenGroupByX = new Map<number, number[]>();
+			for (const th of Array.from(thead.querySelectorAll<HTMLElement>('th.bt-col-indicator[data-hidden-group]'))) {
+				const group = JSON.parse(th.dataset.hiddenGroup ?? '[]') as number[];
+				hiddenGroupByX.set(Math.round(th.getBoundingClientRect().left - tbl.left), group);
+			}
+
+			let colX = 0;
+			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
+				const w = parseInt(c.style.width) || 0;
+				if (c.dataset.col !== undefined) {
+					// Visible column — one cell per physical column
+					const ci = parseInt(c.dataset.col);
 					const cell = colSel.createDiv({ cls: 'bt-sel-cell' });
 					cell.dataset.idx = String(ci);
 					cell.setText(colIndexToLetter(ci));
-					cell.setCssProps({ '--cl': `${r.left - tbl.left}px`, '--cw': `${r.width}px` });
+					cell.setCssProps({ '--cl': `${colX}px`, '--cw': `${w}px` });
 					if (selAxis === 'col') {
 						const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
 						if (ci >= lo && ci <= hi) cell.addClass('is-sel');
 					}
+				} else {
+					// Hidden column group — match by x position
+					const group = hiddenGroupByX.get(Math.round(colX)) ?? [];
+					const cell = colSel.createDiv({ cls: 'bt-sel-cell bt-sel-hidden' });
+					cell.setAttribute('aria-label', `${group.length} hidden column${group.length > 1 ? 's' : ''} — click to show`);
+					cell.setAttribute('data-tooltip-position', 'top');
+					cell.setCssProps({ '--cl': `${colX}px`, '--cw': `${w}px` });
+					if (group.length > 0) {
+						const g = group;
+						cell.addEventListener('click', () => void onStructuralOp({ type: 'show-col-group', colIndices: g }));
+					}
 				}
+				colX += w;
 			}
 
 			// Row selector (left of table) — iterate ALL rows to include hidden-row indicators.
@@ -597,7 +610,9 @@ export async function renderTable(
 				...Array.from(thead.querySelectorAll<HTMLElement>('tr')),
 				...Array.from(tbody.querySelectorAll<HTMLElement>('tr')),
 			];
+			// Row selector — one cell per physical row, independent of rowspan merges.
 			for (const tr of allTrs) {
+				if (!tr) continue;
 				const r = tr.getBoundingClientRect();
 				if (tr.hasClass('bt-row-indicator')) {
 					// Hidden row group — show a clickable gap indicator
