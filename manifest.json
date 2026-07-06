@@ -1,7 +1,7 @@
 {
 	"id": "rich-table",
 	"name": "Rich Table",
-	"version": "0.1.8",
+	"version": "0.1.9",
 	"minAppVersion": "1.8.7",
 	"description": "Interactive tables with merges, typed columns, styles, and wikilinks inside fenced code blocks.",
 	"author": "sdking.xing",
