@@ -50,7 +50,11 @@ export async function renderTable(
 	}
 
 	const occupied = buildOccupied(model);
-	const wrapper = container.createDiv({ cls: 'bt-table-wrapper' });
+	// Root container with position:relative so all overlay elements (selectors,
+	// edge-add strips) can use position:absolute and stay naturally inside
+	// Obsidian's content pane — no viewport coordinate math needed.
+	const root = container.createDiv({ cls: 'bt-render-root' });
+	const wrapper = root.createDiv({ cls: 'bt-table-wrapper' });
 	const table = wrapper.createEl('table', { cls: 'bt-table' });
 
 	// <colgroup> for precise column widths (required by table-layout:fixed).
@@ -432,45 +436,36 @@ export async function renderTable(
 	let showSelectors  = () => { /* assigned in selector block */ };
 	let hideSelectors  = () => { /* assigned in selector block */ };
 
-	// ── Edge-hover add strips (fixed-position, works in both editing & reading mode) ──
+	// ── Edge-hover add strips (position:absolute inside bt-render-root) ──
 	if (onStructuralOp) {
-		const addRowBtn = activeDocument.body.createDiv({ cls: 'bt-edge-add-row' });
+		const addRowBtn = root.createDiv({ cls: 'bt-edge-add-row' });
 		addRowBtn.createSpan({ cls: 'bt-edge-plus', text: '+' });
 
-		const addColBtn = activeDocument.body.createDiv({ cls: 'bt-edge-add-col' });
+		const addColBtn = root.createDiv({ cls: 'bt-edge-add-col' });
 		addColBtn.createSpan({ cls: 'bt-edge-plus', text: '+' });
-
-		// Clean up when the component unloads
-		component.register(() => { addRowBtn.remove(); addColBtn.remove(); });
 
 		addRowBtn.addEventListener('click', () =>
 			void onStructuralOp({ type: 'insert-row', afterRowIdx: model.rows.length - 1 }));
 		addColBtn.addEventListener('click', () =>
 			void onStructuralOp({ type: 'insert-col', afterColIdx: model.columns.length - 1 }));
 
+		// position:absolute — no viewport math, no scroll listeners needed.
+		// Offsets are relative to bt-render-root, updated when table size changes.
 		const positionStrips = () => {
-			const r = table.getBoundingClientRect();
-			const pane = table.closest<HTMLElement>(
-				'.markdown-preview-view, .cm-scroller, .view-content',
-			);
-			const safe = pane?.getBoundingClientRect() ?? {
-				left: 0, top: 0,
-				right:  activeWindow.innerWidth,
-				bottom: activeWindow.innerHeight,
-			};
+			const tw = table.offsetWidth;
+			const th = table.offsetHeight;
+			const wl = wrapper.offsetLeft;
+			const wt = wrapper.offsetTop;
 			addRowBtn.setCssProps({
-				'--strip-top':   `${r.bottom + 2}px`,
-				'--strip-left':  `${r.left}px`,
-				'--strip-width': `${r.width}px`,
+				'--strip-top':   `${wt + th + 2}px`,
+				'--strip-left':  `${wl}px`,
+				'--strip-width': `${tw}px`,
 			});
 			addColBtn.setCssProps({
-				'--strip-top':    `${r.top}px`,
-				'--strip-left':   `${r.right + 2}px`,
-				'--strip-height': `${r.height}px`,
+				'--strip-top':    `${wt}px`,
+				'--strip-left':   `${wl + tw + 2}px`,
+				'--strip-height': `${th}px`,
 			});
-			// Hide strips that would appear outside the markdown content pane
-			addRowBtn.toggleClass('bt-strip-outside', r.bottom + 2 > safe.bottom);
-			addColBtn.toggleClass('bt-strip-outside', r.right + 2 > safe.right);
 		};
 
 		let hideTimer: number | null = null;
@@ -493,32 +488,17 @@ export async function renderTable(
 			addColBtn.addClass('bt-strip-visible');
 		};
 		hideEdgeStrips = scheduleHide;
-
-		// On scroll: reposition strips if visible, hide if table left the viewport
-		component.registerDomEvent(activeDocument, 'scroll', () => {
-			if (!addRowBtn.hasClass('bt-strip-visible')) return;
-			const r = table.getBoundingClientRect();
-			const inView = r.bottom > 0 && r.top < activeWindow.innerHeight &&
-			               r.right  > 0 && r.left < activeWindow.innerWidth;
-			if (inView) {
-				positionStrips();
-			} else {
-				addRowBtn.removeClass('bt-strip-visible');
-				addColBtn.removeClass('bt-strip-visible');
-			}
-		}, { passive: true, capture: true });
+		// No scroll listener needed — absolute positioning moves with the document flow.
 	}
 
 	// ── Row / column selector strips (Excel-style whole-row/column selection) ──
 	if (onStructuralOp) {
-		const colSel = activeDocument.body.createDiv({ cls: 'bt-col-selector' });
-		const rowSel = activeDocument.body.createDiv({ cls: 'bt-row-selector' });
-		component.register(() => { colSel.remove(); rowSel.remove(); });
+		// Selectors are children of bt-render-root (position:absolute), so they are
+		// naturally contained within Obsidian's content pane — no viewport math needed.
+		const colSel = root.createDiv({ cls: 'bt-col-selector' });
+		const rowSel = root.createDiv({ cls: 'bt-row-selector' });
 
-		// Persistent resize handles on the selector strips — one per visible column
-		// and per row. Created ONCE (not in rebuild) to avoid listener leaks; rebuild
-		// only repositions them. These work even when the first row/column is merged,
-		// because they are positioned from <col>/<tr> geometry, not from cell edges.
+		// Persistent resize handles — created once, repositioned in rebuild().
 		const colResizeHandles = new Map<number, HTMLElement>();
 		model.columns.forEach((c, ci) => {
 			if (c.hidden) return;
@@ -534,11 +514,15 @@ export async function renderTable(
 				(height) => void onStructuralOp({ type: 'set-row-height', rowIdx: ri, height }),
 				component,
 				() => {
-					const r = table.getBoundingClientRect();
-					activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-row.bt-strip-visible')
-						?.setCssProps({ '--strip-top': `${r.bottom + 2}px`, '--strip-left': `${r.left}px`, '--strip-width': `${r.width}px` });
-					activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-col.bt-strip-visible')
-						?.setCssProps({ '--strip-top': `${r.top}px`, '--strip-left': `${r.right + 2}px`, '--strip-height': `${r.height}px` });
+					// Reposition edge-add strips after row height changes
+					const addRow = root.querySelector<HTMLElement>('.bt-edge-add-row.bt-strip-visible');
+					const addCol = root.querySelector<HTMLElement>('.bt-edge-add-col.bt-strip-visible');
+					if (addRow || addCol) {
+						const tw = table.offsetWidth, th = table.offsetHeight;
+						const wl = wrapper.offsetLeft, wt = wrapper.offsetTop;
+						addRow?.setCssProps({ '--strip-top': `${wt + th + 2}px`, '--strip-left': `${wl}px`, '--strip-width': `${tw}px` });
+						addCol?.setCssProps({ '--strip-top': `${wt}px`, '--strip-left': `${wl + tw + 2}px`, '--strip-height': `${th}px` });
+					}
 				},
 			);
 			h.addEventListener('dblclick', (e: MouseEvent) => {
@@ -575,35 +559,32 @@ export async function renderTable(
 
 		const rebuild = () => {
 			updateTableHighlights();
-			const tbl = table.getBoundingClientRect();
-
-			// Safe area = the markdown content pane; strips must stay inside it
-			// so they don't bleed into Obsidian's tab bar or sidebars.
-			const pane = table.closest<HTMLElement>(
-				'.markdown-preview-view, .cm-scroller, .view-content',
-			);
-			const safe = pane?.getBoundingClientRect() ?? {
-				left: 0, top: 0,
-				right: activeWindow.innerWidth,
-				bottom: activeWindow.innerHeight,
-			};
-
-			// Show / hide selectors depending on whether there is room outside the table
-			const hasRoomAbove = tbl.top - 22 >= safe.top;
-			const hasRoomLeft  = tbl.left - 22 >= safe.left;
-			colSel.toggleClass('bt-sel-no-room', !hasRoomAbove);
-			rowSel.toggleClass('bt-sel-no-room', !hasRoomLeft);
+			// Offsets relative to bt-render-root (the position:relative container).
+			const wl = wrapper.offsetLeft;   // wrapper left edge within root
+			const wt = wrapper.offsetTop;    // wrapper top edge within root
+			const tw = table.offsetWidth;
+			const th = table.offsetHeight;
 
 			// Column selector — one cell per physical column from <col> geometry,
 			// independent of any colspan merges in the header row.
 			colSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
-			colSel.setCssProps({ '--cs-top': `${tbl.top - 22}px`, '--cs-left': `${tbl.left}px`, '--cs-w': `${tbl.width}px` });
-			// Pre-index hidden-group indicators from the header by their left-edge x
-			// so we can match each anonymous <col> to the right group.
+			colSel.setCssProps({ '--cs-top': `${wt - 22}px`, '--cs-left': `${wl}px`, '--cs-w': `${tw}px` });
+			// Pre-index hidden-group indicators from the header by their left-edge x.
 			const hiddenGroupByX = new Map<number, number[]>();
-			for (const th of Array.from(thead.querySelectorAll<HTMLElement>('th.bt-col-indicator[data-hidden-group]'))) {
-				const group = JSON.parse(th.dataset.hiddenGroup ?? '[]') as number[];
-				hiddenGroupByX.set(Math.round(th.getBoundingClientRect().left - tbl.left), group);
+			let hiddenColX = 0;
+			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
+				const w = parseInt(c.style.width) || 0;
+				if (c.dataset.col === undefined) {
+					// Find matching bt-col-indicator in thead
+					for (const th2 of Array.from(thead.querySelectorAll<HTMLElement>('th.bt-col-indicator[data-hidden-group]'))) {
+						if (!hiddenGroupByX.has(Math.round(hiddenColX))) {
+							const grp = JSON.parse(th2.dataset.hiddenGroup ?? '[]') as number[];
+							hiddenGroupByX.set(Math.round(hiddenColX), grp);
+							break;
+						}
+					}
+				}
+				hiddenColX += w;
 			}
 
 			let colX = 0;
@@ -635,10 +616,10 @@ export async function renderTable(
 				colX += w;
 			}
 
-			// Row selector (left of table) — iterate ALL rows to include hidden-row indicators.
+			// Row selector (left of table).
 			// Remove only label cells; the persistent resize handles stay.
 			rowSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
-			rowSel.setCssProps({ '--rs-top': `${tbl.top}px`, '--rs-left': `${tbl.left - 22}px`, '--rs-h': `${tbl.height}px` });
+			rowSel.setCssProps({ '--rs-top': `${wt}px`, '--rs-left': `${wl - 22}px`, '--rs-h': `${th}px` });
 			const allTrs = [
 				...Array.from(thead.querySelectorAll<HTMLElement>('tr')),
 				...Array.from(tbody.querySelectorAll<HTMLElement>('tr')),
@@ -646,14 +627,15 @@ export async function renderTable(
 			// Row selector — one cell per physical row, independent of rowspan merges.
 			for (const tr of allTrs) {
 				if (!tr) continue;
-				const r = tr.getBoundingClientRect();
+				// offsetTop relative to the table element → add wt to get root offset
+				const rowTop = tr.offsetTop;
+				const rowH   = tr.offsetHeight;
 				if (tr.hasClass('bt-row-indicator')) {
-					// Hidden row group — show a clickable gap indicator
 					const group = JSON.parse(tr.dataset.hiddenGroup ?? '[]') as number[];
 					const cell = rowSel.createDiv({ cls: 'bt-sel-cell bt-sel-hidden' });
 					cell.setAttribute('aria-label', `${group.length} hidden row${group.length > 1 ? 's' : ''} — click to show`);
 					cell.setAttribute('data-tooltip-position', 'right');
-					cell.setCssProps({ '--rt': `${r.top - tbl.top}px`, '--rh': `${r.height}px` });
+					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
 					cell.addEventListener('click', () => void onStructuralOp({ type: 'show-row-group', rowIndices: group }));
 				} else {
 					const firstCell = tr.querySelector<HTMLElement>('[data-row]');
@@ -663,16 +645,15 @@ export async function renderTable(
 					const cell = rowSel.createDiv({ cls: 'bt-sel-cell' });
 					cell.dataset.idx = String(ri);
 					cell.setText(String(ri + 1));
-					cell.setCssProps({ '--rt': `${r.top - tbl.top}px`, '--rh': `${r.height}px` });
+					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
 					if (selAxis === 'row') {
-						const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
-						if (ri >= lo && ri <= hi) cell.addClass('is-sel');
+						const lo = Math.min(selI1, selI2), hi2 = Math.max(selI1, selI2);
+						if (ri >= lo && ri <= hi2) cell.addClass('is-sel');
 					}
 				}
 			}
 
-			// Reposition persistent resize handles from live <col>/<tr> geometry.
-			// Column right edges: cumulative sum of <col> widths.
+			// Reposition persistent resize handles (column seam positions, row bottom edges).
 			let cx = 0;
 			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
 				cx += parseInt(c.style.width) || 0;
@@ -681,15 +662,14 @@ export async function renderTable(
 				const h = colResizeHandles.get(parseInt(dc));
 				if (h) h.setCssProps({ '--rx': `${cx}px` });
 			}
-			// Row bottom edges: from each tr's rect.
 			for (const [ri, h] of rowResizeHandles) {
 				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri}"]`);
-				const tr = firstCell?.closest('tr');
+				const tr = firstCell?.closest<HTMLElement>('tr');
 				if (tr) {
-					h.setCssProps({ '--ry': `${tr.getBoundingClientRect().bottom - tbl.top}px` });
+					h.setCssProps({ '--ry': `${tr.offsetTop + tr.offsetHeight}px` });
 					h.removeClass('bt-sel-resize-hidden');
 				} else {
-					h.addClass('bt-sel-resize-hidden'); // row hidden — hide its handle
+					h.addClass('bt-sel-resize-hidden');
 				}
 			}
 		};
@@ -713,6 +693,7 @@ export async function renderTable(
 
 		showSelectors = showSel;
 		hideSelectors = scheduleSelHide;
+		// Removed: scroll listener (position:absolute, no repositioning needed)
 
 		let selectorPanel: HTMLElement | null = null;
 		const closeSelectorPanel = () => {
@@ -814,29 +795,27 @@ export async function renderTable(
 		rowSel.addEventListener('pointermove', (e: PointerEvent) => moveDrag('row', e));
 		rowSel.addEventListener('pointerup', () => endDrag('row'));
 
-		component.registerDomEvent(activeDocument, 'scroll', () => {
-			if (!colSel.hasClass('bt-strip-visible')) return;
-			rebuild();
-		}, { passive: true, capture: true });
-
-		// Column/row resize changes cell geometry → rebuild selector strips to follow
+		// Column/row resize changes cell geometry → rebuild selector strip cells
 		table.addEventListener('bt-layout-changed', () => {
 			if (colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible')) rebuild();
 		});
+	}
 
-		// ── Proximity-based reveal ──────────────────────────────────────────────
-		// Show both overlays when the pointer approaches the table (not only when it
-		// enters it), so the top/left selector strips and the bottom/right add strips
-		// appear as the cursor gets near from outside. Transition-based to avoid churn.
-		const NEAR_MARGIN = 34;
+	// ── Proximity-based reveal via the root container ─────────────────────────
+	// Hovering the root container (which includes the selector/edge-add margin
+	// areas) shows all overlays. No viewport math needed — just mouseenter/leave.
+	if (onStructuralOp) {
+		const NEAR_MARGIN = 34; // extra CSS padding on root exposes this hover zone
+		root.setCssProps({ '--hover-margin': `${NEAR_MARGIN}px` });
+
 		let wasNear = false;
 		let proxRaf = 0;
 		component.registerDomEvent(activeDocument, 'mousemove', (e: MouseEvent) => {
-			const x = e.clientX, y = e.clientY; // capture before rAF
+			const x = e.clientX, y = e.clientY;
 			if (proxRaf) return;
 			proxRaf = window.requestAnimationFrame(() => {
 				proxRaf = 0;
-				const r = table.getBoundingClientRect();
+				const r = root.getBoundingClientRect();
 				const near = x >= r.left - NEAR_MARGIN && x <= r.right + NEAR_MARGIN &&
 				             y >= r.top - NEAR_MARGIN && y <= r.bottom + NEAR_MARGIN;
 				if (near && !wasNear) { showEdgeStrips(); showSelectors(); wasNear = true; }
@@ -2078,11 +2057,18 @@ function setupColResize(
 			tbl.style.setProperty('width', `${sum}px`);
 
 			if (colLine) colLine.setCssProps({ '--ri-x': `${colRightX(tbl, colIdx)}px` });
-			const r = tbl.getBoundingClientRect();
-			activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-row.bt-strip-visible')
-				?.setCssProps({ '--strip-top': `${r.bottom + 2}px`, '--strip-left': `${r.left}px`, '--strip-width': `${r.width}px` });
-			activeDocument.body.querySelector<HTMLElement>('.bt-edge-add-col.bt-strip-visible')
-				?.setCssProps({ '--strip-top': `${r.top}px`, '--strip-left': `${r.right + 2}px`, '--strip-height': `${r.height}px` });
+			// Reposition edge-add strips (root-relative coords, no getBoundingClientRect needed)
+			const addRow = tbl.closest<HTMLElement>('.bt-render-root')
+				?.querySelector<HTMLElement>('.bt-edge-add-row.bt-strip-visible');
+			const addCol = tbl.closest<HTMLElement>('.bt-render-root')
+				?.querySelector<HTMLElement>('.bt-edge-add-col.bt-strip-visible');
+			if (addRow || addCol) {
+				const wl2 = tbl.closest<HTMLElement>('.bt-table-wrapper')?.offsetLeft ?? 0;
+				const wt2 = tbl.closest<HTMLElement>('.bt-table-wrapper')?.offsetTop  ?? 0;
+				const tw2 = tbl.offsetWidth, th2 = tbl.offsetHeight;
+				addRow?.setCssProps({ '--strip-top': `${wt2 + th2 + 2}px`, '--strip-left': `${wl2}px`, '--strip-width': `${tw2}px` });
+				addCol?.setCssProps({ '--strip-top': `${wt2}px`, '--strip-left': `${wl2 + tw2 + 2}px`, '--strip-height': `${th2}px` });
+			}
 			tbl.dispatchEvent(new CustomEvent('bt-layout-changed'));
 		};
 

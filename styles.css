@@ -1,5 +1,9 @@
 /* Rich Table plugin */
 
+.bt-render-root {
+	position: relative;
+}
+
 .bt-table-wrapper {
 	overflow-x: auto;
 	margin: 0;
@@ -102,8 +106,8 @@
 /* ── Row / column selector strips (Excel-style whole-row/col selection) ─── */
 .bt-col-selector,
 .bt-row-selector {
-	position: fixed;
-	z-index: var(--layer-popover);
+	position: absolute;
+	z-index: 10;
 	visibility: hidden;
 	pointer-events: none;
 	opacity: 0;
@@ -114,15 +118,6 @@
 	visibility: visible;
 	pointer-events: auto;
 	opacity: 1;
-}
-/* Hide strips when they would overflow into Obsidian's tab bar / sidebars */
-.bt-col-selector.bt-sel-no-room,
-.bt-row-selector.bt-sel-no-room,
-.bt-edge-add-row.bt-strip-outside,
-.bt-edge-add-col.bt-strip-outside {
-	visibility: hidden !important;
-	pointer-events: none !important;
-	opacity: 0 !important;
 }
 .bt-col-selector {
 	top:  var(--cs-top,  0px);
@@ -212,11 +207,11 @@
 	display: none;
 }
 
-/* ── Edge-hover add strips (position:fixed, works in all rendering modes) ── */
+/* ── Edge-hover add strips ─────────────────────────────────────────────────── */
 .bt-edge-add-row,
 .bt-edge-add-col {
-	position: fixed;
-	z-index: var(--layer-popover);
+	position: absolute;
+	z-index: 10;
 	display: flex;
 	align-items: center;
 	justify-content: center;
