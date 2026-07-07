@@ -24,8 +24,8 @@ export const SEL_LABEL = SEL_TOTAL - SEL_GRIP; // 22
 export const SEL_CELL = SEL_LABEL - 4; // 18
 
 /** Left offset from table-left to auto-fit button left edge.
- *  Centers the button on the row-selector label cells:
+ *  Centers the button (width = SEL_CELL = 18) on the row-selector label cells:
  *    row-sel label cell center (from root) = tl - SEL_CELL/2 = tl - 9
- *    button width = SEL_LABEL = 22  →  left = (tl - 9) - 11 = tl - 20
- *    20 = (SEL_CELL + SEL_LABEL) / 2                                    */
-export const AUTOFIT_OFFSET = (SEL_CELL + SEL_LABEL) / 2; // 20
+ *    button width = SEL_CELL = 18  →  left = (tl - 9) - 9 = tl - 18
+ *    18 = SEL_CELL                                                       */
+export const AUTOFIT_OFFSET = SEL_CELL; // 18

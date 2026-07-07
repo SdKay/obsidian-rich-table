@@ -147,11 +147,10 @@
 	position: absolute;
 	top:  var(--lk-top,  calc(-1 * var(--bt-sel-label)));
 	/* fallback uses --bt-lock-table-w (set from totalWidth) so the button is
-	 * roughly correct before the first getBoundingClientRect call fires. */
-	left: var(--lk-left, var(--bt-lock-table-w, 100%));
-	width: var(--bt-sel-label);
-	/* Match col-selector label cell height so the button sits flush in the
-	 * label zone from root y=(tt-sel-label) to y=(tt-sel-label+sel-cell). */
+	 * roughly correct before the first getBoundingClientRect call fires.
+	 * +2px left-aligns with the add-col strip (same as in positionLockBtn). */
+	left: var(--lk-left, calc(var(--bt-lock-table-w, 100%) + 2px));
+	width: var(--bt-sel-cell);   /* 18px — same as auto-fit button */
 	height: var(--bt-sel-cell);
 	display: flex;
 	align-items: center;
@@ -169,8 +168,8 @@
 .bt-autofit-btn {
 	position: absolute;
 	top:  var(--afb-top,  calc(-1 * var(--bt-sel-label)));
-	left: var(--afb-left, -20px); /* -20 = -(SEL_CELL+SEL_LABEL)/2; see selectorLayout.ts */
-	width: var(--bt-sel-label);
+	left: var(--afb-left, -18px); /* -18 = -SEL_CELL; see selectorLayout.ts */
+	width: var(--bt-sel-cell);   /* 18px keeps button inside row-selector label zone */
 	height: var(--bt-sel-cell);
 	display: flex;
 	align-items: center;
@@ -492,6 +491,8 @@
 	margin: 0;
 	text-align: inherit;
 }
+/* Temporary class applied during autoFitColWidth measurement to get single-line width */
+.bt-nowrap-measure { white-space: nowrap !important; }
 
 /* Wikilink styling inside cells */
 .bt-table .bt-td .internal-link,

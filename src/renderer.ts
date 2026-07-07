@@ -533,12 +533,11 @@ export async function renderTable(
 			const rr = root.getBoundingClientRect();
 			// Guard: skip if table is still in a detached DOM (dimensions all zero)
 			if (tr.width === 0) return;
-			// Center lock btn on the add-col strip's center:
-			//   add-col left = tl + tw + 2, width = 18 → center = tl + tw + 11
-			//   lock width = SEL_LABEL = 22 → left = center - 11 = tl + tw
+			// Left-align lock btn with add-col strip (both SEL_CELL = 18px wide):
+			//   add-col left = tl + tw + 2
 			lockBtn.setCssProps({
 				'--lk-top':  `${tr.top - rr.top - SEL_LABEL}px`,
-				'--lk-left': `${tr.left - rr.left + tr.width}px`,
+				'--lk-left': `${tr.left - rr.left + tr.width + 2}px`,
 			});
 		};
 		// Defer initial positioning to after the DOM is attached (getBoundingClientRect
@@ -2145,21 +2144,24 @@ function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number): number
 			continue;
 		}
 
-		// 3. Data cell with text: measure the tight bounding box of inline content.
-		//    MarkdownRenderer wraps content in a block <p> whose width equals the cell's
-		//    content area — selecting the cell directly gives that content-area width, not
-		//    the text width. Adding padH+borderH back causes each double-click to grow the
-		//    column by ~1px due to Math.ceil on sub-pixel fractions.
-		//    Fix: select the contents *of* each <p> (inline nodes) so the Range covers only
-		//    the actual text/inline elements, whose bounding rect is the natural text width.
+		// 3. Data cell with text: measure natural single-line width.
+		//    Two compounding problems:
+		//    a) Selecting the cell itself returns the block <p>'s layout width (= cell width).
+		//       Fix: select the *contents* of each <p> (inline nodes only).
+		//    b) If text is already wrapping, inline line-boxes span the full content area,
+		//       so their union rect width still equals the cell width — no auto-fit effect.
+		//       Fix: temporarily set white-space:nowrap on the <p> to collapse to one line,
+		//       measure the natural width, then restore.
 		const text = cell.textContent?.trim() ?? '';
 		if (text) {
 			const pEls = Array.from(cell.querySelectorAll<HTMLElement>('p'));
 			const targets: HTMLElement[] = pEls.length > 0 ? pEls : [cell];
 			for (const target of targets) {
+				target.addClass('bt-nowrap-measure');
 				const range = activeDocument.createRange();
 				range.selectNodeContents(target);
 				const rw = range.getBoundingClientRect().width;
+				target.removeClass('bt-nowrap-measure');
 				if (rw > 0) max = Math.max(max, rw + padH + borderH);
 			}
 		}
