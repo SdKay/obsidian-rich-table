@@ -5,6 +5,7 @@
 	margin: 0;
 }
 
+
 /* ── Table title ─────────────────────────────────────────────────────────── */
 .bt-table-title {
 	text-align: center;
@@ -113,6 +114,15 @@
 	visibility: visible;
 	pointer-events: auto;
 	opacity: 1;
+}
+/* Hide strips when they would overflow into Obsidian's tab bar / sidebars */
+.bt-col-selector.bt-sel-no-room,
+.bt-row-selector.bt-sel-no-room,
+.bt-edge-add-row.bt-strip-outside,
+.bt-edge-add-col.bt-strip-outside {
+	visibility: hidden !important;
+	pointer-events: none !important;
+	opacity: 0 !important;
 }
 .bt-col-selector {
 	top:  var(--cs-top,  0px);

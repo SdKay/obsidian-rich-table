@@ -450,6 +450,14 @@ export async function renderTable(
 
 		const positionStrips = () => {
 			const r = table.getBoundingClientRect();
+			const pane = table.closest<HTMLElement>(
+				'.markdown-preview-view, .cm-scroller, .view-content',
+			);
+			const safe = pane?.getBoundingClientRect() ?? {
+				left: 0, top: 0,
+				right:  activeWindow.innerWidth,
+				bottom: activeWindow.innerHeight,
+			};
 			addRowBtn.setCssProps({
 				'--strip-top':   `${r.bottom + 2}px`,
 				'--strip-left':  `${r.left}px`,
@@ -460,6 +468,9 @@ export async function renderTable(
 				'--strip-left':   `${r.right + 2}px`,
 				'--strip-height': `${r.height}px`,
 			});
+			// Hide strips that would appear outside the markdown content pane
+			addRowBtn.toggleClass('bt-strip-outside', r.bottom + 2 > safe.bottom);
+			addColBtn.toggleClass('bt-strip-outside', r.right + 2 > safe.right);
 		};
 
 		let hideTimer: number | null = null;
@@ -565,6 +576,23 @@ export async function renderTable(
 		const rebuild = () => {
 			updateTableHighlights();
 			const tbl = table.getBoundingClientRect();
+
+			// Safe area = the markdown content pane; strips must stay inside it
+			// so they don't bleed into Obsidian's tab bar or sidebars.
+			const pane = table.closest<HTMLElement>(
+				'.markdown-preview-view, .cm-scroller, .view-content',
+			);
+			const safe = pane?.getBoundingClientRect() ?? {
+				left: 0, top: 0,
+				right: activeWindow.innerWidth,
+				bottom: activeWindow.innerHeight,
+			};
+
+			// Show / hide selectors depending on whether there is room outside the table
+			const hasRoomAbove = tbl.top - 22 >= safe.top;
+			const hasRoomLeft  = tbl.left - 22 >= safe.left;
+			colSel.toggleClass('bt-sel-no-room', !hasRoomAbove);
+			rowSel.toggleClass('bt-sel-no-room', !hasRoomLeft);
 
 			// Column selector — one cell per physical column from <col> geometry,
 			// independent of any colspan merges in the header row.
@@ -1910,22 +1938,45 @@ function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number): number
 	let max = minW;
 	for (const cell of cells) {
 		const view = activeDocument.defaultView;
-		const padH = view
-			? parseFloat(view.getComputedStyle(cell).paddingLeft) +
-			  parseFloat(view.getComputedStyle(cell).paddingRight)
+		const style = view ? view.getComputedStyle(cell) : null;
+		// Horizontal padding of the cell
+		const padH = style
+			? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
 			: 24;
+		// Border width contribution (border-collapse: collapse, ~1px each side)
+		const borderH = style
+			? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth)
+			: 2;
 
+		// 1. Typed cell: pill is inline-flex with white-space:nowrap;
+		//    offsetWidth is the natural pill width regardless of cell clipping.
 		const pill = cell.querySelector<HTMLElement>('.bt-choice');
 		if (pill) {
-			// inline-flex + white-space:nowrap → offsetWidth is the natural pill width
-			// even when the parent cell clips it with overflow:hidden.
-			// Reading from the live DOM means all CSS variables are fully resolved.
-			max = Math.max(max, pill.offsetWidth + padH + 4);
-		} else {
-			// Plain text cell: scrollWidth on the live cell gives content+padding
-			// (overflow:hidden clips the display but not the scroll dimension).
-			max = Math.max(max, cell.scrollWidth + 4);
+			max = Math.max(max, pill.offsetWidth + padH + borderH);
+			continue;
 		}
+
+		// 2. Header cell: measure the inline text span (not the cell itself).
+		//    cell.scrollWidth == clientWidth == current column width for table-cell
+		//    elements — useless. The inline span's offsetWidth is the actual text width.
+		const textSpan = cell.querySelector<HTMLElement>('.bt-th-text');
+		if (textSpan) {
+			max = Math.max(max, textSpan.offsetWidth + padH + borderH);
+			continue;
+		}
+
+		// 3. Data cell with text: use a Range to get the rendered text width.
+		//    getBoundingClientRect on a Range gives the tightest bounding box of the
+		//    selected content — unlike cell.scrollWidth it doesn't equal the cell width.
+		const text = cell.textContent?.trim() ?? '';
+		if (text) {
+			const range = activeDocument.createRange();
+			range.selectNodeContents(cell);
+			const rw = range.getBoundingClientRect().width;
+			if (rw > 0) max = Math.max(max, rw + padH + borderH);
+		}
+		// Empty data cell: skip — its scrollWidth == current cell width,
+		// using it would cause the column to grow on every double-click.
 	}
 	return Math.ceil(max);
 }
@@ -2133,6 +2184,11 @@ function bindResizeHandle(
 		else { rowLine = makeRowLine(anchor, tblRect); rowLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
 
 		const onMove = (ev: PointerEvent) => {
+			// Capture scroll position before the height change so we can restore it
+			// after scroll-anchoring fires — preventing the page from jumping up.
+			const scrollEl = activeDocument.scrollingElement;
+			const savedScrollTop = scrollEl?.scrollTop;
+
 			const delta = ev.clientY - startCoord;
 			lastSize = Math.max(minSize, Math.round(actualStart + delta));
 			for (const cell of targets) cell.style.setProperty(cssVar, `${lastSize}px`);
@@ -2144,6 +2200,12 @@ function bindResizeHandle(
 			// Row height change shifts cell geometry → rebuild selector strips to follow
 			table.dispatchEvent(new CustomEvent('bt-layout-changed'));
 			hasMoved = true;
+
+			// Restore scroll in the next animation frame (runs before paint, after
+			// scroll-anchoring fires) to cancel any upward page compensation.
+			if (scrollEl && savedScrollTop !== undefined) {
+				window.requestAnimationFrame(() => { scrollEl.scrollTop = savedScrollTop; });
+			}
 		};
 
 		const onUp = () => {
