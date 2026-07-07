@@ -22,13 +22,13 @@
 	left:   var(--cs-left,  0px);
 	top:    var(--cs-top,   0px);
 	width:  var(--cs-width, 100px);
-	height: 22px;
+	height: 32px; /* 10px grip zone (top) + 22px label zone (bottom) */
 }
 .bt-render-root.bt-has-strips .bt-row-selector {
 	position: absolute;
-	left:   var(--rs-left,  -22px);
-	top:    var(--rs-top,   22px);
-	width:  22px;
+	left:   var(--rs-left,  -32px);
+	top:    var(--rs-top,   32px);
+	width:  32px; /* 10px grip zone (left) + 22px label zone (right) */
 	height: var(--rs-height, 100px);
 }
 .bt-render-root.bt-has-strips .bt-edge-add-row,
@@ -190,13 +190,15 @@
 	color: var(--interactive-accent);
 	border-color: var(--interactive-accent);
 }
+/* Col selector: labels sit in the lower 22px zone; top 10px reserved for drag grips */
 .bt-col-selector .bt-sel-cell {
-	top: 0; height: 18px;
+	top: 10px; height: 18px;
 	left:  var(--cl, 0px);
 	width: var(--cw, 60px);
 }
+/* Row selector: labels sit in the right 22px zone; left 10px reserved for drag grips */
 .bt-row-selector .bt-sel-cell {
-	left: 0; width: 18px;
+	left: 14px; width: 18px;
 	top:    var(--rt, 0px);
 	height: var(--rh, 30px);
 }
@@ -282,58 +284,56 @@
 
 /* ── Drag-reorder handles ────────────────────────────────────────────────── */
 
-/* Column drag handle: top-center of header cell */
-.bt-col-drag-handle {
+
+/* ── Drag-reorder grips in selector strips ──────────────────────────────────
+ * Row grips: sibling elements in the row selector, occupying the outer 10px
+ * zone (left side) — completely separate from the 22px selection label area.
+ * Col grips: sibling elements in the col selector, occupying the upper 10px
+ * zone (top side) — separate from the 22px label zone below.
+ * Both are hidden by default and shown when the respective selector is hovered. */
+.bt-sel-row-drag {
 	position: absolute;
-	top: 3px;
-	left: 50%;
+	left: 1px;
+	width: 10px;
+	height: 18px;
+	top: var(--rdy, 0px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: grab;
+	opacity: 0;
+	transition: opacity 80ms;
+	color: var(--text-faint);
+}
+.bt-sel-col-drag {
+	position: absolute;
+	top: 1px;
+	height: 10px;
+	width: 18px;
+	left: var(--cdx, 0px);
 	transform: translateX(-50%);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	padding: 2px 3px;
-	opacity: 0;
 	cursor: grab;
-	border-radius: var(--radius-s);
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	z-index: 1;
-}
-
-/* Row drag handle: left-center of first visible data cell */
-.bt-row-drag-handle {
-	position: absolute;
-	left: 3px;
-	top: 50%;
-	transform: translateY(-50%);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 3px 2px;
 	opacity: 0;
-	cursor: grab;
-	border-radius: var(--radius-s);
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	z-index: 1;
+	transition: opacity 80ms;
+	color: var(--text-faint);
 }
-
-.bt-table .bt-th:hover .bt-col-drag-handle,
-.bt-table .bt-td:hover .bt-row-drag-handle {
+.bt-sel-row-drag svg,
+.bt-sel-col-drag svg {
+	width: 8px;
+	height: 8px;
+}
+.bt-row-selector.bt-strip-visible:hover .bt-sel-row-drag {
 	opacity: 1;
 }
-
-.bt-col-drag-handle:active,
-.bt-row-drag-handle:active {
-	cursor: grabbing;
+.bt-col-selector.bt-strip-visible:hover .bt-sel-col-drag {
+	opacity: 1;
 }
-
-/* Drag handle icon sizing */
-.bt-col-drag-handle svg,
-.bt-row-drag-handle svg {
-	width: 12px;
-	height: 12px;
-	color: var(--text-muted);
+.bt-sel-row-drag:active,
+.bt-sel-col-drag:active {
+	cursor: grabbing;
 }
 
 /* ── Row height: height on td/th acts as minimum row height ─────────────── */
@@ -370,9 +370,15 @@
 }
 
 /* Drop indicators — higher specificity to override table cell borders */
+/* Row reorder: horizontal line at the top of the target row */
 .bt-table tr.bt-drop-before > td,
 .bt-table tr.bt-drop-before > th {
 	border-top: 2px solid var(--interactive-accent);
+}
+/* Col reorder: vertical line on the left edge of every cell in the target col */
+.bt-table td.bt-col-drop-before,
+.bt-table th.bt-col-drop-before {
+	border-left: 2px solid var(--interactive-accent);
 }
 
 /* Dragging state */

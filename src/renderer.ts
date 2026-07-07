@@ -196,8 +196,6 @@ export async function renderTable(
 
 	tbody.addEventListener('mousedown', (evt: MouseEvent) => {
 		if (evt.button !== 0) return;
-		// Don't start merge selection when clicking a drag handle
-		if ((evt.target as HTMLElement).closest('.bt-row-drag-handle')) return;
 		// Don't interfere when clicking inside an active cell editor —
 		// preventDefault would block the browser from placing the cursor
 		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
@@ -253,7 +251,6 @@ export async function renderTable(
 	// ── Header row drag-to-select (for merging header cells) ────────────────
 	thead.addEventListener('mousedown', (evt: MouseEvent) => {
 		if (evt.button !== 0) return;
-		if ((evt.target as HTMLElement).closest('.bt-col-drag-handle')) return;
 		const th = (evt.target as HTMLElement).closest<HTMLElement>('th[data-row][data-col]');
 		if (!th) return;
 		const col = parseInt(th.dataset.col ?? '-1');
@@ -301,16 +298,18 @@ export async function renderTable(
 		}
 	});
 
+	// Shared drag-over state — declared here so the drag-and-drop block and the
+	// selector-strip block can both read/write the same indicator state.
+	let dragOverRow = -1;
+	let dragOverCol = -1;
+	const clearDropIndicators = () => {
+		table.querySelectorAll<HTMLElement>('.bt-drop-before').forEach(e => e.removeClass('bt-drop-before'));
+		table.querySelectorAll<HTMLElement>('.bt-drop-after').forEach(e => e.removeClass('bt-drop-after'));
+		table.querySelectorAll<HTMLElement>('.bt-col-drop-before').forEach(e => e.removeClass('bt-col-drop-before'));
+	};
+
 	// ── Drag-and-drop row/column reordering ──────────────────────────────────
 	if (onStructuralOp) {
-		let dragOverRow = -1;
-		let dragOverCol = -1;
-
-		const clearDropIndicators = () => {
-			table.querySelectorAll<HTMLElement>('.bt-drop-before').forEach(e => e.removeClass('bt-drop-before'));
-			table.querySelectorAll<HTMLElement>('.bt-drop-after').forEach(e => e.removeClass('bt-drop-after'));
-		};
-
 		// Row reordering: drop on tbody rows
 		tbody.addEventListener('dragover', (evt: DragEvent) => {
 			if (!evt.dataTransfer?.types.includes('bt-drag-row')) return;
@@ -348,7 +347,7 @@ export async function renderTable(
 			if (colIdx < 0 || colIdx === dragOverCol) return;
 			clearDropIndicators();
 			dragOverCol = colIdx;
-			th.addClass('bt-drop-before');
+			table.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`).forEach(e => e.addClass('bt-col-drop-before'));
 		});
 
 		thead.addEventListener('drop', (evt: DragEvent) => {
@@ -572,7 +571,7 @@ export async function renderTable(
 
 			// Column selector — cells positioned by --cl/--cw relative to the selector's
 			// own left edge, which CSS Grid aligns with the table wrapper automatically.
-			colSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
+			colSel.querySelectorAll('.bt-sel-cell, .bt-sel-col-drag').forEach(e => e.remove());
 			// Pre-index hidden-group indicators from the header by their left-edge x.
 			const hiddenGroupByX = new Map<number, number[]>();
 			let hiddenColX = 0;
@@ -605,6 +604,22 @@ export async function renderTable(
 						const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
 						if (ci >= lo && ci <= hi) cell.addClass('is-sel');
 					}
+					// Drag grip: sibling of sel-cell, lives in the upper 10px of the
+					// col selector (above the A/B/C labels) — separate from selection zone.
+					const colGrip = colSel.createDiv({
+						cls: 'bt-sel-col-drag',
+						attr: { draggable: 'true', 'aria-label': t('dragReorderCol') },
+					});
+					setIcon(colGrip, 'grip-vertical');
+					colGrip.setCssProps({ '--cdx': `${colX + w / 2}px` });
+					colGrip.addEventListener('dragstart', (evt: DragEvent) => {
+						selDragging = false;
+						selAxis = null; selI1 = selI2 = -1;
+						updateTableHighlights();
+						evt.dataTransfer?.setData('bt-drag-col', String(ci));
+						cell.addClass('bt-dragging');
+					});
+					colGrip.addEventListener('dragend', () => cell.removeClass('bt-dragging'));
 				} else {
 					// Hidden column group — match by x position
 					const group = hiddenGroupByX.get(Math.round(colX)) ?? [];
@@ -622,7 +637,7 @@ export async function renderTable(
 
 			// Row selector — cells positioned by --rt/--rh relative to the selector's
 			// own top edge, which CSS Grid aligns with the table wrapper automatically.
-			rowSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
+			rowSel.querySelectorAll('.bt-sel-cell, .bt-sel-row-drag').forEach(e => e.remove());
 			const allTrs = [
 				...Array.from(thead.querySelectorAll<HTMLElement>('tr')),
 				...Array.from(tbody.querySelectorAll<HTMLElement>('tr')),
@@ -657,6 +672,27 @@ export async function renderTable(
 					if (selAxis === 'row') {
 						const lo = Math.min(selI1, selI2), hi2 = Math.max(selI1, selI2);
 						if (ri >= lo && ri <= hi2) cell.addClass('is-sel');
+					}
+					// Drag grip: sibling of the sel-cell, lives in the outer 10px of the
+					// row selector (left zone), completely separate from the 22px selection
+					// zone — no pointer-event conflict with range-selection.
+					if (ri > 0) {
+						const grip = rowSel.createDiv({
+							cls: 'bt-sel-row-drag',
+							attr: { draggable: 'true', 'aria-label': t('dragReorderRow') },
+						});
+						setIcon(grip, 'grip-vertical');
+						// Center the grip vertically within the row's height
+						const midY = rowTop + rowH / 2 - 9;
+						grip.setCssProps({ '--rdy': `${midY}px` });
+						grip.addEventListener('dragstart', (evt: DragEvent) => {
+							selDragging = false;
+							selAxis = null; selI1 = selI2 = -1;
+							updateTableHighlights();
+							evt.dataTransfer?.setData('bt-drag-row', String(ri));
+							cell.addClass('bt-dragging');
+						});
+						grip.addEventListener('dragend', () => cell.removeClass('bt-dragging'));
 					}
 				}
 			}
@@ -704,11 +740,11 @@ export async function renderTable(
 			const tt = tr.top  - rr.top;
 			colSel.setCssProps({
 				'--cs-left':  `${tl}px`,
-				'--cs-top':   `${tt - 22}px`,
+				'--cs-top':   `${tt - 32}px`,
 				'--cs-width': `${tr.width}px`,
 			});
 			rowSel.setCssProps({
-				'--rs-left':   `${tl - 22}px`,
+				'--rs-left':   `${tl - 32}px`,
 				'--rs-top':    `${tt}px`,
 				'--rs-height': `${tr.height}px`,
 			});
@@ -718,7 +754,7 @@ export async function renderTable(
 		// show/hide so that positionEdgeStrips() and positionSelectors() both see
 		// the same layout (table already shifted by --bt-sel-pad).
 		prepareLayout = () => {
-			root.setCssProps({ '--bt-sel-pad': '22px' });
+			root.setCssProps({ '--bt-sel-pad': '32px' });
 			titleEl?.setCssProps({ '--bt-title-mb-adj': '9px' });
 		};
 		restoreLayout = () => {
@@ -835,6 +871,75 @@ export async function renderTable(
 		rowSel.addEventListener('pointermove', (e: PointerEvent) => moveDrag('row', e));
 		rowSel.addEventListener('pointerup', () => endDrag('row'));
 
+		// ── Drag-reorder via selector strips ─────────────────────────────────────
+		// The grips live in the selector strips. Without dragover handlers on the
+		// strips, the browser shows the "no" cursor while dragging over them (no
+		// target accepts the drop). These handlers make the strips full drop zones
+		// and mirror the table-row/col drop indicator so the UX is consistent.
+		colSel.addEventListener('dragover', (evt: DragEvent) => {
+			if (!evt.dataTransfer?.types.includes('bt-drag-col')) return;
+			evt.preventDefault();
+			const cells = Array.from(colSel.querySelectorAll<HTMLElement>('[data-idx]'));
+			let toIdx = -1, minD = Infinity;
+			for (const c of cells) {
+				const r = c.getBoundingClientRect();
+				const d = Math.abs(evt.clientX - (r.left + r.width / 2));
+				if (d < minD) { minD = d; toIdx = parseInt(c.dataset.idx ?? '-1'); }
+			}
+			if (toIdx >= 0 && toIdx !== dragOverCol) {
+				clearDropIndicators();
+				dragOverCol = toIdx;
+				table.querySelectorAll<HTMLElement>(`[data-col="${toIdx}"]`).forEach(e => e.addClass('bt-col-drop-before'));
+			}
+		});
+		colSel.addEventListener('drop', (evt: DragEvent) => {
+			evt.preventDefault();
+			clearDropIndicators();
+			const fromIdx = parseInt(evt.dataTransfer?.getData('bt-drag-col') ?? '-1');
+			const cells = Array.from(colSel.querySelectorAll<HTMLElement>('[data-idx]'));
+			let toIdx = -1, minD = Infinity;
+			for (const c of cells) {
+				const r = c.getBoundingClientRect();
+				const d = Math.abs(evt.clientX - (r.left + r.width / 2));
+				if (d < minD) { minD = d; toIdx = parseInt(c.dataset.idx ?? '-1'); }
+			}
+			if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx)
+				void onStructuralOp({ type: 'move-col', fromIdx, toIdx });
+			dragOverCol = -1;
+		});
+
+		rowSel.addEventListener('dragover', (evt: DragEvent) => {
+			if (!evt.dataTransfer?.types.includes('bt-drag-row')) return;
+			evt.preventDefault();
+			const cells = Array.from(rowSel.querySelectorAll<HTMLElement>('[data-idx]'));
+			let toIdx = -1, minD = Infinity;
+			for (const c of cells) {
+				const r = c.getBoundingClientRect();
+				const d = Math.abs(evt.clientY - (r.top + r.height / 2));
+				if (d < minD) { minD = d; toIdx = parseInt(c.dataset.idx ?? '-1'); }
+			}
+			if (toIdx >= 1 && toIdx !== dragOverRow) {
+				clearDropIndicators();
+				dragOverRow = toIdx;
+				tbody.querySelector<HTMLElement>(`tr:has([data-row="${toIdx}"])`)?.addClass('bt-drop-before');
+			}
+		});
+		rowSel.addEventListener('drop', (evt: DragEvent) => {
+			evt.preventDefault();
+			clearDropIndicators();
+			const fromIdx = parseInt(evt.dataTransfer?.getData('bt-drag-row') ?? '-1');
+			const cells = Array.from(rowSel.querySelectorAll<HTMLElement>('[data-idx]'));
+			let toIdx = -1, minD = Infinity;
+			for (const c of cells) {
+				const r = c.getBoundingClientRect();
+				const d = Math.abs(evt.clientY - (r.top + r.height / 2));
+				if (d < minD) { minD = d; toIdx = parseInt(c.dataset.idx ?? '-1'); }
+			}
+			if (fromIdx >= 1 && toIdx >= 1 && fromIdx !== toIdx)
+				void onStructuralOp({ type: 'move-row', fromIdx, toIdx });
+			dragOverRow = -1;
+		});
+
 		// Column/row resize changes cell geometry → reposition + rebuild selector strips
 		table.addEventListener('bt-layout-changed', () => {
 			if (colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible')) {
@@ -910,7 +1015,6 @@ async function renderRow(
 
 		// Normal cell — snapshot c so closures below capture the right column index
 		const colIdx = c;
-		const isFirstVisible = !isHeader && c === (model.columns.findIndex(col2 => !col2?.hidden));
 		const merge = getMergeOrigin(rowIdx, colIdx, model.merges);
 		const tag   = isHeader ? 'th' : 'td';
 		const el    = tr.createEl(tag, { cls: isHeader ? 'bt-th' : 'bt-td' });
@@ -940,35 +1044,9 @@ async function renderRow(
 
 		const value = rowCells[colIdx] ?? '';
 
-		// ── Drag-reorder handles ─────────────────────────────────────────────
-		if (onStructuralOp) {
-			const makeDots = (parent: HTMLElement) => setIcon(parent, 'grip-vertical');
-			if (isHeader) {
-				// Column drag handle: top-center of header cell, cursor:grab
-				const cdh = el.createDiv({
-					cls: 'bt-col-drag-handle',
-					attr: { draggable: 'true', 'aria-label': t('dragReorderCol') },
-				});
-				makeDots(cdh);
-				cdh.addEventListener('dragstart', (evt: DragEvent) => {
-					evt.dataTransfer?.setData('bt-drag-col', String(colIdx));
-					el.addClass('bt-dragging');
-				});
-				cdh.addEventListener('dragend', () => el.removeClass('bt-dragging'));
-			} else if (isFirstVisible) {
-				// Row drag handle: left-center of first visible data cell
-				const rdh = el.createDiv({
-					cls: 'bt-row-drag-handle',
-					attr: { draggable: 'true', 'aria-label': t('dragReorderRow') },
-				});
-				makeDots(rdh);
-				rdh.addEventListener('dragstart', (evt: DragEvent) => {
-					evt.dataTransfer?.setData('bt-drag-row', String(rowIdx));
-					el.addClass('bt-dragging');
-				});
-				rdh.addEventListener('dragend', () => el.removeClass('bt-dragging'));
-			}
-		}
+		// Drag-reorder handles for both rows and columns now live in the selector
+		// strips (bt-sel-row-drag / bt-sel-col-drag in rebuild()), keeping them
+		// independent of cell merges and outside the cell interaction area.
 
 		if (isHeader) {
 			renderHeaderCell(el, value, col, colIdx, getRegistry, app, sourcePath, model, component, onCellChange, onColTypeChange, onStructuralOp);
