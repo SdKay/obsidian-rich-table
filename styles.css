@@ -2,6 +2,11 @@
 
 .bt-render-root {
 	position: relative;
+	/* Selector strip layout constants — keep in sync with src/selectorLayout.ts */
+	--bt-sel-total: 32px; /* full width (row selector) / height (col selector)   */
+	--bt-sel-grip:  10px; /* drag-grip zone                                       */
+	--bt-sel-label: 22px; /* label-cell zone = total - grip                       */
+	--bt-sel-cell:  18px; /* sel-cell height (col selector) / width (row selector)*/
 }
 /* All overlay strips (col/row selectors + edge-add buttons) use position:absolute
  * within root. Coordinates are set from getBoundingClientRect() deltas so they
@@ -22,13 +27,13 @@
 	left:   var(--cs-left,  0px);
 	top:    var(--cs-top,   0px);
 	width:  var(--cs-width, 100px);
-	height: 32px; /* 10px grip zone (top) + 22px label zone (bottom) */
+	height: var(--bt-sel-total); /* grip zone (top) + label zone (bottom) */
 }
 .bt-render-root.bt-has-strips .bt-row-selector {
 	position: absolute;
-	left:   var(--rs-left,  -32px);
-	top:    var(--rs-top,   32px);
-	width:  32px; /* 10px grip zone (left) + 22px label zone (right) */
+	left:   var(--rs-left,  calc(-1 * var(--bt-sel-total)));
+	top:    var(--rs-top,   var(--bt-sel-total));
+	width:  var(--bt-sel-total); /* grip zone (left) + label zone (right) */
 	height: var(--rs-height, 100px);
 }
 .bt-render-root.bt-has-strips .bt-edge-add-row,
@@ -140,15 +145,14 @@
  * Unlocked: faint, reveals on root hover. Locked: always visible with accent colour. */
 .bt-lock-btn {
 	position: absolute;
-	top:  var(--lk-top,  -22px);
+	top:  var(--lk-top,  calc(-1 * var(--bt-sel-label)));
 	/* fallback uses --bt-lock-table-w (set from totalWidth) so the button is
-	 * roughly correct before the first getBoundingClientRect call fires.
-	 * Offset matches the center-alignment formula: lock.left = tl + tw */
+	 * roughly correct before the first getBoundingClientRect call fires. */
 	left: var(--lk-left, var(--bt-lock-table-w, 100%));
-	width: 22px;
-	/* Match col-selector label cell height (18px) so the button sits flush
-	 * within the label zone from root y=(tt-22) to y=(tt-4). */
-	height: 18px;
+	width: var(--bt-sel-label);
+	/* Match col-selector label cell height so the button sits flush in the
+	 * label zone from root y=(tt-sel-label) to y=(tt-sel-label+sel-cell). */
+	height: var(--bt-sel-cell);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -164,10 +168,10 @@
 /* ── Auto-fit-all button (top-left corner, symmetric with lock button) ───── */
 .bt-autofit-btn {
 	position: absolute;
-	top:  var(--afb-top,  -22px);
-	left: var(--afb-left, -20px);
-	width: 22px;
-	height: 18px;
+	top:  var(--afb-top,  calc(-1 * var(--bt-sel-label)));
+	left: var(--afb-left, -20px); /* -20 = -(SEL_CELL+SEL_LABEL)/2; see selectorLayout.ts */
+	width: var(--bt-sel-label);
+	height: var(--bt-sel-cell);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -253,15 +257,15 @@
 	color: var(--interactive-accent);
 	border-color: var(--interactive-accent);
 }
-/* Col selector: labels sit in the lower 22px zone; top 10px reserved for drag grips */
+/* Col selector: labels sit in the lower label zone; top grip zone reserved for drag grips */
 .bt-col-selector .bt-sel-cell {
-	top: 10px; height: 18px;
+	top: var(--bt-sel-grip); height: var(--bt-sel-cell);
 	left:  var(--cl, 0px);
 	width: var(--cw, 60px);
 }
-/* Row selector: labels sit in the right 22px zone; left 10px reserved for drag grips */
+/* Row selector: labels sit in the right label zone; left grip zone reserved for drag grips */
 .bt-row-selector .bt-sel-cell {
-	left: 14px; width: 18px;
+	left: calc(var(--bt-sel-total) - var(--bt-sel-cell)); width: var(--bt-sel-cell);
 	top:    var(--rt, 0px);
 	height: var(--rh, 30px);
 }
@@ -272,7 +276,7 @@
 .bt-sel-resize-col {
 	position: absolute;
 	top: 0;
-	height: 32px; /* match full col-selector height (was 20px, selector grew to 32px) */
+	height: var(--bt-sel-total); /* spans full col-selector height */
 	width: 9px;
 	left: var(--rx, 0px);
 	transform: translateX(-50%);
@@ -282,7 +286,7 @@
 .bt-sel-resize-row {
 	position: absolute;
 	left: 0;
-	width: 32px; /* match full row-selector width (was 20px, selector grew to 32px) */
+	width: var(--bt-sel-total); /* spans full row-selector width */
 	height: 9px;
 	top: var(--ry, 0px);
 	transform: translateY(-50%);
@@ -357,8 +361,8 @@
 .bt-sel-row-drag {
 	position: absolute;
 	left: 1px;
-	width: 10px;
-	height: 18px;
+	width: var(--bt-sel-grip);
+	height: var(--bt-sel-cell);
 	top: var(--rdy, 0px);
 	display: flex;
 	align-items: center;
@@ -371,8 +375,8 @@
 .bt-sel-col-drag {
 	position: absolute;
 	top: 1px;
-	height: 10px;
-	width: 18px;
+	height: var(--bt-sel-grip);
+	width: var(--bt-sel-cell);
 	left: var(--cdx, 0px);
 	transform: translateX(-50%);
 	display: flex;

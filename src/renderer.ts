@@ -8,6 +8,7 @@ import type { ColumnDef, MergeRange, StyleRule, TableModel } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { StructuralOp } from './operations';
 import { colLetterToIndex, colIndexToLetter, parseCellCoord } from './utils';
+import { SEL_TOTAL, SEL_LABEL, AUTOFIT_OFFSET } from './selectorLayout';
 
 type CellChangeHandler    = (row: number, col: number, value: string) => Promise<void>;
 type ColTypeChangeHandler = (colIdx: number, newType: string | undefined) => Promise<void>;
@@ -534,9 +535,9 @@ export async function renderTable(
 			if (tr.width === 0) return;
 			// Center lock btn on the add-col strip's center:
 			//   add-col left = tl + tw + 2, width = 18 → center = tl + tw + 11
-			//   lock width = 22 → left = center - 11 = tl + tw
+			//   lock width = SEL_LABEL = 22 → left = center - 11 = tl + tw
 			lockBtn.setCssProps({
-				'--lk-top':  `${tr.top - rr.top - 22}px`,
+				'--lk-top':  `${tr.top - rr.top - SEL_LABEL}px`,
 				'--lk-left': `${tr.left - rr.left + tr.width}px`,
 			});
 		};
@@ -563,11 +564,10 @@ export async function renderTable(
 			const tr = table.getBoundingClientRect();
 			const rr = root.getBoundingClientRect();
 			if (tr.width === 0) return;
-			// Center on row-selector label cells (18px wide, center at tl - 9)
-			// button 22px wide → left = tl - 9 - 11 = tl - 20
+			// See AUTOFIT_OFFSET in selectorLayout.ts for the derivation
 			autoFitBtn.setCssProps({
-				'--afb-top':  `${tr.top - rr.top - 22}px`,
-				'--afb-left': `${tr.left - rr.left - 20}px`,
+				'--afb-top':  `${tr.top - rr.top - SEL_LABEL}px`,
+				'--afb-left': `${tr.left - rr.left - AUTOFIT_OFFSET}px`,
 			});
 		};
 		window.requestAnimationFrame(positionAutoFitBtn);
@@ -825,11 +825,11 @@ export async function renderTable(
 			const tt = tr.top  - rr.top;
 			colSel.setCssProps({
 				'--cs-left':  `${tl}px`,
-				'--cs-top':   `${tt - 32}px`,
+				'--cs-top':   `${tt - SEL_TOTAL}px`,
 				'--cs-width': `${tr.width}px`,
 			});
 			rowSel.setCssProps({
-				'--rs-left':   `${tl - 32}px`,
+				'--rs-left':   `${tl - SEL_TOTAL}px`,
 				'--rs-top':    `${tt}px`,
 				'--rs-height': `${tr.height}px`,
 			});
@@ -839,7 +839,7 @@ export async function renderTable(
 		// show/hide so that positionEdgeStrips() and positionSelectors() both see
 		// the same layout (table already shifted by --bt-sel-pad).
 		prepareLayout = () => {
-			root.setCssProps({ '--bt-sel-pad': '32px' });
+			root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px` });
 			titleEl?.setCssProps({ '--bt-title-mb-adj': '9px' });
 		};
 		restoreLayout = () => {
