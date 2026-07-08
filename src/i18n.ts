@@ -21,6 +21,8 @@ const EN = {
 	background:  'Background',
 	textColor:   'Text color',
 	fontSize:    'Font size',
+	bold:        'Bold',
+	italic:      'Italic',
 	clearFormat: 'Clear format',
 	apply:       'Apply',
 
@@ -75,6 +77,8 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	background:  '背景色',
 	textColor:   '字体颜色',
 	fontSize:    '字体大小',
+	bold:        '粗体',
+	italic:      '斜体',
 	clearFormat: '清除格式',
 	apply:       '应用',
 

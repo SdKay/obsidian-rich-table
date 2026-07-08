@@ -185,7 +185,7 @@ export async function renderTable(
 				{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
 					action: () => { for (let ci = c2; ci >= c1; ci--) void onStructuralOp({ type: 'delete-col', colIdx: ci }); } },
 			],
-			onApplyStyle: (bg, color, size) => void onStructuralOp({ type: 'set-range-style', target: rangeTarget, bg, color, size }),
+			onApplyStyle: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: rangeTarget, bg, color, size, bold, italic }),
 			onClose: () => { clearSel(); selectionPanel = null; },
 		});
 	};
@@ -932,7 +932,7 @@ export async function renderTable(
 				inheritedStyle: {},
 				showTextColor: true,
 				cellOps,
-				onApplyStyle: (bg, color, size) => void onStructuralOp({ type: 'set-range-style', target, bg, color, size }),
+				onApplyStyle: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target, bg, color, size, bold, italic }),
 				onClose: () => {
 					selectorPanel = null;
 					selAxis = null; selI1 = selI2 = -1;
@@ -1190,7 +1190,7 @@ function renderHeaderCell(
 				onColTypeChange,
 			} : undefined,
 			onApplyStyle: onStructuralOp
-				? (bg, color, size) => void onStructuralOp({ type: 'set-cell-style', rowIdx: 0, colIdx, bg, color, size })
+				? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-cell-style', rowIdx: 0, colIdx, bg, color, size, bold, italic })
 				: () => { /* no-op */ },
 		});
 	};
@@ -1346,8 +1346,8 @@ async function renderDataCell(
 					showTextColor: isMerge,
 					cellOps: ops,
 					onApplyStyle: isMerge
-						? (bg, color, size) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size })
-						: (bg, color, size) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size }),
+						? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size, bold, italic })
+						: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size, bold, italic }),
 				});
 			});
 		}
@@ -1397,8 +1397,8 @@ async function renderDataCell(
 				showTextColor: true,
 				cellOps: ops,
 				onApplyStyle: isMerge
-					? (bg, color, size) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size })
-					: (bg, color, size) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size }),
+					? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size, bold, italic })
+					: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size, bold, italic }),
 			});
 		});
 	}
@@ -1464,8 +1464,8 @@ function renderDateCell(
 				showTextColor: true,
 				cellOps: ops,
 				onApplyStyle: isMerge
-					? (bg, color, size) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size })
-					: (bg, color, size) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size }),
+					? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size, bold, italic })
+					: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size, bold, italic }),
 			});
 		});
 	}
@@ -1482,8 +1482,8 @@ interface CellPanelConfig {
 	anchor:          HTMLElement;
 	els:             HTMLElement[];
 	styleTarget:     string;
-	existingStyle:   { bg?: string; color?: string; size?: number };
-	inheritedStyle?: { bg?: string; color?: string; size?: number };
+	existingStyle:   { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean };
+	inheritedStyle?: { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean };
 	showTextColor:   boolean;
 	cellOps:       CellOpDef[];
 	typeSection?:  {
@@ -1492,20 +1492,22 @@ interface CellPanelConfig {
 		getRegistry:     () => ChoiceRegistry;
 		onColTypeChange: ColTypeChangeHandler;
 	};
-	onApplyStyle: (bg: string | null, color: string | null, size: number | null) => void;
+	onApplyStyle: (bg: string | null, color: string | null, size: number | null, bold: boolean | null, italic: boolean | null) => void;
 	onClose?:     () => void;
 }
 
 /** Effective style of a cell: last-wins aggregation of all matching style rules. */
 function cellEffectiveStyle(
 	model: TableModel, rowIdx: number, colIdx: number,
-): { bg?: string; color?: string; size?: number } {
-	const r: { bg?: string; color?: string; size?: number } = {};
+): { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean } {
+	const r: { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean } = {};
 	for (const rule of model.styles) {
 		if (!matchTarget(rowIdx, colIdx, rule.target)) continue;
-		if (rule.bg)    r.bg    = rule.bg;
-		if (rule.color) r.color = rule.color;
-		if (rule.size)  r.size  = rule.size;
+		if (rule.bg)     r.bg     = rule.bg;
+		if (rule.color)  r.color  = rule.color;
+		if (rule.size)   r.size   = rule.size;
+		if (rule.bold)   r.bold   = rule.bold;
+		if (rule.italic) r.italic = rule.italic;
 	}
 	return r;
 }
@@ -1519,15 +1521,17 @@ function cellEffectiveStyle(
 function cellInheritedStyle(
 	model: TableModel, rowIdx: number, colIdx: number,
 	exactTarget?: string,
-): { bg?: string; color?: string; size?: number } {
+): { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean } {
 	const target = exactTarget ?? `${colIndexToLetter(colIdx)}${rowIdx + 1}`;
-	const r: { bg?: string; color?: string; size?: number } = {};
+	const r: { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean } = {};
 	for (const rule of model.styles) {
 		if (rule.target === target) continue;
 		if (!matchTarget(rowIdx, colIdx, rule.target)) continue;
-		if (rule.bg)    r.bg    = rule.bg;
-		if (rule.color) r.color = rule.color;
-		if (rule.size)  r.size  = rule.size;
+		if (rule.bg)     r.bg     = rule.bg;
+		if (rule.color)  r.color  = rule.color;
+		if (rule.size)   r.size   = rule.size;
+		if (rule.bold)   r.bold   = rule.bold;
+		if (rule.italic) r.italic = rule.italic;
 	}
 	return r;
 }
@@ -1712,6 +1716,8 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 		color:    e.style.getPropertyValue('color'),
 		size:     e.style.getPropertyValue('font-size'),
 		sizeVar:  e.style.getPropertyValue('--bt-cell-font-size'),
+		bold:     e.hasClass('bt-bold'),
+		italic:   e.hasClass('bt-italic'),
 	}));
 	const restoreEls = () => els.forEach((e, i) => {
 		const s = saved[i];
@@ -1720,6 +1726,8 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 		if (s.color)   e.style.setProperty('color', s.color);                  else e.style.removeProperty('color');
 		if (s.size)    e.style.setProperty('font-size', s.size);               else e.style.removeProperty('font-size');
 		if (s.sizeVar) e.style.setProperty('--bt-cell-font-size', s.sizeVar);  else e.style.removeProperty('--bt-cell-font-size');
+		e.toggleClass('bt-bold',   s.bold);
+		e.toggleClass('bt-italic', s.italic);
 	});
 
 	const ar  = anchor.getBoundingClientRect();
@@ -1777,14 +1785,22 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 	});
 	sizeWrap.createSpan({ text: 'px' });
 
+	const boldRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+	boldRow.createSpan({ cls: 'bt-cp-style-label', text: t('bold') });
+	const boldCheck = boldRow.createEl('input', { attr: { type: 'checkbox' } });
+	boldCheck.checked = !!existingStyle.bold;
+
+	const italicRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+	italicRow.createSpan({ cls: 'bt-cp-style-label', text: t('italic') });
+	const italicCheck = italicRow.createEl('input', { attr: { type: 'checkbox' } });
+	italicCheck.checked = !!existingStyle.italic;
+
 	const styleFoot = styleEl.createDiv({ cls: 'bt-cp-style-footer' });
 	const clearBtn  = styleFoot.createEl('button', { cls: 'bt-sp-clear-btn', text: t('clearFormat') });
 	const applyBtn  = styleFoot.createEl('button', { cls: 'bt-sp-apply',     text: t('apply') });
 
 	const preview = () => {
-		// When a checkbox is unchecked, fall back to the inherited value rather than
-		// removing the property. This matches what applyStyleRules produces after Apply:
-		// clearing a cell-specific rule doesn't suppress broader rules (1:1, B*, etc.).
+		// When a checkbox is unchecked, fall back to the inherited value.
 		const bv = bgEnable.checked ? bgPicker.value : (inheritedStyle.bg ?? null);
 		const cv = colorEnable?.checked && colorPicker ? colorPicker.value : (inheritedStyle.color ?? null);
 		const ss = sizeInput.value.trim();
@@ -1799,6 +1815,8 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 				e.style.removeProperty('font-size');
 				e.style.removeProperty('--bt-cell-font-size');
 			}
+			e.toggleClass('bt-bold',   boldCheck.checked   || !!(inheritedStyle.bold   && !boldCheck.checked));
+			e.toggleClass('bt-italic', italicCheck.checked || !!(inheritedStyle.italic && !italicCheck.checked));
 		}
 	};
 	bgEnable.addEventListener('change', () => { bgPicker.disabled = !bgEnable.checked; preview(); });
@@ -1806,6 +1824,8 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 	colorEnable?.addEventListener('change', () => { if (colorPicker) colorPicker.disabled = !colorEnable?.checked; preview(); });
 	colorPicker?.addEventListener('input', preview);
 	sizeInput.addEventListener('input', preview);
+	boldCheck.addEventListener('change', preview);
+	italicCheck.addEventListener('change', preview);
 
 	// Type section
 	if (typeSection) {
@@ -1841,13 +1861,15 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 	};
 	const thisClose = () => close(true);
 	closeActivePanel = thisClose;
-	clearBtn.addEventListener('click', () => { committed = true; onApplyStyle(null, null, null); panel.remove(); config.onClose?.(); });
+	clearBtn.addEventListener('click', () => { committed = true; onApplyStyle(null, null, null, null, null); panel.remove(); config.onClose?.(); });
 	applyBtn.addEventListener('click', () => {
 		committed = true;
 		onApplyStyle(
 			bgEnable.checked ? bgPicker.value : null,
 			colorEnable?.checked ? (colorPicker?.value ?? null) : null,
 			sizeInput.value.trim() ? parseInt(sizeInput.value.trim(), 10) : null,
+			boldCheck.checked ? true : null,
+			italicCheck.checked ? true : null,
 		);
 		panel.remove(); config.onClose?.();
 	});

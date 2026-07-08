@@ -14,8 +14,8 @@ export type StructuralOp =
 	| { type: 'unmerge-cells';   startRow: number; startCol: number }
 	| { type: 'move-row';        fromIdx: number; toIdx: number }
 	| { type: 'move-col';        fromIdx: number; toIdx: number }
-	| { type: 'set-cell-style';  rowIdx: number;  colIdx: number; bg: string | null; color: string | null; size: number | null }
-	| { type: 'set-range-style'; target: string;                 bg: string | null; color: string | null; size: number | null }
+	| { type: 'set-cell-style';  rowIdx: number;  colIdx: number; bg: string | null; color: string | null; size: number | null; bold: boolean | null; italic: boolean | null }
+	| { type: 'set-range-style'; target: string;                 bg: string | null; color: string | null; size: number | null; bold: boolean | null; italic: boolean | null }
 	| { type: 'set-title';       title:  string | undefined }
 	| { type: 'set-footer';      footer: string | string[] | undefined }
 	| { type: 'set-col-width';   colIdx: number; width: number }
@@ -118,7 +118,7 @@ export function applyStructuralOp(model: TableModel, op: StructuralOp): void {
 			break;
 		}
 		case 'set-cell-style': {
-			const { rowIdx, colIdx, bg, color, size } = op;
+			const { rowIdx, colIdx, bg, color, size, bold, italic } = op;
 			const target = `${colIndexToLetter(colIdx)}${rowIdx + 1}`;
 			let rule: StyleRule | undefined = model.styles.find(s => s.target === target);
 			if (!rule) {
@@ -129,7 +129,8 @@ export function applyStructuralOp(model: TableModel, op: StructuralOp): void {
 			if (bg !== null) rule.bg = bg; else delete rule.bg;
 			if (color !== null) rule.color = color; else delete rule.color;
 			if (size !== null) rule.size = size; else delete rule.size;
-			// Remove rule if it carries no styling properties
+			if (bold) rule.bold = true; else delete rule.bold;
+			if (italic) rule.italic = true; else delete rule.italic;
 			if (!rule.bg && !rule.color && !rule.bold && !rule.italic && !rule.size) {
 				model.styles = model.styles.filter(s => s.target !== target);
 			}
@@ -160,7 +161,7 @@ export function applyStructuralOp(model: TableModel, op: StructuralOp): void {
 			break;
 		}
 		case 'set-range-style': {
-			const { target, bg, color, size } = op;
+			const { target, bg, color, size, bold, italic } = op;
 			let rule: StyleRule | undefined = model.styles.find(s => s.target === target);
 			if (!rule) {
 				const newRule: StyleRule = { target };
@@ -170,6 +171,8 @@ export function applyStructuralOp(model: TableModel, op: StructuralOp): void {
 			if (bg !== null) rule.bg = bg; else delete rule.bg;
 			if (color !== null) rule.color = color; else delete rule.color;
 			if (size !== null) rule.size = size; else delete rule.size;
+			if (bold) rule.bold = true; else delete rule.bold;
+			if (italic) rule.italic = true; else delete rule.italic;
 			if (!rule.bg && !rule.color && !rule.bold && !rule.italic && !rule.size) {
 				model.styles = model.styles.filter(s => s.target !== target);
 			}
