@@ -52,6 +52,73 @@ export interface TableModel {
 	locked?: boolean;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// V2 model — ID-based, pipe table is a generated read-only mirror
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Column definition for v2 (adds stable `id`). */
+export interface ColumnDefV2 {
+	id: string;
+	name: string;
+	hidden?: boolean;
+	type?: string;
+	width?: number;
+	align?: 'left' | 'center' | 'right';
+}
+
+/**
+ * Data row for v2.  Does NOT include the header row — headers are derived
+ * from `columns[].name` and never stored in rows[].
+ * Missing colId keys in `cells` are treated as empty string "".
+ */
+export interface RowDefV2 {
+	id: string;
+	hidden?: boolean;
+	height?: number;
+	cells: Record<string, string>; // colId → cell content (always string)
+}
+
+/** Merge range for v2, referenced by row/col IDs. */
+export interface MergeRangeV2 {
+	anchor: string; // "rowId.colId"  — top-left origin
+	end:    string; // "rowId.colId"  — bottom-right extent
+}
+
+/**
+ * Style rule for v2.  `target` is an ID-based string:
+ *   "r_abc"                        whole row
+ *   "c_abc"                        whole column
+ *   "r_abc.c_def"                  single cell
+ *   "r_abc:r_xyz"                  row range
+ *   "c_abc:c_xyz"                  column range
+ *   "r_abc.c_def:r_xyz.c_ghi"     rectangle
+ */
+export interface StyleRuleV2 {
+	target: string;
+	bg?: string;
+	color?: string;
+	bold?: boolean;
+	italic?: boolean;
+	size?: number;
+}
+
+/** Full table model for v2. */
+export interface TableModelV2 {
+	version: 2;
+	title?: string;
+	columns: ColumnDefV2[];
+	rows: RowDefV2[];                    // data rows only — no header
+	merges: MergeRangeV2[];
+	styles: StyleRuleV2[];
+	/** key = colId, value = values to SHOW (empty/absent = no filter) */
+	filter?: Record<string, string[]>;
+	footer?: string | string[];
+	locked?: boolean;
+	theme?: string;   // e.g. 'academic' | 'minimal' | 'striped' — absent = default
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface ChoiceOption {
 	value: string;
 	label?: string;

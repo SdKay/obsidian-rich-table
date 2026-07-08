@@ -3,7 +3,6 @@ import { BetterTableSettingTab, DEFAULT_SETTINGS } from './settings';
 import { ChoiceRegistry } from './choiceRegistry';
 import { TableBlock } from './tableBlock';
 import type { BetterTableSettings } from './model';
-
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
 	choiceRegistry!: ChoiceRegistry;

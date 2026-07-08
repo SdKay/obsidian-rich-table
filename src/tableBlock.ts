@@ -2,11 +2,13 @@ import { MarkdownPostProcessorContext, MarkdownRenderChild, TFile, setIcon } fro
 import { isZh, t, tableVersionTooHighMsg } from './i18n';
 import { CURRENT_TABLE_VERSION, getTableVersion, migrateSource } from './tableVersion';
 import type BetterTablePlugin from './main';
-import type { TableModel } from './model';
+import type { TableModelV2 } from './model';
 import { parseTable } from './parser';
+import { serializeTable } from './serializer';
 import { renderTable } from './renderer';
-import { writeBackModel } from './writeBack';
-import { applyStructuralOp, type StructuralOp } from './operations';
+import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
+import zhTemplate from './templates/zh.yaml';
+import enTemplate from './templates/en.yaml';
 
 /**
  * Module-level render cache keyed by "sourcePath:lineStart".
@@ -17,76 +19,27 @@ import { applyStructuralOp, type StructuralOp } from './operations';
 const renderCache = new Map<string, HTMLElement>();
 
 function getEmptyTemplate(): string {
-	if (isZh()) {
-		return `\
----
-title: 我的表格
-columns:
-  - { name: 功能, width: 190 }
-  - { name: 使用方式, width: 240 }
-  - { name: 状态, type: task-status }
-  - { name: 备注, width: 160 }
-merges:
-  - D3:D4
-styles:
-  - { target: "1:1", bold: true, bg: "#e8f0fe" }
-  - { target: "A2:A7", bold: true }
-  - { target: "B3", bg: "#f0fdf4" }
-  - { target: "D3:D4", bg: "#fef9c3", italic: true, size: 12 }
-footer: "单击编辑 · 双击弹出操作菜单 · 拖拽 ⠿ 排序"
----
-| 功能       | 使用方式                                         | 状态    | 备注              |
-| ---------- | ------------------------------------------------ | ------- | ----------------- |
-| 编辑单元格 | 单击任意单元格开始编辑                           | done    |                   |
-| 双链补全   | 编辑器内输入 [[ 触发文件自动补全                 | done    | 合并单元格+字号12 |
-| 类型列     | 单击有类型的单元格选择值                         | pending |                   |
-| 合并单元格 | 拖拽选中多个格 → 双击弹窗点 Merge                | todo    |                   |
-| 样式设置   | 双击单格设置样式 · 悬停左/上条带选整行/列        | todo    |                   |
-| 行筛选     | 列标题漏斗图标 → 勾选要显示的值                  | todo    |                   |
-| 拖拽排序   | 悬停选择条，从外侧 ⠿ 手柄拖拽排序行 / 列        | todo    |                   |
-| 调整宽高   | 悬停选择条拖拽调整 · 双击自动适配 · 左上角一键全部自适应 | todo    |                   |
-`;
-	}
-	return `\
----
-title: My Table
-columns:
-  - { name: Feature, width: 190 }
-  - { name: How, width: 240 }
-  - { name: Status, type: task-status }
-  - { name: Note, width: 160 }
-merges:
-  - D3:D4
-styles:
-  - { target: "1:1", bold: true, bg: "#e8f0fe" }
-  - { target: "A2:A7", bold: true }
-  - { target: "B3", bg: "#f0fdf4" }
-  - { target: "D3:D4", bg: "#fef9c3", italic: true, size: 12 }
-footer: "Single-click to edit · double-click for cell menu · drag ⠿ to reorder"
----
-| Feature       | How                                              | Status  | Note              |
-| ------------- | ------------------------------------------------ | ------- | ----------------- |
-| Edit cell     | Single-click any cell to start editing           | done    |                   |
-| Wikilinks     | Type [[ inside editor for file autocomplete      | done    | Merged & size 12  |
-| Choice column | Single-click typed cell to pick from dropdown    | pending |                   |
-| Merge cells   | Drag-select → Merge in the double-click popup    | todo    |                   |
-| Cell style    | Double-click cell · hover left/top strip for row/col style | todo    |                   |
-| Filter        | Funnel icon on column header → check values to show       | todo    |                   |
-| Reorder       | Hover selector strip · drag ⠿ grip on outer edge | todo    |                   |
-| Resize        | Hover selector strip · drag/dbl-click to resize · top-left ⊞ to auto-fit all | todo    |                   |
-`;
+	return isZh() ? zhTemplate : enTemplate;
 }
 
 
+/** True when the table's YAML front-matter contains `noUpgrade: true`. */
+function hasUpgradeSuppressed(source: string): boolean {
+	const lines = source.split('\n');
+	if (lines[0]?.trim() !== '---') return false;
+	for (let i = 1; i < lines.length; i++) {
+		if (lines[i]?.trim() === '---') break;
+		if (/^noUpgrade:\s*true/.test(lines[i] ?? '')) return true;
+	}
+	return false;
+}
+
 export class TableBlock extends MarkdownRenderChild {
-	private model: TableModel | null = null;
-	// Serialised write chain — every write is chained so they execute
-	// strictly in order and can never interleave (same pattern as
-	// obsidian-better-tables' queueWrite).
+	private model: TableModelV2 | null = null;
+	// Serialised write chain — strictly ordered so concurrent writes never interleave.
 	private writeChain: Promise<void> = Promise.resolve();
-	// Batch queue: ops that arrive in the same JS tick are collected so
-	// only a single vault.process call is made for the whole batch.
-	private pendingOps: StructuralOp[] = [];
+	// Batch queue: ops arriving in the same JS tick are applied together in one write.
+	private pendingOps: StructuralOpV2[] = [];
 	private writeBackScheduled = false;
 
 	constructor(
@@ -138,29 +91,60 @@ export class TableBlock extends MarkdownRenderChild {
 				while (tmp.firstChild) this.containerEl.appendChild(tmp.firstChild);
 				return;
 			}
-			if (tableV < CURRENT_TABLE_VERSION) {
-				// Table is older — auto-migrate, write back, then continue rendering.
-				await this.applyMigration(tableV);
-				// applyMigration updates this.source in-place via vault.process;
-				// render() will be re-triggered by the vault change event, so return here.
-				return;
+			if (tableV < CURRENT_TABLE_VERSION && !hasUpgradeSuppressed(this.source)) {
+				// Table uses an older format — show upgrade banner; user must opt in.
+				const banner = tmp.createDiv({ cls: 'bt-upgrade-banner' });
+				const iconEl = banner.createSpan({ cls: 'bt-upgrade-banner-icon' });
+				setIcon(iconEl, 'sparkles');
+				const msg = banner.createDiv({ cls: 'bt-upgrade-banner-body' });
+				msg.createSpan({
+					text: isZh()
+						? '该表格使用旧版格式，新版格式支持更多功能。转换时将自动修改表格代码块，可用 Ctrl+Z 撤回。'
+						: 'This table uses an older format. The new format supports more features. Converting will update the code block — you can undo with Ctrl+Z.',
+				});
+				const btnRow = msg.createDiv({ cls: 'bt-upgrade-banner-btns' });
+				const upgradeBtn = btnRow.createEl('button', {
+					cls: 'bt-upgrade-banner-btn',
+					text: isZh() ? '转换到新版格式' : 'Convert to new format',
+				});
+				upgradeBtn.addEventListener('click', () => void this.applyMigration(tableV));
+				const ignoreBtn = btnRow.createEl('button', {
+					cls: 'bt-upgrade-banner-btn bt-upgrade-banner-btn-muted',
+					text: isZh() ? '继续使用旧版' : 'Keep old format',
+				});
+				ignoreBtn.addEventListener('click', () => void this.suppressUpgradeBanner());
+				// Also render the table below the banner so it remains usable.
 			}
 		}
 
-		// Disable all interactive callbacks in reading view unless the setting allows it.
-		// containerEl.closest() works reliably here because the block is already attached
-		// to the DOM before render() is called (via the cache-inject path in onload).
+		// Defer one frame so containerEl is in its final DOM position.
+		// On initial load and write-back re-renders, Obsidian calls the processor
+		// BEFORE inserting containerEl into .markdown-reading-view, so an immediate
+		// closest() check returns null. After rAF the DOM is settled.
+		// Do NOT check isConnected — CM6 may destroy/recreate live-preview widgets
+		// between the render call and the rAF; rendering to a detached el is harmless.
+		await new Promise<void>(r => window.requestAnimationFrame(() => r()));
+
+		// .markdown-reading-view is the correct selector — same as v1, works after rAF.
 		const isReadingView = !!(this.containerEl.closest('.markdown-reading-view'));
-		// editAllowed: full interactive callbacks — disabled in reading view (unless setting)
-		//              AND disabled when the table is explicitly locked.
-		const editAllowed = (!isReadingView || this.plugin.settings.allowReadingViewEdit);
-		// lockAvailable: the lock toggle button is shown only in edit/live-preview mode.
-		//                It is NOT shown in reading view (lock state is already irrelevant there).
-		const lockAvailable = !isReadingView && !isEmpty;
+		const editAllowed   = (!isReadingView || this.plugin.settings.allowReadingViewEdit);
+
+		const source     = isEmpty ? getEmptyTemplate() : this.source;
+		const tableV     = isEmpty ? CURRENT_TABLE_VERSION : getTableVersion(source);
+		// isOldFormat: v1 tables are read-only until the user explicitly upgrades.
+		// Also prevents the lock button from accidentally triggering a v1→v2 write-back.
+		const isOldFormat   = !isEmpty && tableV < CURRENT_TABLE_VERSION;
+		// lockAvailable: only for current-format tables in live-preview mode.
+		const lockAvailable = !isReadingView && !isEmpty && !isOldFormat;
 
 		try {
-			const source = isEmpty ? getEmptyTemplate() : this.source;
-			this.model = parseTable(source);
+			if (tableV >= CURRENT_TABLE_VERSION) {
+				// Current-format table: parse directly.
+				this.model = parseTable(source);
+			} else {
+				// Older format: migrate in-memory for a read-only preview.
+				this.model = parseTable(migrateSource(source, tableV));
+			}
 			const locked = this.model.locked ?? false;
 			await renderTable(
 				this.model,
@@ -169,9 +153,7 @@ export class TableBlock extends MarkdownRenderChild {
 				this.plugin.app,
 				this.sourcePath,
 				this,
-				(isEmpty || !editAllowed || locked) ? undefined : (row, col, value) => this.handleCellChange(row, col, value),
-				(isEmpty || !editAllowed || locked) ? undefined : (colIdx, newType) => this.handleColTypeChange(colIdx, newType),
-				(isEmpty || !editAllowed || locked) ? undefined : (op) => this.handleStructuralOp(op),
+				(isEmpty || !editAllowed || locked || isOldFormat) ? undefined : (op) => this.handleStructuralOp(op),
 				lockAvailable ? () => this.handleStructuralOp({ type: 'toggle-lock' }) : undefined,
 			);
 			if (isEmpty) {
@@ -200,7 +182,7 @@ export class TableBlock extends MarkdownRenderChild {
 		}
 	}
 
-	private async handleStructuralOp(op: StructuralOp): Promise<void> {
+	private async handleStructuralOp(op: StructuralOpV2): Promise<void> {
 		if (!this.model) return;
 		// Queue the op — it will be applied along with any other ops that
 		// arrive in the same JS tick before the single write-back fires.
@@ -211,8 +193,10 @@ export class TableBlock extends MarkdownRenderChild {
 		await new Promise<void>(resolve => { window.setTimeout(resolve, 0); });
 		this.writeBackScheduled = false;
 
-		// Apply all queued ops at once.
-		for (const pending of this.pendingOps) applyStructuralOp(this.model, pending);
+		// Apply all queued ops to the v2 model in order.
+		for (const pending of this.pendingOps) {
+			applyStructuralOpV2(this.model, pending);
+		}
 		this.pendingOps = [];
 
 		// Capture line info NOW (while containerEl is still attached to DOM).
@@ -220,54 +204,56 @@ export class TableBlock extends MarkdownRenderChild {
 		if (!(file instanceof TFile)) return;
 		const info = this.ctx.getSectionInfo(this.containerEl);
 
-		// Chain onto the write queue so concurrent write-backs never interleave.
-		const model = this.model;
-		const ctx   = this.ctx;
-		const el    = this.containerEl;
-		const vault = this.plugin.app.vault;
+		// Serialize the updated v2 model and write it back.
+		const newSource = serializeTable(this.model);
 		this.writeChain = this.writeChain.then(
-			() => writeBackModel(model, el, ctx, vault, file, info),
-			() => writeBackModel(model, el, ctx, vault, file, info),
+			() => this.writeRawSource(newSource, this.plugin.app.vault, file, info),
+			() => this.writeRawSource(newSource, this.plugin.app.vault, file, info),
 		);
 	}
 
-	private async handleColTypeChange(colIdx: number, newType: string | undefined): Promise<void> {
-		if (!this.model) return;
-
-		const col = this.model.columns[colIdx];
-		if (!col) return;
-
-		col.type = newType;
-
-		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
-		if (!(file instanceof TFile)) return;
-
-		await writeBackModel(this.model, this.containerEl, this.ctx, this.plugin.app.vault, file);
+	/** Write a raw source string back into the vault, replacing the block content. */
+	private async writeRawSource(
+		newSource: string,
+		vault: typeof this.plugin.app.vault,
+		file: TFile,
+		info: ReturnType<typeof this.ctx.getSectionInfo>,
+	): Promise<void> {
+		if (!info) return;
+		await vault.process(file, content => {
+			const lines = content.split('\n');
+			return [
+				...lines.slice(0, info.lineStart + 1),
+				...newSource.trimEnd().split('\n'),
+				...lines.slice(info.lineEnd),
+			].join('\n');
+		});
 	}
 
-	private async handleCellChange(row: number, col: number, value: string): Promise<void> {
-		if (!this.model) return;
-
-		const rowArr = this.model.rows[row];
-		if (!rowArr) return;
-
-		while (rowArr.length <= col) rowArr.push('');
-		rowArr[col] = value;
-
-		// Keep column definition in sync when the header row is edited
-		if (row === 0) {
-			const colDef = this.model.columns[col];
-			if (colDef) colDef.name = value;
-		}
-
+	/** Write `noUpgrade: true` into the code block front-matter to suppress future banners. */
+	private async suppressUpgradeBanner(): Promise<void> {
 		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
 		if (!(file instanceof TFile)) return;
-
-		await writeBackModel(this.model, this.containerEl, this.ctx, this.plugin.app.vault, file);
+		const info = this.ctx.getSectionInfo(this.containerEl);
+		if (!info) return;
+		await this.plugin.app.vault.process(file, content => {
+			const lines = content.split('\n');
+			const blockLines = lines.slice(info.lineStart + 1, info.lineEnd);
+			if (blockLines[0]?.trim() === '---') {
+				// Front-matter exists — insert noUpgrade after opening ---
+				blockLines.splice(1, 0, 'noUpgrade: true');
+			} else {
+				// No front-matter yet — add a minimal one
+				blockLines.unshift('---', 'noUpgrade: true', '---');
+			}
+			return [
+				...lines.slice(0, info.lineStart + 1),
+				...blockLines,
+				...lines.slice(info.lineEnd),
+			].join('\n');
+		});
 	}
 
-	/** Migrate the source from `fromVersion` to CURRENT_TABLE_VERSION and write it back.
-	 *  The vault change will re-trigger render(), so the caller should return immediately. */
 	private async applyMigration(fromVersion: number): Promise<void> {
 		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
 		if (!(file instanceof TFile)) return;
@@ -289,13 +275,16 @@ export class TableBlock extends MarkdownRenderChild {
 		if (!(file instanceof TFile)) return;
 		const info = this.ctx.getSectionInfo(this.containerEl);
 		if (!info) return;
+		// Template is already v2 format — insert directly.
+		const v2Template = getEmptyTemplate();
 		await this.plugin.app.vault.process(file, content => {
 			const lines = content.split('\n');
 			return [
 				...lines.slice(0, info.lineStart + 1),
-				...getEmptyTemplate().trimEnd().split('\n'),
+				...v2Template.trimEnd().split('\n'),
 				...lines.slice(info.lineEnd),
 			].join('\n');
 		});
 	}
 }
+

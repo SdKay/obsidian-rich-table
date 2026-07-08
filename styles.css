@@ -140,6 +140,27 @@
 	background: var(--interactive-accent-hover);
 }
 
+/* ── Theme picker button ─────────────────────────────────────────────────── */
+.bt-theme-btn {
+	position: absolute;
+	top:  var(--tb-top,  calc(-1 * var(--bt-sel-label)));
+	left: var(--tb-left, calc(var(--bt-lock-table-w, 100%) + 22px));
+	width: var(--bt-sel-cell);
+	height: var(--bt-sel-cell);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	border-radius: var(--radius-s);
+	opacity: 0;
+	transition: opacity 0.08s, background 0.08s;
+	color: var(--text-faint);
+	z-index: 11;
+}
+.bt-theme-btn svg { width: 13px; height: 13px; }
+.bt-theme-btn.bt-btn-visible { opacity: 1; }
+.bt-theme-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+
 /* ── Lock button ─────────────────────────────────────────────────────────── */
 /* Sits at the corner between the col selector and the add-col button.
  * Unlocked: faint, reveals on root hover. Locked: always visible with accent colour. */
@@ -485,11 +506,48 @@
 .bt-table .bt-bold   { font-weight: bold; }
 .bt-table .bt-italic { font-style: italic; }
 
-/* Paragraph tags added by MarkdownRenderer — reset margins and inherit alignment */
+/* MarkdownRenderer wraps content in <div.markdown-rendered> inside each cell.
+ * Override Obsidian's spacing CSS variables so themes can't add gaps via var(). */
+.bt-table .bt-td,
+.bt-table .bt-th {
+	--p-spacing: 0px;
+	--list-spacing: 0px;
+	--list-spacing-bt: 0px;
+	--list-item-spacing: 0px; /* theme variable used by custom CSS snippets */
+	--list-indent: 1.4em;
+}
 .bt-table .bt-td p,
 .bt-table .bt-th p {
 	margin: 0;
 	text-align: inherit;
+}
+/* bt-list-block: inline-block so the list centers as a unit while items stay left-aligned */
+.bt-table .bt-td .bt-list-block,
+.bt-table .bt-th .bt-list-block {
+	display: inline-block;
+	text-align: left;
+}
+/* Code blocks: inline-block so the block centers as a unit (follows column alignment)
+ * while code text itself is always left-aligned and indentation is preserved.
+ * !important needed — themes often override pre display and text-align. */
+.bt-table .bt-td pre,
+.bt-table .bt-th pre {
+	display: inline-block !important;
+	text-align: left !important;
+	max-width: 100%;
+	box-sizing: border-box;
+	white-space: pre !important;
+	overflow-x: auto;
+}
+/* Cell editor is always left-aligned so code indentation is visible while typing */
+.bt-table .bt-td .bt-cell-editor,
+.bt-table .bt-th .bt-cell-editor {
+	text-align: left;
+	white-space: pre-wrap;
+}
+.bt-table .bt-td .bt-list-marker,
+.bt-table .bt-th .bt-list-marker {
+	user-select: none;
 }
 /* Temporary class applied during autoFitColWidth measurement to get single-line width */
 .bt-nowrap-measure { white-space: nowrap !important; }
@@ -1024,6 +1082,58 @@
 	background: var(--interactive-accent-hover);
 }
 
+/* Upgrade-available notice — positive/blue tone, not a warning */
+.bt-upgrade-banner {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-4-2);
+	padding: var(--size-4-3) var(--size-4-4);
+	background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+	border-radius: var(--radius-m);
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	line-height: 1.5;
+	margin-bottom: var(--size-4-2);
+}
+.bt-upgrade-banner-icon {
+	flex-shrink: 0;
+	color: var(--interactive-accent);
+	margin-top: 1px;
+}
+.bt-upgrade-banner-icon svg { width: 16px; height: 16px; }
+.bt-upgrade-banner-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+.bt-upgrade-banner-btns {
+	display: flex;
+	gap: var(--size-4-2);
+	flex-wrap: wrap;
+}
+.bt-upgrade-banner-btn {
+	padding: 3px var(--size-4-3);
+	border-radius: var(--radius-s);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+}
+.bt-upgrade-banner-btn:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+}
+.bt-upgrade-banner-btn-muted {
+	border-color: var(--background-modifier-border);
+	background: transparent;
+	color: var(--text-muted);
+}
+.bt-upgrade-banner-btn-muted:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
 /* Version-too-high notice — softer warning style, not a hard error */
 .bt-version-banner {
 	display: flex;
@@ -1189,4 +1299,548 @@
 .bt-opt-delete:hover {
 	color: var(--text-error);
 	background: var(--background-modifier-error);
+}
+
+
+/* ── Built-in themes (auto-generated — do not edit below) ──── */
+/*
+ * Academic (booktabs) theme — inspired by LaTeX's booktabs package.
+ * Three horizontal rules only: toprule / midrule / bottomrule.
+ * No vertical lines, no background colors.
+ */
+
+/* Remove all cell borders */
+.bt-theme-academic .bt-table .bt-th,
+.bt-theme-academic .bt-table .bt-td {
+    border: none !important;
+    background: none !important;
+}
+
+/* Toprule — thick line above the header */
+.bt-theme-academic .bt-table thead tr:first-child .bt-th {
+    border-top: 1.5px solid var(--text-muted) !important;
+}
+
+/* Midrule — medium line below the header */
+.bt-theme-academic .bt-table .bt-th {
+    border-bottom: 0.8px solid var(--text-muted) !important;
+}
+
+/* Bottomrule — thick line after the last data row */
+.bt-theme-academic .bt-table tbody tr:last-child .bt-td {
+    border-bottom: 1.5px solid var(--text-muted) !important;
+}
+
+/* Remove outer table border (collapse already handles it) */
+.bt-theme-academic .bt-table {
+    border: none;
+}
+
+/*
+ * Fancy theme — colorful gradients, smooth hover animations, glowing effects.
+ */
+
+/* Table-level: gradient header with bottom glow */
+.bt-theme-fancy .bt-table {
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.18), 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* Header: purple→blue gradient */
+.bt-theme-fancy .bt-table .bt-th {
+    background: linear-gradient(135deg, #6d28d9, #2563eb) !important;
+    color: #fff !important;
+    border: none !important;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Data cells: subtle border, transparent bg */
+.bt-theme-fancy .bt-table .bt-td {
+    border-color: rgba(124, 58, 237, 0.15) !important;
+    transition: background 0.18s ease, transform 0.12s ease;
+}
+
+/* Row hover: highlight + slight lift */
+.bt-theme-fancy .bt-table tbody tr:hover .bt-td {
+    background: color-mix(in srgb, #7c3aed 8%, var(--background-primary)) !important;
+}
+
+/* Alternating rows: very subtle tint */
+.bt-theme-fancy .bt-table tbody tr:nth-child(even) .bt-td {
+    background: color-mix(in srgb, #2563eb 4%, transparent);
+}
+
+/* Choice pills: glowing border on hover */
+.bt-theme-fancy .bt-table .bt-choice {
+    transition: box-shadow 0.18s ease;
+}
+.bt-theme-fancy .bt-table .bt-choice:hover {
+    box-shadow: 0 0 8px 1px var(--interactive-accent);
+}
+
+/* Selection highlight: neon accent */
+.bt-theme-fancy .bt-table .bt-td.bt-selected,
+.bt-theme-fancy .bt-table .bt-th.bt-selected {
+    outline-color: #a855f7 !important;
+    background: color-mix(in srgb, #a855f7 20%, transparent) !important;
+}
+
+/* Footer & title: accent color */
+.bt-theme-fancy ~ .bt-table-footer {
+    color: #7c3aed;
+    font-weight: 600;
+}
+
+/*
+ * Minimal theme — no vertical lines, only horizontal separators.
+ * Clean look with slightly more padding.
+ */
+
+/* Remove vertical borders */
+.bt-theme-minimal .bt-table .bt-th,
+.bt-theme-minimal .bt-table .bt-td {
+    border-left: none !important;
+    border-right: none !important;
+    background: none !important;
+}
+
+/* Lighten horizontal borders */
+.bt-theme-minimal .bt-table .bt-th,
+.bt-theme-minimal .bt-table .bt-td {
+    border-top: none !important;
+    border-bottom: 1px solid var(--background-modifier-border) !important;
+}
+
+/* Remove top border on first row (table has its own top border already) */
+.bt-theme-minimal .bt-table thead tr:first-child .bt-th {
+    border-top: none !important;
+}
+
+/* Slightly bolder header separator */
+.bt-theme-minimal .bt-table .bt-th {
+    border-bottom: 1.2px solid var(--text-muted) !important;
+}
+
+.bt-theme-minimal .bt-table {
+    border: none;
+}
+
+/*
+ * Striped theme — alternating row background for easy reading.
+ */
+
+.bt-theme-striped .bt-table tbody tr:nth-child(even) .bt-td {
+    background: color-mix(in srgb, var(--background-secondary) 60%, transparent);
+}
+
+
+/* ── Built-in themes (auto-generated — do not edit below) ──── */
+/*
+ * Academic (booktabs) theme — inspired by LaTeX's booktabs package.
+ * Three horizontal rules only: toprule / midrule / bottomrule.
+ * No vertical lines, no background colors.
+ */
+
+/* Remove all cell borders */
+.bt-theme-academic .bt-table .bt-th,
+.bt-theme-academic .bt-table .bt-td {
+    border: none !important;
+    background: none !important;
+}
+
+/* Toprule — thick line above the header */
+.bt-theme-academic .bt-table thead tr:first-child .bt-th {
+    border-top: 1.5px solid var(--text-muted) !important;
+}
+
+/* Midrule — medium line below the header */
+.bt-theme-academic .bt-table .bt-th {
+    border-bottom: 0.8px solid var(--text-muted) !important;
+}
+
+/* Bottomrule — thick line after the last data row */
+.bt-theme-academic .bt-table tbody tr:last-child .bt-td {
+    border-bottom: 1.5px solid var(--text-muted) !important;
+}
+
+/* Remove outer table border (collapse already handles it) */
+.bt-theme-academic .bt-table {
+    border: none;
+}
+
+/*
+ * Fancy theme — colorful gradients, smooth hover animations, glowing effects.
+ */
+
+/* Table-level: gradient header with bottom glow */
+.bt-theme-fancy .bt-table {
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.18), 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* Header: purple→blue gradient */
+.bt-theme-fancy .bt-table .bt-th {
+    background: linear-gradient(135deg, #6d28d9, #2563eb) !important;
+    color: #fff !important;
+    border: none !important;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Data cells: subtle border, transparent bg */
+.bt-theme-fancy .bt-table .bt-td {
+    border-color: rgba(124, 58, 237, 0.15) !important;
+    transition: background 0.18s ease, transform 0.12s ease;
+}
+
+/* Row hover: highlight + slight lift */
+.bt-theme-fancy .bt-table tbody tr:hover .bt-td {
+    background: color-mix(in srgb, #7c3aed 8%, var(--background-primary)) !important;
+}
+
+/* Alternating rows: very subtle tint */
+.bt-theme-fancy .bt-table tbody tr:nth-child(even) .bt-td {
+    background: color-mix(in srgb, #2563eb 4%, transparent);
+}
+
+/* Choice pills: glowing border on hover */
+.bt-theme-fancy .bt-table .bt-choice {
+    transition: box-shadow 0.18s ease;
+}
+.bt-theme-fancy .bt-table .bt-choice:hover {
+    box-shadow: 0 0 8px 1px var(--interactive-accent);
+}
+
+/* Selection highlight: neon accent */
+.bt-theme-fancy .bt-table .bt-td.bt-selected,
+.bt-theme-fancy .bt-table .bt-th.bt-selected {
+    outline-color: #a855f7 !important;
+    background: color-mix(in srgb, #a855f7 20%, transparent) !important;
+}
+
+/* Footer & title: accent color */
+.bt-theme-fancy ~ .bt-table-footer {
+    color: #7c3aed;
+    font-weight: 600;
+}
+
+/*
+ * Minimal theme — no vertical lines, only horizontal separators.
+ * Clean look with slightly more padding.
+ */
+
+/* Remove vertical borders */
+.bt-theme-minimal .bt-table .bt-th,
+.bt-theme-minimal .bt-table .bt-td {
+    border-left: none !important;
+    border-right: none !important;
+    background: none !important;
+}
+
+/* Lighten horizontal borders */
+.bt-theme-minimal .bt-table .bt-th,
+.bt-theme-minimal .bt-table .bt-td {
+    border-top: none !important;
+    border-bottom: 1px solid var(--background-modifier-border) !important;
+}
+
+/* Remove top border on first row (table has its own top border already) */
+.bt-theme-minimal .bt-table thead tr:first-child .bt-th {
+    border-top: none !important;
+}
+
+/* Slightly bolder header separator */
+.bt-theme-minimal .bt-table .bt-th {
+    border-bottom: 1.2px solid var(--text-muted) !important;
+}
+
+.bt-theme-minimal .bt-table {
+    border: none;
+}
+
+/*
+ * Striped theme — alternating row background for easy reading.
+ */
+
+.bt-theme-striped .bt-table tbody tr:nth-child(even) .bt-td {
+    background: color-mix(in srgb, var(--background-secondary) 60%, transparent);
+}
+
+
+/* ── Built-in themes (auto-generated — do not edit below) ──── */
+/*
+ * Academic (booktabs) theme — inspired by LaTeX's booktabs package.
+ * Three horizontal rules only: toprule / midrule / bottomrule.
+ * No vertical lines, no background colors.
+ */
+
+/* Remove all cell borders */
+.bt-theme-academic .bt-table .bt-th,
+.bt-theme-academic .bt-table .bt-td {
+    border: none !important;
+    background: none !important;
+}
+
+/* Toprule — thick line above the header */
+.bt-theme-academic .bt-table thead tr:first-child .bt-th {
+    border-top: 1.5px solid var(--text-muted) !important;
+}
+
+/* Midrule — medium line below the header */
+.bt-theme-academic .bt-table .bt-th {
+    border-bottom: 0.8px solid var(--text-muted) !important;
+}
+
+/* Bottomrule — thick line after the last data row */
+.bt-theme-academic .bt-table tbody tr:last-child .bt-td {
+    border-bottom: 1.5px solid var(--text-muted) !important;
+}
+
+/* Remove outer table border (collapse already handles it) */
+.bt-theme-academic .bt-table {
+    border: none;
+}
+
+/*
+ * Fancy theme — colorful gradients, smooth hover animations, glowing effects.
+ */
+
+/* Table-level: gradient header with bottom glow */
+.bt-theme-fancy .bt-table {
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.18), 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* Header: purple→blue gradient */
+.bt-theme-fancy .bt-table .bt-th {
+    background: linear-gradient(135deg, #6d28d9, #2563eb) !important;
+    color: #fff !important;
+    border: none !important;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Data cells: subtle border, transparent bg */
+.bt-theme-fancy .bt-table .bt-td {
+    border-color: rgba(124, 58, 237, 0.15) !important;
+    transition: background 0.18s ease, transform 0.12s ease;
+}
+
+/* Row hover: highlight + slight lift */
+.bt-theme-fancy .bt-table tbody tr:hover .bt-td {
+    background: color-mix(in srgb, #7c3aed 8%, var(--background-primary)) !important;
+}
+
+/* Alternating rows: very subtle tint */
+.bt-theme-fancy .bt-table tbody tr:nth-child(even) .bt-td {
+    background: color-mix(in srgb, #2563eb 4%, transparent);
+}
+
+/* Choice pills: glowing border on hover */
+.bt-theme-fancy .bt-table .bt-choice {
+    transition: box-shadow 0.18s ease;
+}
+.bt-theme-fancy .bt-table .bt-choice:hover {
+    box-shadow: 0 0 8px 1px var(--interactive-accent);
+}
+
+/* Selection highlight: neon accent */
+.bt-theme-fancy .bt-table .bt-td.bt-selected,
+.bt-theme-fancy .bt-table .bt-th.bt-selected {
+    outline-color: #a855f7 !important;
+    background: color-mix(in srgb, #a855f7 20%, transparent) !important;
+}
+
+/* Footer & title: accent color */
+.bt-theme-fancy ~ .bt-table-footer {
+    color: #7c3aed;
+    font-weight: 600;
+}
+
+/*
+ * Minimal theme — no vertical lines, only horizontal separators.
+ * Clean look with slightly more padding.
+ */
+
+/* Remove vertical borders */
+.bt-theme-minimal .bt-table .bt-th,
+.bt-theme-minimal .bt-table .bt-td {
+    border-left: none !important;
+    border-right: none !important;
+    background: none !important;
+}
+
+/* Lighten horizontal borders */
+.bt-theme-minimal .bt-table .bt-th,
+.bt-theme-minimal .bt-table .bt-td {
+    border-top: none !important;
+    border-bottom: 1px solid var(--background-modifier-border) !important;
+}
+
+/* Remove top border on first row (table has its own top border already) */
+.bt-theme-minimal .bt-table thead tr:first-child .bt-th {
+    border-top: none !important;
+}
+
+/* Slightly bolder header separator */
+.bt-theme-minimal .bt-table .bt-th {
+    border-bottom: 1.2px solid var(--text-muted) !important;
+}
+
+.bt-theme-minimal .bt-table {
+    border: none;
+}
+
+/*
+ * Striped theme — alternating row background for easy reading.
+ */
+
+.bt-theme-striped .bt-table tbody tr:nth-child(even) .bt-td {
+    background: color-mix(in srgb, var(--background-secondary) 60%, transparent);
+}
+
+
+/* ── Built-in themes (auto-generated — do not edit below) ──── */
+/*
+ * Academic (booktabs) theme — inspired by LaTeX's booktabs package.
+ * Three horizontal rules only: toprule / midrule / bottomrule.
+ * No vertical lines, no background colors.
+ */
+
+/* Remove all cell borders */
+.bt-theme-academic .bt-table .bt-th,
+.bt-theme-academic .bt-table .bt-td {
+    border: none !important;
+    background: none !important;
+}
+
+/* Toprule — thick line above the header */
+.bt-theme-academic .bt-table thead tr:first-child .bt-th {
+    border-top: 1.5px solid var(--text-muted) !important;
+}
+
+/* Midrule — medium line below the header */
+.bt-theme-academic .bt-table .bt-th {
+    border-bottom: 0.8px solid var(--text-muted) !important;
+}
+
+/* Bottomrule — thick line after the last data row */
+.bt-theme-academic .bt-table tbody tr:last-child .bt-td {
+    border-bottom: 1.5px solid var(--text-muted) !important;
+}
+
+/* Remove outer table border (collapse already handles it) */
+.bt-theme-academic .bt-table {
+    border: none;
+}
+
+/*
+ * Fancy theme — colorful gradients, smooth hover animations, glowing effects.
+ */
+
+/* Table-level: gradient header with bottom glow */
+.bt-theme-fancy .bt-table {
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.18), 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* Header: purple→blue gradient */
+.bt-theme-fancy .bt-table .bt-th {
+    background: linear-gradient(135deg, #6d28d9, #2563eb) !important;
+    color: #fff !important;
+    border: none !important;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Data cells: subtle border, transparent bg */
+.bt-theme-fancy .bt-table .bt-td {
+    border-color: rgba(124, 58, 237, 0.15) !important;
+    transition: background 0.18s ease, transform 0.12s ease;
+}
+
+/* Row hover: highlight + slight lift */
+.bt-theme-fancy .bt-table tbody tr:hover .bt-td {
+    background: color-mix(in srgb, #7c3aed 8%, var(--background-primary)) !important;
+}
+
+/* Alternating rows: very subtle tint */
+.bt-theme-fancy .bt-table tbody tr:nth-child(even) .bt-td {
+    background: color-mix(in srgb, #2563eb 4%, transparent);
+}
+
+/* Choice pills: glowing border on hover */
+.bt-theme-fancy .bt-table .bt-choice {
+    transition: box-shadow 0.18s ease;
+}
+.bt-theme-fancy .bt-table .bt-choice:hover {
+    box-shadow: 0 0 8px 1px var(--interactive-accent);
+}
+
+/* Selection highlight: neon accent */
+.bt-theme-fancy .bt-table .bt-td.bt-selected,
+.bt-theme-fancy .bt-table .bt-th.bt-selected {
+    outline-color: #a855f7 !important;
+    background: color-mix(in srgb, #a855f7 20%, transparent) !important;
+}
+
+/* Footer & title: accent color */
+.bt-theme-fancy ~ .bt-table-footer {
+    color: #7c3aed;
+    font-weight: 600;
+}
+
+/*
+ * Minimal theme — no vertical lines, only horizontal separators.
+ * Clean look with slightly more padding.
+ */
+
+/* Remove vertical borders */
+.bt-theme-minimal .bt-table .bt-th,
+.bt-theme-minimal .bt-table .bt-td {
+    border-left: none !important;
+    border-right: none !important;
+    background: none !important;
+}
+
+/* Lighten horizontal borders */
+.bt-theme-minimal .bt-table .bt-th,
+.bt-theme-minimal .bt-table .bt-td {
+    border-top: none !important;
+    border-bottom: 1px solid var(--background-modifier-border) !important;
+}
+
+/* Remove top border on first row (table has its own top border already) */
+.bt-theme-minimal .bt-table thead tr:first-child .bt-th {
+    border-top: none !important;
+}
+
+/* Slightly bolder header separator */
+.bt-theme-minimal .bt-table .bt-th {
+    border-bottom: 1.2px solid var(--text-muted) !important;
+}
+
+.bt-theme-minimal .bt-table {
+    border: none;
+}
+
+/*
+ * Striped theme — alternating row background for easy reading.
+ */
+
+.bt-theme-striped .bt-table tbody tr:nth-child(even) .bt-td {
+    background: color-mix(in srgb, var(--background-secondary) 60%, transparent);
 }

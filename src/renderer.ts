@@ -4,33 +4,70 @@ import {
 	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
 } from './i18n';
 import { WikilinkInputSuggest } from './wikilinkInputSuggest';
-import type { ColumnDef, MergeRange, StyleRule, TableModel } from './model';
+import type { ColumnDefV2, TableModelV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
-import type { StructuralOp } from './operations';
-import { colLetterToIndex, colIndexToLetter, parseCellCoord } from './utils';
+import type { StructuralOpV2 } from './operations';
+import { colIndexToLetter } from './utils';
 import { SEL_TOTAL, SEL_LABEL, AUTOFIT_OFFSET } from './selectorLayout';
+import { resolveStylesV2, resolveHeaderStylesV2, parseStyleTarget, matchesHeaderCell, matchesCell, type ResolvedStyleV2 } from './styleTarget';
+import type { StyleRuleV2 } from './model';
 
-type CellChangeHandler    = (row: number, col: number, value: string) => Promise<void>;
-type ColTypeChangeHandler = (colIdx: number, newType: string | undefined) => Promise<void>;
-type StructuralOpHandler  = (op: StructuralOp) => Promise<void>;
-type ToggleLockHandler    = () => Promise<void>;
+type OpHandler         = (op: StructuralOpV2) => Promise<void>;
+type ToggleLockHandler = () => Promise<void>;
+
+// Internal adapter types — same call-shape as v1 handlers, wired through OpHandler
+type CellChangeHandler    = (rowIdx: number, colIdx: number, value: string) => void;
+type ColTypeChangeHandler = (colIdx: number, colType: string | undefined) => void;
+type StructuralOpHandler  = (op: StructuralOpV2) => void;
+
+// Convenience accessors: convert display index to v2 ID
+// di = 1-based data row display index (1 = first data row)
+const rowId  = (model: TableModelV2, di: number): string => model.rows[di - 1]?.id ?? '';
+const colId  = (model: TableModelV2, ci: number): string => model.columns[ci]?.id ?? '';
+
+// Apply a ResolvedStyleV2 to an element via inline style + CSS classes
+function applyResolvedStyle(el: HTMLElement, rs: ResolvedStyleV2): void {
+	if (rs.bg)    el.style.setProperty('background-color', rs.bg);
+	if (rs.color) el.style.setProperty('color', rs.color);
+	if (rs.size) {
+		el.style.setProperty('font-size', `${rs.size}px`);
+		el.style.setProperty('--bt-cell-font-size', `${rs.size}px`);
+	}
+	if (rs.bold)   el.addClass('bt-bold');
+	if (rs.italic) el.addClass('bt-italic');
+}
 
 /** Special column types handled with dedicated editors (not choice dropdowns). */
 const SPECIAL_TYPES = new Set(['date']);
 
 export async function renderTable(
-	model: TableModel,
+	model: TableModelV2,
 	getRegistry: () => ChoiceRegistry,
 	container: HTMLElement,
 	app: App,
 	sourcePath: string,
 	component: Component,
-	onCellChange?: CellChangeHandler,
-	onColTypeChange?: ColTypeChangeHandler,
-	onStructuralOp?: StructuralOpHandler,
+	onOp?: OpHandler,
 	onToggleLock?: ToggleLockHandler,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
+	// Unified op handler — replaces separate onCellChange / onColTypeChange / onStructuralOp.
+	// Wrapped as void-returning so helpers typed StructuralOpHandler=(op)=>void are satisfied.
+	const onStructuralOp: StructuralOpHandler | undefined = onOp ? (op) => void onOp(op) : undefined;
+
+	// Adapter: row/col-index-based callbacks used by inner helper functions.
+	// rowIdx=0 → header (set-col-name); rowIdx≥1 → data cell (set-cell-content).
+	const onCellChange: CellChangeHandler | undefined = onOp ? (ri, ci, value) => {
+		if (ri === 0) {
+			void onOp({ type: 'set-col-name', colId: colId(model, ci), name: value });
+		} else {
+			void onOp({ type: 'set-cell-content', rowId: rowId(model, ri), colId: colId(model, ci), value });
+		}
+	} : undefined;
+
+	const onColTypeChange: ColTypeChangeHandler | undefined = onOp
+		? (ci, colType) => void onOp({ type: 'set-col-type', colId: colId(model, ci), colType })
+		: undefined;
 
 	// Snapshot for rendering; getRegistry used in event handlers for fresh lookups
 	const registry = getRegistry();
@@ -56,7 +93,8 @@ export async function renderTable(
 	// Root container with position:relative so all overlay elements (selectors,
 	// edge-add strips) can use position:absolute and stay naturally inside
 	// Obsidian's content pane — no viewport coordinate math needed.
-	const root = container.createDiv({ cls: 'bt-render-root' });
+	const themeClass = model.theme ? `bt-render-root bt-theme-${model.theme}` : 'bt-render-root';
+	const root = container.createDiv({ cls: themeClass });
 	const wrapper = root.createDiv({ cls: 'bt-table-wrapper' });
 	const table = wrapper.createEl('table', { cls: 'bt-table' });
 
@@ -147,21 +185,17 @@ export async function renderTable(
 			return row >= r1 && row <= r2 && col >= c1 && col <= c2;
 		});
 
+		// v2 ID-based range target
+		const r1RId = r1 === 0 ? 'header' : rowId(model, r1);
+		const r2RId = r2 === 0 ? 'header' : rowId(model, r2);
+		const c1CId = colId(model, c1);
+		const c2CId = colId(model, c2);
 		const rangeTarget = (r1 === r2 && c1 === c2)
-			? `${colIndexToLetter(c1)}${r1 + 1}`
-			: `${colIndexToLetter(c1)}${r1 + 1}:${colIndexToLetter(c2)}${r2 + 1}`;
+			? (r1 === 0 ? `header.${c1CId}` : `${r1RId}.${c1CId}`)
+			: `${r1RId}.${c1CId}:${r2RId}.${c2CId}`;
 
 		const anchor = selectedEls[selectedEls.length - 1] ?? table;
-		const existingStyle = (() => {
-			const s: { bg?: string; color?: string; size?: number } = {};
-			for (const rule of model.styles) {
-				if (!matchTarget(r1, c1, rule.target)) continue;
-				if (rule.bg)   s.bg    = rule.bg;
-				if (rule.color) s.color = rule.color;
-				if (rule.size)  s.size  = rule.size;
-			}
-			return s;
-		})();
+		const existingStyle = cellEffectiveStyle(model, r1, c1);
 
 		const isHeaderSel = r1 === 0 && r2 === 0;
 		selectionPanel = openCellPanel({
@@ -172,18 +206,18 @@ export async function renderTable(
 			showTextColor: true,
 			cellOps: [
 				{ icon: 'combine', label: t('mergeCells'),
-					action: () => void onStructuralOp({ type: 'merge-cells', startRow: r1, startCol: c1, endRow: r2, endCol: c2 }) },
+					action: () => void onStructuralOp({ type: 'merge-cells', anchorRowId: r1RId, anchorColId: c1CId, endRowId: r2RId, endColId: c2CId }) },
 				// Row ops only for data selections (header row cannot be hidden/deleted)
 				...(!isHeaderSel ? [
 					{ icon: 'eye-off' as const, label: hideRowsLabel(r1, r2),
-						action: () => { for (let ri = r1; ri <= r2; ri++) void onStructuralOp({ type: 'hide-row', rowIdx: ri }); } },
+						action: () => { for (let ri = r1; ri <= r2; ri++) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
 					{ icon: 'trash' as const, label: deleteRowsLabel(r1, r2), danger: true as const,
-						action: () => { for (let ri = r2; ri >= r1; ri--) void onStructuralOp({ type: 'delete-row', rowIdx: ri }); } },
+						action: () => { for (let ri = r2; ri >= r1; ri--) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
 				] : []),
 				{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter),
-					action: () => { for (let ci = c1; ci <= c2; ci++) void onStructuralOp({ type: 'hide-col', colIdx: ci }); } },
+					action: () => { for (let ci = c1; ci <= c2; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
 				{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
-					action: () => { for (let ci = c2; ci >= c1; ci--) void onStructuralOp({ type: 'delete-col', colIdx: ci }); } },
+					action: () => { for (let ci = c2; ci >= c1; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
 			],
 			onApplyStyle: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: rangeTarget, bg, color, size, bold, italic }),
 			onClose: () => { clearSel(); selectionPanel = null; },
@@ -337,7 +371,7 @@ export async function renderTable(
 			const tr = (evt.target as HTMLElement).closest<HTMLElement>('tr');
 			const toIdx = parseInt(tr?.querySelector('[data-row]')?.getAttribute('data-row') ?? '-1');
 			if (fromIdx >= 1 && toIdx >= 1 && fromIdx !== toIdx) {
-				void onStructuralOp({ type: 'move-row', fromIdx, toIdx });
+				void onStructuralOp({ type: 'move-row', fromRowId: rowId(model, fromIdx), toRowId: rowId(model, toIdx) });
 			}
 			dragOverRow = -1;
 		});
@@ -364,39 +398,45 @@ export async function renderTable(
 			const th = (evt.target as HTMLElement).closest<HTMLElement>('th[data-col]');
 			const toIdx = parseInt(th?.dataset.col ?? '-1');
 			if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
-				void onStructuralOp({ type: 'move-col', fromIdx, toIdx });
+				void onStructuralOp({ type: 'move-col', fromColId: colId(model, fromIdx), toColId: colId(model, toIdx) });
 			}
 			dragOverCol = -1;
 		});
 	}
-	const hiddenRows = new Set(model.hiddenRows ?? []);
 	const visibleCellCount = countVisibleCells(model);
-	let r = 1;
-	while (r < model.rows.length) {
-		if (hiddenRows.has(r)) {
-			// Collect the contiguous hidden-row group
-			const group: number[] = [];
-			while (r < model.rows.length && hiddenRows.has(r)) group.push(r++);
+	// v2: model.rows[] contains only data rows; iterate 0-based, use displayIdx = ri+1
+	let di = 0;
+	while (di < model.rows.length) {
+		const currentRow = model.rows[di];
+		if (!currentRow) { di++; continue; }
+		if (currentRow.hidden) {
+			// Collect the contiguous hidden-row group (by ID)
+			const groupIds: string[] = [];
+			while (di < model.rows.length && model.rows[di]?.hidden) {
+				groupIds.push(model.rows[di]!.id);
+				di++;
+			}
 
 			const indicatorTr = tbody.createEl('tr', { cls: 'bt-row-indicator' });
-			indicatorTr.dataset.hiddenGroup = JSON.stringify(group);
+			indicatorTr.dataset.hiddenGroup = JSON.stringify(groupIds);
 			const td = indicatorTr.createEl('td', {
 				cls: 'bt-row-indicator-cell',
 				attr: { colspan: String(visibleCellCount) },
 			});
 			td.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
 			td.createSpan({ cls: 'bt-indicator-label',
-				text: ` ${group.length} hidden row${group.length > 1 ? 's' : ''}` });
+				text: ` ${groupIds.length} hidden row${groupIds.length > 1 ? 's' : ''}` });
 			if (onStructuralOp) {
 				td.addEventListener('click', () =>
-					void onStructuralOp({ type: 'show-row-group', rowIndices: group }));
+					void onStructuralOp({ type: 'show-row-group', rowIds: groupIds }));
 			}
 			continue;
 		}
-		if (isRowFiltered(r, model)) { r++; continue; }
+		const displayIdx = di + 1; // 1-based: 0 = header
+		if (isRowFiltered(displayIdx, model)) { di++; continue; }
 		const tr = tbody.createEl('tr');
-		await renderRow(tr, r, model, occupied, registry, getRegistry, app, sourcePath, component, false, onCellChange, onColTypeChange, onStructuralOp);
-		r++;
+		await renderRow(tr, displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, false, onCellChange, onColTypeChange, onStructuralOp);
+		di++;
 	}
 
 	// TODO: filter status bar ("Showing X of Y rows · Clear filter") — deferred until
@@ -461,9 +501,9 @@ export async function renderTable(
 		addColBtn.createSpan({ cls: 'bt-edge-plus', text: '+' });
 
 		addRowBtn.addEventListener('click', () =>
-			void onStructuralOp({ type: 'insert-row', afterRowIdx: model.rows.length - 1 }));
+			void onStructuralOp({ type: 'insert-row', afterRowId: model.rows[model.rows.length - 1]?.id ?? null }));
 		addColBtn.addEventListener('click', () =>
-			void onStructuralOp({ type: 'insert-col', afterColIdx: model.columns.length - 1 }));
+			void onStructuralOp({ type: 'insert-col', afterColId: model.columns[model.columns.length - 1]?.id ?? null }));
 
 		// Edge-add strips use position:absolute within root so they track the TABLE
 		// dimensions (not the wrapper, which fills 1fr of the grid = full content width).
@@ -512,82 +552,99 @@ export async function renderTable(
 		table.addEventListener('bt-layout-changed', () => {
 			if (addRowBtn.hasClass('bt-strip-visible')) positionEdgeStrips();
 		});
+
+		// Also reposition when the table naturally grows/shrinks (e.g. cell editing
+		// adds lines via Shift+Enter) — bt-layout-changed is only fired by explicit
+		// resize ops, not by the browser's natural reflow.
+		const resizeObs = new ResizeObserver(() => {
+			if (addRowBtn.hasClass('bt-strip-visible')) positionEdgeStrips();
+		});
+		resizeObs.observe(table);
+		component?.register(() => resizeObs.disconnect());
 	}
 
-	// ── Lock button ───────────────────────────────────────────────────────────
-	// Sits at the corner between the col selector strip and the add-col button.
-	// Visible on root hover when unlocked; always visible when locked so the user
-	// can unlock. Only rendered in edit/live-preview mode (onToggleLock provided).
-	if (onToggleLock) {
-		const lockBtn = root.createDiv({
-			cls: 'bt-lock-btn' + (model.locked ? ' is-locked' : ''),
-			attr: {
-				'aria-label':          model.locked ? t('unlockTable') : t('lockTable'),
-				'data-tooltip-position': 'top',
-			},
-		});
-		setIcon(lockBtn, model.locked ? 'lock' : 'lock-open');
+	// ── Control column: autofit · lock · theme — left of the row-drag strip ──
+	// All three buttons share a vertical flex column positioned just left of the
+	// row selector. Autofit and theme need onStructuralOp; lock needs onToggleLock.
+	if (onStructuralOp || onToggleLock) {
+		const ctrlCol = root.createDiv({ cls: 'bt-ctrl-col' });
 
-		const positionLockBtn = () => {
+		// Autofit button
+		if (onStructuralOp) {
+			const autoFitBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('autoFitAll'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(autoFitBtn, 'maximize-2');
+			autoFitBtn.addEventListener('click', () => {
+				for (const { colIdx } of visibleCols) {
+					const col = model.columns[colIdx];
+					if (!col) continue;
+					const fit = autoFitColWidth(table, colIdx, colMinWidth(col, getRegistry()));
+					void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fit });
+				}
+				for (const row of model.rows) {
+					void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: 0 });
+				}
+			});
+			// Keep the legacy repositionAutoFitBtn reference so selector code can call it
+			repositionAutoFitBtn = () => { /* positioning handled by ctrlCol */ };
+		}
+
+		// Lock button
+		if (onToggleLock) {
+			const lockBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn' + (model.locked ? ' is-locked' : ''),
+				attr: {
+					'aria-label':            model.locked ? t('unlockTable') : t('lockTable'),
+					'data-tooltip-position': 'right',
+				},
+			});
+			setIcon(lockBtn, model.locked ? 'lock' : 'lock-open');
+			lockBtn.addEventListener('click', () => void onToggleLock());
+			repositionLockBtn = () => { /* handled by ctrlCol */ };
+		}
+
+		// Theme picker button
+		if (onStructuralOp) {
+			const THEMES: { id: string | null; label: string }[] = [
+				{ id: null,        label: t('themeDefault')  },
+				{ id: 'academic',  label: t('themeAcademic') },
+				{ id: 'minimal',   label: t('themeMinimal')  },
+				{ id: 'striped',   label: t('themeStriped')  },
+				{ id: 'fancy',     label: t('themeFancy')    },
+			];
+			const themeBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('changeTheme'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(themeBtn, 'palette');
+			themeBtn.addEventListener('click', (evt: MouseEvent) => {
+				const menu = new Menu();
+				for (const { id, label } of THEMES) {
+					menu.addItem(item => {
+						item.setTitle(label);
+						if ((model.theme ?? null) === id) item.setChecked(true);
+						item.onClick(() => void onStructuralOp({ type: 'set-theme', theme: id }));
+					});
+				}
+				menu.showAtMouseEvent(evt);
+			});
+		}
+
+		// Position the column just left of the row selector
+		const positionCtrlCol = () => {
 			const tr = table.getBoundingClientRect();
 			const rr = root.getBoundingClientRect();
-			// Guard: skip if table is still in a detached DOM (dimensions all zero)
 			if (tr.width === 0) return;
-			// Left-align lock btn with add-col strip (both SEL_CELL = 18px wide):
-			//   add-col left = tl + tw + 2
-			lockBtn.setCssProps({
-				'--lk-top':  `${tr.top - rr.top - SEL_LABEL}px`,
-				'--lk-left': `${tr.left - rr.left + tr.width + 2}px`,
+			ctrlCol.setCssProps({
+				'--cc-top':  `${tr.top - rr.top + 2}px`,
+				'--cc-left': `${tr.left - rr.left - SEL_TOTAL - AUTOFIT_OFFSET - 4}px`,
 			});
 		};
-		// Defer initial positioning to after the DOM is attached (getBoundingClientRect
-		// returns zeros while root is still inside the detached tmp container).
-		window.requestAnimationFrame(positionLockBtn);
-		repositionLockBtn = positionLockBtn;
-
-		lockBtn.addEventListener('click', () => void onToggleLock());
-		table.addEventListener('bt-layout-changed', positionLockBtn);
-	}
-
-	// ── Auto-fit-all button (top-left corner, symmetric with lock button) ────
-	// Sits at the row-selector / col-selector intersection.
-	// Clicking auto-fits every visible column width and every row height.
-	if (onStructuralOp) {
-		const autoFitBtn = root.createDiv({
-			cls: 'bt-autofit-btn',
-			attr: { 'aria-label': t('autoFitAll'), 'data-tooltip-position': 'top' },
-		});
-		setIcon(autoFitBtn, 'maximize-2');
-
-		const positionAutoFitBtn = () => {
-			const tr = table.getBoundingClientRect();
-			const rr = root.getBoundingClientRect();
-			if (tr.width === 0) return;
-			// See AUTOFIT_OFFSET in selectorLayout.ts for the derivation
-			autoFitBtn.setCssProps({
-				'--afb-top':  `${tr.top - rr.top - SEL_LABEL}px`,
-				'--afb-left': `${tr.left - rr.left - AUTOFIT_OFFSET}px`,
-			});
-		};
-		window.requestAnimationFrame(positionAutoFitBtn);
-		repositionAutoFitBtn = positionAutoFitBtn;
-		table.addEventListener('bt-layout-changed', positionAutoFitBtn);
-
-		autoFitBtn.addEventListener('click', () => {
-			// Auto-fit every visible column
-			for (const { colIdx } of visibleCols) {
-				const col = model.columns[colIdx];
-				if (!col) continue;
-				const fit = autoFitColWidth(table, colIdx, colMinWidth(col, getRegistry()));
-				void onStructuralOp({ type: 'set-col-width', colIdx, width: fit });
-			}
-			// Auto-fit every row: clear all forced heights so the browser sizes
-			// rows to their natural content height. This keeps rowHeights sparse
-			// (only manually-resized rows stay in the YAML array).
-			for (let ri = 0; ri < model.rows.length; ri++) {
-				void onStructuralOp({ type: 'set-row-height', rowIdx: ri, height: 0 });
-			}
-		});
+		window.requestAnimationFrame(positionCtrlCol);
+		table.addEventListener('bt-layout-changed', positionCtrlCol);
+		new ResizeObserver(positionCtrlCol).observe(table);
 	}
 
 	// ── Row / column selector strips (Excel-style whole-row/column selection) ──
@@ -610,18 +667,20 @@ export async function renderTable(
 			colResizeHandles.set(ci, h);
 		});
 		const rowResizeHandles = new Map<number, HTMLElement>();
-		model.rows.forEach((_row, ri) => {
+		// ri is 0-based v2 index; display index = ri+1 (header is 0)
+		model.rows.forEach((row, ri) => {
+			const displayIdx = ri + 1;
 			const h = rowSel.createDiv({ cls: 'bt-sel-resize-row', attr: { 'aria-hidden': 'true' } });
 			bindResizeHandle(
-				h, table, `data-row="${ri}"`, '--bt-row-height', 24,
-				(height) => void onStructuralOp({ type: 'set-row-height', rowIdx: ri, height }),
+				h, table, `data-row="${displayIdx}"`, '--bt-row-height', 24,
+				(height) => void onStructuralOp({ type: 'set-row-height', rowId: row.id, height }),
 				component,
 			);
 			h.addEventListener('dblclick', (e: MouseEvent) => {
 				e.stopPropagation();
 				e.preventDefault();
-				const fit = autoFitRowHeight(table, ri, 24);
-				void onStructuralOp({ type: 'set-row-height', rowIdx: ri, height: fit });
+				const fit = autoFitRowHeight(table, displayIdx, 24);
+				void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: fit });
 			});
 			rowResizeHandles.set(ri, h);
 		});
@@ -656,7 +715,7 @@ export async function renderTable(
 			// own left edge, which CSS Grid aligns with the table wrapper automatically.
 			colSel.querySelectorAll('.bt-sel-cell, .bt-sel-col-drag').forEach(e => e.remove());
 			// Pre-index hidden-group indicators from the header by their left-edge x.
-			const hiddenGroupByX = new Map<number, number[]>();
+			const hiddenGroupByX = new Map<number, string[]>();
 			let hiddenColX = 0;
 			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
 				const w = parseInt(c.style.width) || 0;
@@ -664,7 +723,7 @@ export async function renderTable(
 					// Find matching bt-col-indicator in thead
 					for (const th2 of Array.from(thead.querySelectorAll<HTMLElement>('th.bt-col-indicator[data-hidden-group]'))) {
 						if (!hiddenGroupByX.has(Math.round(hiddenColX))) {
-							const grp = JSON.parse(th2.dataset.hiddenGroup ?? '[]') as number[];
+							const grp = JSON.parse(th2.dataset.hiddenGroup ?? '[]') as string[];
 							hiddenGroupByX.set(Math.round(hiddenColX), grp);
 							break;
 						}
@@ -712,7 +771,7 @@ export async function renderTable(
 					cell.setCssProps({ '--cl': `${colX}px`, '--cw': `${w}px` });
 					if (group.length > 0) {
 						const g = group;
-						cell.addEventListener('click', () => void onStructuralOp({ type: 'show-col-group', colIndices: g }));
+						cell.addEventListener('click', () => void onStructuralOp({ type: 'show-col-group', colIds: g }));
 					}
 				}
 				colX += w;
@@ -737,12 +796,12 @@ export async function renderTable(
 				const rowTop = trRect.top - tableTop;
 				const rowH   = trRect.height;
 				if (tr.hasClass('bt-row-indicator')) {
-					const group = JSON.parse(tr.dataset.hiddenGroup ?? '[]') as number[];
+					const group = JSON.parse(tr.dataset.hiddenGroup ?? '[]') as string[];
 					const cell = rowSel.createDiv({ cls: 'bt-sel-cell bt-sel-hidden' });
 					cell.setAttribute('aria-label', `${group.length} hidden row${group.length > 1 ? 's' : ''} — click to show`);
 					cell.setAttribute('data-tooltip-position', 'right');
 					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
-					cell.addEventListener('click', () => void onStructuralOp({ type: 'show-row-group', rowIndices: group }));
+					cell.addEventListener('click', () => void onStructuralOp({ type: 'show-row-group', rowIds: group }));
 				} else {
 					const firstCell = tr.querySelector<HTMLElement>('[data-row]');
 					if (!firstCell) continue;
@@ -890,9 +949,14 @@ export async function renderTable(
 			if (!selDragging || selAxis !== axis) return;
 			selDragging = false;
 			const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
+			// v2 ID-based targets for selector strip selection
 			const target = axis === 'col'
-				? (lo === hi ? `${colIndexToLetter(lo)}*` : `${colIndexToLetter(lo)}:${colIndexToLetter(hi)}`)
-				: `${lo + 1}:${hi + 1}`;
+				? (lo === hi ? colId(model, lo) : `${colId(model, lo)}:${colId(model, hi)}`)
+				: lo === 0 && hi === 0
+					? 'header'
+					: lo === hi
+						? rowId(model, lo)
+						: `${rowId(model, Math.max(lo, 1))}:${rowId(model, hi)}`;
 
 			// Collect cells for live preview
 			const els: HTMLElement[] = axis === 'col'
@@ -909,14 +973,14 @@ export async function renderTable(
 			// Build hide / delete ops, matching the style of the cell selection panel.
 			const cellOps: CellOpDef[] = axis === 'col' ? [
 				{ icon: 'eye-off', label: hideColsLabel(lo, hi, colIndexToLetter),
-					action: () => { for (let ci = lo; ci <= hi; ci++) void onStructuralOp({ type: 'hide-col', colIdx: ci }); } },
+					action: () => { for (let ci = lo; ci <= hi; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
 				{ icon: 'trash',   label: deleteColsLabel(lo, hi, colIndexToLetter), danger: true,
-					action: () => { for (let ci = hi; ci >= lo; ci--) void onStructuralOp({ type: 'delete-col', colIdx: ci }); } },
+					action: () => { for (let ci = hi; ci >= lo; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
 			] : lo === 0 && hi === 0 ? [] : [  // no hide/delete for header row
 				{ icon: 'eye-off', label: hideRowsLabel(lo, hi),
-					action: () => { for (let ri = lo; ri <= hi; ri++) void onStructuralOp({ type: 'hide-row', rowIdx: ri }); } },
+					action: () => { for (let ri = lo; ri <= hi; ri++) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
 				{ icon: 'trash',   label: deleteRowsLabel(lo, hi), danger: true,
-					action: () => { for (let ri = hi; ri >= lo; ri--) void onStructuralOp({ type: 'delete-row', rowIdx: ri }); } },
+					action: () => { for (let ri = hi; ri >= lo; ri--) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
 			];
 
 			// Keep selAxis/selI1/selI2 so highlights stay visible while the panel is open.
@@ -989,7 +1053,7 @@ export async function renderTable(
 				if (d < minD) { minD = d; toIdx = parseInt(c.dataset.idx ?? '-1'); }
 			}
 			if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx)
-				void onStructuralOp({ type: 'move-col', fromIdx, toIdx });
+				void onStructuralOp({ type: 'move-col', fromColId: colId(model, fromIdx), toColId: colId(model, toIdx) });
 			dragOverCol = -1;
 		});
 
@@ -1021,7 +1085,7 @@ export async function renderTable(
 				if (d < minD) { minD = d; toIdx = parseInt(c.dataset.idx ?? '-1'); }
 			}
 			if (fromIdx >= 1 && toIdx >= 1 && fromIdx !== toIdx)
-				void onStructuralOp({ type: 'move-row', fromIdx, toIdx });
+				void onStructuralOp({ type: 'move-row', fromRowId: rowId(model, fromIdx), toRowId: rowId(model, toIdx) });
 			dragOverRow = -1;
 		});
 
@@ -1053,9 +1117,9 @@ export async function renderTable(
 
 async function renderRow(
 	tr: HTMLTableRowElement,
-	rowIdx: number,
-	model: TableModel,
-	occupied: boolean[][],
+	rowIdx: number,  // 0 = header, 1+ = data rows (1-based)
+	model: TableModelV2,
+	occupied: Set<string>,
 	registry: ChoiceRegistry,
 	getRegistry: () => ChoiceRegistry,
 	app: App,
@@ -1066,35 +1130,39 @@ async function renderRow(
 	onColTypeChange?: ColTypeChangeHandler,
 	onStructuralOp?: StructuralOpHandler,
 ): Promise<void> {
-	const rowCells   = model.rows[rowIdx] ?? [];
-	const hiddenRows = new Set(model.hiddenRows ?? []);
+	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
 	let c = 0;
 
 	while (c < model.columns.length) {
-		if (occupied[rowIdx]?.[c]) { c++; continue; }
-
 		const col = model.columns[c];
 		if (!col) { c++; continue; }
 
+		// Check occupied set using v2 IDs
+		const currentRowId = currentRow?.id ?? '';
+		const currentColId = col.id;
+		if (occupied.has(`${currentRowId}.${currentColId}`)) { c++; continue; }
+
 		// Hidden column group — render a single narrow indicator cell
 		if (col.hidden) {
-			const group: number[] = [];
-			while (c < model.columns.length && model.columns[c]?.hidden) group.push(c++);
+			const groupIds: string[] = [];
+			while (c < model.columns.length && model.columns[c]?.hidden) {
+				groupIds.push(model.columns[c]!.id);
+				c++;
+			}
 
 			const tag       = isHeader ? 'th' : 'td';
 			const indicator = tr.createEl(tag, { cls: 'bt-col-indicator' });
 
 			if (isHeader) {
-				const label = `${group.length}`;
 				indicator.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
-				indicator.createSpan({ cls: 'bt-indicator-count', text: label });
+				indicator.createSpan({ cls: 'bt-indicator-count', text: `${groupIds.length}` });
 				indicator.setAttribute('aria-label',
-					`${group.length} hidden column${group.length > 1 ? 's' : ''}. Click to show.`);
+					`${groupIds.length} hidden column${groupIds.length > 1 ? 's' : ''}. Click to show.`);
 				indicator.setAttribute('data-tooltip-position', 'top');
-				indicator.dataset.hiddenGroup = JSON.stringify(group); // for selector strip
+				indicator.dataset.hiddenGroup = JSON.stringify(groupIds); // string IDs for selector strip
 				if (onStructuralOp) {
 					indicator.addEventListener('click', () =>
-						void onStructuralOp({ type: 'show-col-group', colIndices: group }));
+						void onStructuralOp({ type: 'show-col-group', colIds: groupIds }));
 				}
 			}
 			continue;
@@ -1102,7 +1170,7 @@ async function renderRow(
 
 		// Normal cell — snapshot c so closures below capture the right column index
 		const colIdx = c;
-		const merge = getMergeOrigin(rowIdx, colIdx, model.merges);
+		const merge = getMergeOrigin(rowIdx, colIdx, model);
 		const tag   = isHeader ? 'th' : 'td';
 		const el    = tr.createEl(tag, { cls: isHeader ? 'bt-th' : 'bt-td' });
 		el.dataset.row = String(rowIdx);
@@ -1112,7 +1180,8 @@ async function renderRow(
 			// Adjust rowspan/colspan to skip hidden rows/cols within the merge
 			let rowSpan = 0;
 			for (let ri = merge.startRow; ri <= merge.endRow; ri++) {
-				if (!hiddenRows.has(ri)) rowSpan++;
+				const hidden = ri > 0 ? (model.rows[ri - 1]?.hidden ?? false) : false;
+				if (!hidden) rowSpan++;
 			}
 			let colSpan = 0;
 			for (let ci = merge.startCol; ci <= merge.endCol; ci++) {
@@ -1123,23 +1192,19 @@ async function renderRow(
 		}
 
 		applyColStyle(el, col);
-		applyStyleRules(el, rowIdx, colIdx, model.styles);
+		applyStyleRulesV2(el, rowIdx, colIdx, model);
 		// Apply stored row height (height on td acts as minimum row height)
-		const rh = model.rowHeights?.[rowIdx];
+		const rh = currentRow?.height;
 		if (rh) el.style.setProperty('--bt-row-height', `${rh}px`);
 		else el.style.removeProperty('--bt-row-height');
 
-		const value = rowCells[colIdx] ?? '';
-
-		// Drag-reorder handles for both rows and columns now live in the selector
-		// strips (bt-sel-row-drag / bt-sel-col-drag in rebuild()), keeping them
-		// independent of cell merges and outside the cell interaction area.
+		// Cell value: header uses col.name; data uses cells record keyed by colId
+		const value = isHeader ? (col.name ?? '') : (currentRow?.cells[col.id] ?? '');
 
 		if (isHeader) {
 			renderHeaderCell(el, value, col, colIdx, getRegistry, app, sourcePath, model, component, onCellChange, onColTypeChange, onStructuralOp);
 		} else {
 			await renderDataCell(el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model, onCellChange, onStructuralOp);
-			// Row-height resize is handled by the selector-strip handles (works with merges too)
 		}
 		c++;
 	}
@@ -1148,12 +1213,12 @@ async function renderRow(
 function renderHeaderCell(
 	el: HTMLElement,
 	value: string,
-	col: ColumnDef,
+	col: ColumnDefV2,
 	colIdx: number,
 	getRegistry: () => ChoiceRegistry,
 	app: App,
 	sourcePath: string,
-	model: TableModel,
+	model: TableModelV2,
 	component: Component,
 	onCellChange?: CellChangeHandler,
 	onColTypeChange?: ColTypeChangeHandler,
@@ -1162,22 +1227,31 @@ function renderHeaderCell(
 	el.createSpan({ cls: 'bt-th-text', text: value });
 	if (col.type) el.addClass('bt-th-typed');
 
-	const openPanel = (evt: MouseEvent) => {
+	const openPanel = (evt: MouseEvent, isDblClick = false) => {
 		if (!onStructuralOp && !onColTypeChange) return;
 		const ops: CellOpDef[] = [];
 		if (onStructuralOp) {
 			ops.push(
-				{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowIdx: 0 }) },
-				{ icon: 'arrow-left',  label: t('insertColBefore'), action: () => void onStructuralOp({ type: 'insert-col', afterColIdx: colIdx - 1 }) },
-				{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColIdx: colIdx }) },
-				{ icon: 'eye-off',     label: t('hideColumn'),      action: () => void onStructuralOp({ type: 'hide-col', colIdx }) },
-				{ icon: 'trash',       label: t('deleteColumn'), danger: true, action: () => void onStructuralOp({ type: 'delete-col', colIdx }) },
+				// Insert first data row: afterRowId = null (insert before all data rows)
+				{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: null }) },
+				{ icon: 'arrow-left',  label: t('insertColBefore'), action: () => void onStructuralOp({ type: 'insert-col', afterColId: colIdx > 0 ? (model.columns[colIdx - 1]?.id ?? null) : null }) },
+				{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColId: col.id }) },
+				{ icon: 'eye-off',     label: t('hideColumn'),      action: () => void onStructuralOp({ type: 'hide-col', colId: col.id }) },
+				{ icon: 'trash',       label: t('deleteColumn'), danger: true, action: () => void onStructuralOp({ type: 'delete-col', colId: col.id }) },
 			);
+			// Alignment only in the double-click panel, not in right-click or selection menus
+			if (isDblClick) {
+				ops.push(
+					{ icon: 'align-left',   label: t('alignLeft'),   action: () => void onStructuralOp({ type: 'set-col-align', colId: col.id, align: 'left' }) },
+					{ icon: 'align-center', label: t('alignCenter'), action: () => void onStructuralOp({ type: 'set-col-align', colId: col.id, align: 'center' }) },
+					{ icon: 'align-right',  label: t('alignRight'),  action: () => void onStructuralOp({ type: 'set-col-align', colId: col.id, align: 'right' }) },
+				);
+			}
 		}
 		openCellPanel({
 			anchor: el,
 			els: [el],
-			styleTarget: colIndexToLetter(colIdx) + '1',
+			styleTarget: `header.${col.id}`,
 			existingStyle: cellEffectiveStyle(model, 0, colIdx),
 			inheritedStyle: cellInheritedStyle(model, 0, colIdx),
 			showTextColor: true,
@@ -1189,12 +1263,12 @@ function renderHeaderCell(
 				onColTypeChange,
 			} : undefined,
 			onApplyStyle: onStructuralOp
-				? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-cell-style', rowIdx: 0, colIdx, bg, color, size, bold, italic })
+				? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: `header.${col.id}`, bg, color, size, bold, italic })
 				: () => { /* no-op */ },
 		});
 	};
 
-	el.addEventListener('contextmenu', (evt: MouseEvent) => { evt.preventDefault(); openPanel(evt); });
+	el.addEventListener('contextmenu', (evt: MouseEvent) => { evt.preventDefault(); openPanel(evt, false); });
 	el.addEventListener('keydown', (evt: KeyboardEvent) => {
 		if (evt.key === 'Enter' || evt.key === ' ') {
 			evt.preventDefault();
@@ -1207,7 +1281,24 @@ function renderHeaderCell(
 		el.addClass('bt-th-editable');
 		let editTimer: number | null = null;
 		el.addEventListener('mousedown', (evt: MouseEvent) => {
-			if (evt.detail >= 2 && editTimer !== null) { window.clearTimeout(editTimer); editTimer = null; }
+			if (evt.detail >= 2 && editTimer !== null) { window.clearTimeout(editTimer); editTimer = null; return; }
+			// In edit mode: place cursor at the click position using caretRangeFromPoint.
+			// Without this the second click has no effect because the th element intercepts it.
+			if (el.hasClass('bt-editing')) {
+				const editor = el.querySelector<HTMLElement>('.bt-cell-editor');
+				if (editor) {
+					// caretRangeFromPoint is the Chromium/Electron equivalent of the standard caretPositionFromPoint
+				// eslint-disable-next-line @typescript-eslint/no-deprecated
+				const range = (activeDocument as Document & { caretRangeFromPoint?(x: number, y: number): Range | null }).caretRangeFromPoint?.(evt.clientX, evt.clientY);
+					if (range) {
+						const sel = activeWindow.getSelection();
+						sel?.removeAllRanges();
+						sel?.addRange(range);
+					}
+					editor.focus();
+					evt.preventDefault(); // prevent the outer element from resetting selection
+				}
+			}
 		});
 		el.addEventListener('click', (evt: MouseEvent) => {
 			if (el.hasClass('bt-editing')) return;
@@ -1219,13 +1310,12 @@ function renderHeaderCell(
 
 	el.addEventListener('dblclick', (evt: MouseEvent) => {
 		if (el.hasClass('bt-editing')) return;
-		openPanel(evt);
+		openPanel(evt, true);
 	});
 
 	// Filter button — bottom-right corner of the header cell
 	if (onStructuralOp) {
-		const colLetter = colIndexToLetter(colIdx);
-		const activeValues = model.filter?.[colLetter];
+		const activeValues = model.filter?.[col.id];
 		const filterBtn = el.createDiv({
 			cls: 'bt-filter-btn' + (activeValues ? ' bt-filter-active' : ''),
 			attr: { 'aria-label': t('filterColumn'), 'data-tooltip-position': 'top' },
@@ -1234,7 +1324,7 @@ function renderHeaderCell(
 		filterBtn.addEventListener('click', (e: MouseEvent) => {
 			e.stopPropagation();
 			e.preventDefault();
-			openFilterPanel(el, colIdx, colLetter, model, getRegistry(), onStructuralOp);
+			openFilterPanel(el, colIdx, model, getRegistry(), onStructuralOp);
 		});
 	}
 	// Column resize is handled by the selector-strip handles (works with merges too)
@@ -1243,14 +1333,14 @@ function renderHeaderCell(
 async function renderDataCell(
 	el: HTMLElement,
 	value: string,
-	col: ColumnDef,
+	col: ColumnDefV2,
 	rowIdx: number,
 	colIdx: number,
 	registry: ChoiceRegistry,
 	app: App,
 	sourcePath: string,
 	component: Component,
-	model: TableModel,
+	model: TableModelV2,
 	onCellChange?: CellChangeHandler,
 	onStructuralOp?: StructuralOpHandler,
 ): Promise<void> {
@@ -1354,13 +1444,31 @@ async function renderDataCell(
 
 	if (trimmed) {
 		await MarkdownRenderer.render(app, trimmed, el, sourcePath, component);
+		// Convert <ul>/<ol> to <br>-separated inline content — the only reliable way
+		// to match <br> line spacing regardless of which theme variables are in use.
+		el.querySelectorAll<HTMLElement>('ul, ol').forEach(list => {
+			const items = Array.from(list.querySelectorAll<HTMLElement>(':scope > li'));
+			if (items.length === 0) return;
+			const isOrdered = list.tagName === 'OL';
+			// Wrap in inline-block so the block centers as a unit while items stay left-aligned
+			const wrapper = activeDocument.createElement('div');
+			wrapper.className = 'bt-list-block';
+			items.forEach((item, i) => {
+				if (i > 0) wrapper.appendChild(activeDocument.createElement('br'));
+				const marker = activeDocument.createElement('span');
+				marker.className = 'bt-list-marker';
+				marker.textContent = isOrdered ? (i + 1) + '. ' : '• ';
+				wrapper.appendChild(marker);
+				Array.from(item.childNodes).forEach(n => wrapper.appendChild(n));
+			});
+			list.parentNode?.replaceChild(wrapper, list);
+		});
 	}
 
 	if (onCellChange) {
 		el.addClass('bt-td-editable');
 
-		// Single click (200 ms delay) → text editor; double click → style panel.
-		// The delay lets mousedown.detail detect a double-click before the edit opens.
+		// Single click (200 ms delay) — text editor; double click — style panel.
 		let editTimer: number | null = null;
 		el.addEventListener('mousedown', (evt: MouseEvent) => {
 			if (evt.detail >= 2 && editTimer !== null) {
@@ -1407,7 +1515,7 @@ function renderDateCell(
 	value: string,
 	rowIdx: number,
 	colIdx: number,
-	model: TableModel,
+	model: TableModelV2,
 	onCellChange?: CellChangeHandler,
 	onStructuralOp?: StructuralOpHandler,
 ): void {
@@ -1491,44 +1599,38 @@ interface CellPanelConfig {
 	onClose?:     () => void;
 }
 
-/** Effective style of a cell: last-wins aggregation of all matching style rules. */
+/** Effective style of a cell, using v2 priority cascade. */
 function cellEffectiveStyle(
-	model: TableModel, rowIdx: number, colIdx: number,
-): { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean } {
-	const r: { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean } = {};
-	for (const rule of model.styles) {
-		if (!matchTarget(rowIdx, colIdx, rule.target)) continue;
-		if (rule.bg)     r.bg     = rule.bg;
-		if (rule.color)  r.color  = rule.color;
-		if (rule.size)   r.size   = rule.size;
-		if (rule.bold)   r.bold   = rule.bold;
-		if (rule.italic) r.italic = rule.italic;
-	}
-	return r;
+	model: TableModelV2, rowIdx: number, colIdx: number,
+): ResolvedStyleV2 {
+	const col = model.columns[colIdx];
+	if (!col) return {};
+	if (rowIdx === 0) return resolveHeaderStylesV2(model.styles, col.id);
+	const row = model.rows[rowIdx - 1];
+	if (!row) return {};
+	return resolveStylesV2(model.styles, row.id, col.id, model);
 }
 
 /**
- * Style that a cell inherits from non-exact rules (rows, columns, ranges).
- * Excludes the rule whose target equals `exactTarget` (defaults to the single-
- * cell coordinate, but callers can pass a merge-range target like "C3:C4").
- * Used as the preview fallback when a panel checkbox is unchecked.
+ * Style a cell inherits when the exact cell/header-cell rule is excluded.
+ * Used as the "inherited" preview fallback in the style panel.
  */
 function cellInheritedStyle(
-	model: TableModel, rowIdx: number, colIdx: number,
+	model: TableModelV2, rowIdx: number, colIdx: number,
 	exactTarget?: string,
-): { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean } {
-	const target = exactTarget ?? `${colIndexToLetter(colIdx)}${rowIdx + 1}`;
-	const r: { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean } = {};
-	for (const rule of model.styles) {
-		if (rule.target === target) continue;
-		if (!matchTarget(rowIdx, colIdx, rule.target)) continue;
-		if (rule.bg)     r.bg     = rule.bg;
-		if (rule.color)  r.color  = rule.color;
-		if (rule.size)   r.size   = rule.size;
-		if (rule.bold)   r.bold   = rule.bold;
-		if (rule.italic) r.italic = rule.italic;
-	}
-	return r;
+): ResolvedStyleV2 {
+	const col = model.columns[colIdx];
+	if (!col) return {};
+	const defaultExact = rowIdx === 0 ? `header.${col.id}` : (() => {
+		const row = model.rows[rowIdx - 1];
+		return row ? `${row.id}.${col.id}` : '';
+	})();
+	const target = exactTarget ?? defaultExact;
+	const filtered = model.styles.filter(s => s.target !== target);
+	if (rowIdx === 0) return resolveHeaderStylesV2(filtered, col.id);
+	const row = model.rows[rowIdx - 1];
+	if (!row) return {};
+	return resolveStylesV2(filtered, row.id, col.id, model);
 }
 
 type ApplyStyleFn = (bg: string | null, color: string | null, size: number | null, bold: boolean | null, italic: boolean | null) => void;
@@ -1542,44 +1644,57 @@ type ApplyStyleFn = (bg: string | null, color: string | null, size: number | nul
  */
 function buildCellStyleContext(
 	rowIdx: number, colIdx: number,
-	model: { merges: MergeRange[]; styles: StyleRule[] },
+	model: TableModelV2,
 	onStructuralOp: StructuralOpHandler,
-): { sTarget: string; exactTarget: string; isMerge: boolean; rangeRule: StyleRule | null; applyStyle: ApplyStyleFn } {
-	const merge  = getMergeOrigin(rowIdx, colIdx, model.merges);
-	const single = `${colIndexToLetter(colIdx)}${rowIdx + 1}`;
+): { sTarget: string; exactTarget: string; isMerge: boolean; rangeRule: StyleRuleV2 | null; applyStyle: ApplyStyleFn } {
+	const col = model.columns[colIdx];
+	const row = rowIdx > 0 ? model.rows[rowIdx - 1] : null;
+	if (!col || (rowIdx > 0 && !row)) {
+		return { sTarget: '', exactTarget: '', isMerge: false, rangeRule: null, applyStyle: () => {} };
+	}
+	const rId = row?.id ?? '';
+	const cId = col.id;
+	const single = rId ? `${rId}.${cId}` : `header.${cId}`;
+
+	const merge = getMergeOrigin(rowIdx, colIdx, model);
 	const sTarget = merge
-		? `${colIndexToLetter(merge.startCol)}${merge.startRow + 1}:${colIndexToLetter(merge.endCol)}${merge.endRow + 1}`
+		? `${merge.anchorRowId}.${merge.anchorColId}:${merge.endRowId}.${merge.endColId}`
 		: single;
+
 	const rangeRule = !merge
-		? (model.styles.find(s => s.target !== single && matchTarget(rowIdx, colIdx, s.target)) ?? null)
+		? (model.styles.find(s => {
+			if (s.target === single) return false;
+			const t = parseStyleTarget(s.target);
+			if (!t) return false;
+			return rId ? matchesCell(t, rId, cId, model) : matchesHeaderCell(t, cId);
+		}) ?? null)
 		: null;
 	const exactTarget = merge ? sTarget : (rangeRule?.target ?? single);
+
 	const applyStyle: ApplyStyleFn = (bg, color, size, bold, italic) => {
 		if (merge) {
 			void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size, bold, italic });
 		} else if (rangeRule) {
-			// Split the range rule to isolate this cell, then apply the new style.
-			void onStructuralOp({ type: 'split-range-style', rangeTarget: rangeRule.target, excludeRow: rowIdx, excludeCol: colIdx });
-			void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size, bold, italic });
+			void onStructuralOp({ type: 'split-range-style', rangeTarget: rangeRule.target, excludeRowId: rId, excludeColId: cId });
+			void onStructuralOp({ type: 'set-cell-style', rowId: rId, colId: cId, bg, color, size, bold, italic });
 		} else {
-			void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size, bold, italic });
+			void onStructuralOp({ type: 'set-cell-style', rowId: rId, colId: cId, bg, color, size, bold, italic });
 		}
 	};
 	return { sTarget, exactTarget, isMerge: !!merge, rangeRule, applyStyle };
 }
 
 
-/** Standard cell-op buttons for a data cell (row/col insert/delete/hide + optional unmerge).
- *  For merged cells, delete/hide/insert operations span the full merge range. */
+/** Standard cell-op buttons for a data cell (row/col insert/delete/hide + optional unmerge). */
 function dataCellOps(
 	rowIdx: number, colIdx: number,
-	model: TableModel, onStructuralOp: StructuralOpHandler,
+	model: TableModelV2, onStructuralOp: StructuralOpHandler,
 ): CellOpDef[] {
 	const ops: CellOpDef[] = [];
-	const merge = getMergeOrigin(rowIdx, colIdx, model.merges);
+	const merge = getMergeOrigin(rowIdx, colIdx, model);
 	if (merge && (merge.endRow > merge.startRow || merge.endCol > merge.startCol)) {
 		ops.push({ icon: 'table-2', label: t('unmergeCells'),
-			action: () => void onStructuralOp({ type: 'unmerge-cells', startRow: merge.startRow, startCol: merge.startCol }) });
+			action: () => void onStructuralOp({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
 	}
 
 	const r1 = merge?.startRow ?? rowIdx;
@@ -1587,19 +1702,25 @@ function dataCellOps(
 	const c1 = merge?.startCol ?? colIdx;
 	const c2 = merge?.endCol   ?? colIdx;
 
+	// r1 > 0 always (data cells only). afterRowId null = insert before first row.
+	const afterAbove = r1 > 1 ? (model.rows[r1 - 2]?.id ?? null) : null;
+	const afterBelow = model.rows[r2 - 1]?.id ?? null;
+	const afterLeft  = c1 > 0 ? (model.columns[c1 - 1]?.id ?? null) : null;
+	const afterRight = model.columns[c2]?.id ?? null;
+
 	ops.push(
-		{ icon: 'arrow-up',    label: t('insertRowAbove'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowIdx: r1 - 1 }) },
-		{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowIdx: r2 }) },
-		{ icon: 'arrow-left',  label: t('insertColBefore'), action: () => void onStructuralOp({ type: 'insert-col', afterColIdx: c1 - 1 }) },
-		{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColIdx: c2 }) },
+		{ icon: 'arrow-up',    label: t('insertRowAbove'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterAbove }) },
+		{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterBelow }) },
+		{ icon: 'arrow-left',  label: t('insertColBefore'), action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterLeft }) },
+		{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterRight }) },
 		{ icon: 'eye-off', label: hideRowsLabel(r1, r2),
-			action: () => { for (let r = r1; r <= r2; r++) void onStructuralOp({ type: 'hide-row', rowIdx: r }); } },
+			action: () => { for (let r = r1; r <= r2; r++) { const id = rowId(model, r); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
 		{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter),
-			action: () => { for (let c = c1; c <= c2; c++) void onStructuralOp({ type: 'hide-col', colIdx: c }); } },
+			action: () => { for (let c = c1; c <= c2; c++) { const id = colId(model, c); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
 		{ icon: 'trash', label: deleteRowsLabel(r1, r2), danger: true,
-			action: () => { for (let r = r2; r >= r1; r--) void onStructuralOp({ type: 'delete-row', rowIdx: r }); } },
+			action: () => { for (let r = r2; r >= r1; r--) { const id = rowId(model, r); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
 		{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
-			action: () => { for (let c = c2; c >= c1; c--) void onStructuralOp({ type: 'delete-col', colIdx: c }); } },
+			action: () => { for (let c = c2; c >= c1; c--) { const id = colId(model, c); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
 	);
 	return ops;
 }
@@ -1611,8 +1732,7 @@ let closeActivePanel: (() => void) | null = null;
 function openFilterPanel(
 	anchor: HTMLElement,
 	colIdx: number,
-	colLetter: string,
-	model: TableModel,
+	model: TableModelV2,
 	registry: ChoiceRegistry,
 	onStructuralOp: StructuralOpHandler,
 ): void {
@@ -1632,14 +1752,14 @@ function openFilterPanel(
 	if (defined.length === 0) {
 		// Text column — gather unique non-empty values from data rows
 		const seen = new Set<string>();
-		for (let ri = 1; ri < model.rows.length; ri++) {
-			const v = model.rows[ri]?.[colIdx]?.trim() ?? '';
+		for (const row of model.rows) {
+			const v = (row.cells[col.id] ?? '').trim();
 			if (v && !seen.has(v)) { seen.add(v); defined.push({ value: v, label: v }); }
 		}
 		defined.sort((a, b) => a.label.localeCompare(b.label));
 	}
 
-	const current = new Set(model.filter?.[colLetter] ?? []);
+	const current = new Set(model.filter?.[col.id] ?? []);
 	const noFilter = current.size === 0;
 
 	// Position panel
@@ -1702,14 +1822,14 @@ function openFilterPanel(
 
 	clearBtn.addEventListener('click', () => {
 		committed = true;
-		void onStructuralOp({ type: 'set-filter', colLetter, values: null });
+		void onStructuralOp({ type: 'set-filter', colId: col.id, values: null });
 		close();
 	});
 	applyBtn.addEventListener('click', () => {
 		committed = true;
 		const selected = checkboxes.filter(c => c.chk.checked).map(c => c.value);
 		const allSelected = selected.length === checkboxes.length;
-		void onStructuralOp({ type: 'set-filter', colLetter, values: allSelected ? null : selected });
+		void onStructuralOp({ type: 'set-filter', colId: col.id, values: allSelected ? null : selected });
 		close();
 	});
 	panel.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -2145,19 +2265,20 @@ function enterEditMode(
 	}
 }
 
-/** Returns true when rowIdx (0-indexed data row ≥ 1) should be hidden by active filters. */
-function isRowFiltered(rowIdx: number, model: TableModel): boolean {
-	if (!model.filter || rowIdx === 0) return false;
-	for (const [colLetter, values] of Object.entries(model.filter)) {
+/** Returns true when displayIdx (1-based, 0=header) should be hidden by active filters. */
+function isRowFiltered(displayIdx: number, model: TableModelV2): boolean {
+	if (!model.filter || displayIdx === 0) return false;
+	const row = model.rows[displayIdx - 1];
+	if (!row) return false;
+	for (const [cId, values] of Object.entries(model.filter)) {
 		if (!values || values.length === 0) continue;
-		const ci = colLetterToIndex(colLetter);
-		const cellValue = model.rows[rowIdx]?.[ci]?.trim() ?? '';
+		const cellValue = (row.cells[cId] ?? '').trim();
 		if (!values.includes(cellValue)) return true;
 	}
 	return false;
 }
 
-function applyColStyle(el: HTMLElement, col: ColumnDef): void {
+function applyColStyle(el: HTMLElement, col: ColumnDefV2): void {
 	// Width is now controlled solely by <colgroup>/<col> — no CSS variable needed
 	if (col.align) el.addClass(`bt-align-${col.align}`);
 }
@@ -2167,7 +2288,7 @@ function applyColStyle(el: HTMLElement, col: ColumnDef): void {
  * For typed columns the widest option label determines the minimum so choice
  * pills are never cut off.  Uses ~8px per character + 24px padding/chrome.
  */
-function colMinWidth(col: ColumnDef, registry: ChoiceRegistry): number {
+function colMinWidth(col: ColumnDefV2, registry: ChoiceRegistry): number {
 	const base = 40;
 	if (!col.type || SPECIAL_TYPES.has(col.type)) return base;
 	const ct = registry.get(col.type);
@@ -2187,6 +2308,12 @@ function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number): number
 
 	let max = minW;
 	for (const cell of cells) {
+		// Skip cells that span multiple columns — their content is shared across columns
+		// and would inflate the auto-fit width of just this one column.
+		if (cell.tagName === 'TD' || cell.tagName === 'TH') {
+			if ((cell as HTMLTableCellElement).colSpan > 1) continue;
+		}
+
 		const view = activeDocument.defaultView;
 		const style = view ? view.getComputedStyle(cell) : null;
 		// Horizontal padding of the cell
@@ -2263,7 +2390,7 @@ function setupColResize(
 	tbl: HTMLElement,
 	colIdx: number,
 	getRegistry: () => ChoiceRegistry,
-	model: TableModel,
+	model: TableModelV2,
 	onStructuralOp: StructuralOpHandler,
 	component?: Component,
 ): void {
@@ -2304,7 +2431,7 @@ function setupColResize(
 		e.preventDefault();
 		hideColLine();
 		const fit = autoFitColWidth(tbl, colIdx, colMinWidth(col, getRegistry()));
-		void onStructuralOp({ type: 'set-col-width', colIdx, width: fit });
+		void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fit });
 	});
 
 	handle.addEventListener('pointerdown', (e: PointerEvent) => {
@@ -2329,9 +2456,8 @@ function setupColResize(
 			const newW  = Math.max(MIN, startW + delta);
 			thisCol.style.setProperty('width', `${newW}px`);
 			if (nextCol && startNextW !== null) {
-				const nextMIN = nextColIdx >= 0
-					? colMinWidth(model.columns[nextColIdx] ?? { name: '' }, getRegistry())
-					: 40;
+				const nextColDef2 = nextColIdx >= 0 ? model.columns[nextColIdx] : undefined;
+				const nextMIN = nextColDef2 ? colMinWidth(nextColDef2, getRegistry()) : 40;
 				nextCol.style.setProperty('width', `${Math.max(nextMIN, startNextW - delta)}px`);
 			}
 			const sum = Array.from(tbl.querySelectorAll<HTMLElement>('col'))
@@ -2349,10 +2475,13 @@ function setupColResize(
 			hideColLine();
 			const delta = ev.clientX - startX;
 			if (delta === 0) return;
-			void onStructuralOp({ type: 'set-col-width', colIdx, width: Math.max(MIN, startW + delta) });
+			void onStructuralOp({ type: 'set-col-width', colId: col.id, width: Math.max(MIN, startW + delta) });
 			if (nextCol && startNextW !== null && nextColIdx >= 0) {
-				const nextMIN = colMinWidth(model.columns[nextColIdx] ?? { name: '' }, getRegistry());
-				void onStructuralOp({ type: 'set-col-width', colIdx: nextColIdx, width: Math.max(nextMIN, startNextW - delta) });
+				const nextColDef = model.columns[nextColIdx];
+				if (nextColDef) {
+					const nextMIN = colMinWidth(nextColDef, getRegistry());
+					void onStructuralOp({ type: 'set-col-width', colId: nextColDef.id, width: Math.max(nextMIN, startNextW - delta) });
+				}
 			}
 		};
 
@@ -2483,102 +2612,58 @@ function bindResizeHandle(
 	});
 }
 
-function applyStyleRules(el: HTMLElement, row: number, col: number, styles: StyleRule[]): void {
-	for (const rule of styles) {
-		if (!matchTarget(row, col, rule.target)) continue;
-		// Set bg/color as inline styles so they beat any theme stylesheet rule
-		if (rule.bg)    el.style.setProperty('background-color', rule.bg);
-		if (rule.color) el.style.setProperty('color', rule.color);
-		if (rule.size) {
-			el.style.setProperty('font-size', `${rule.size}px`);
-			// Expose as CSS variable so .bt-choice pills (which have their own
-			// font-size declaration) can also pick up the override via the cascade.
-			el.style.setProperty('--bt-cell-font-size', `${rule.size}px`);
-		}
-		if (rule.bold)   el.addClass('bt-bold');
-		if (rule.italic) el.addClass('bt-italic');
+function applyStyleRulesV2(el: HTMLElement, rowIdx: number, colIdx: number, model: TableModelV2): void {
+	const col = model.columns[colIdx];
+	if (!col) return;
+	let rs: ResolvedStyleV2;
+	if (rowIdx === 0) {
+		rs = resolveHeaderStylesV2(model.styles, col.id);
+	} else {
+		const row = model.rows[rowIdx - 1];
+		if (!row) return;
+		rs = resolveStylesV2(model.styles, row.id, col.id, model);
 	}
+	applyResolvedStyle(el, rs);
 }
 
-function matchTarget(row: number, col: number, target: string): boolean {
-	const colWild = /^([A-Z]+)\*$/.exec(target);
-	if (colWild) {
-		const letter = colWild[1];
-		if (letter !== undefined) return colLetterToIndex(letter) === col;
-	}
-
-	const rowWild = /^\*(\d+)$/.exec(target);
-	if (rowWild) {
-		const n = rowWild[1];
-		if (n !== undefined) return parseInt(n) - 1 === row;
-	}
-
-	const rowRange = /^(\d+):(\d+)$/.exec(target);
-	if (rowRange) {
-		const n1 = rowRange[1], n2 = rowRange[2];
-		if (n1 !== undefined && n2 !== undefined) {
-			return row >= parseInt(n1) - 1 && row <= parseInt(n2) - 1;
-		}
-	}
-
-	// A:B → column range (all rows in columns A through B)
-	const colRange = /^([A-Z]+):([A-Z]+)$/.exec(target);
-	if (colRange) {
-		const letter1 = colRange[1], letter2 = colRange[2];
-		if (letter1 !== undefined && letter2 !== undefined) {
-			const c1 = colLetterToIndex(letter1);
-			const c2 = colLetterToIndex(letter2);
-			return col >= Math.min(c1, c2) && col <= Math.max(c1, c2);
-		}
-	}
-
-	const cellRange = /^([A-Z]+\d+):([A-Z]+\d+)$/.exec(target);
-	if (cellRange) {
-		const c1 = cellRange[1], c2 = cellRange[2];
-		if (c1 !== undefined && c2 !== undefined) {
-			const s = parseCellCoord(c1);
-			const e = parseCellCoord(c2);
-			if (s && e) {
-				return row >= s.row && row <= e.row && col >= s.col && col <= e.col;
-			}
-		}
-	}
-
-	const single = /^([A-Z]+)(\d+)$/.exec(target);
-	if (single) {
-		const letter = single[1], numStr = single[2];
-		if (letter !== undefined && numStr !== undefined) {
-			return colLetterToIndex(letter) === col && parseInt(numStr) - 1 === row;
-		}
-	}
-
-	return false;
+interface ResolvedMerge {
+	anchorRowId: string; anchorColId: string;
+	endRowId:    string; endColId:    string;
+	startRow:    number; endRow:      number;  // 1-based display indices
+	startCol:    number; endCol:      number;  // 0-based column indices
 }
 
-function buildOccupied(model: TableModel): boolean[][] {
-	const numRows    = model.rows.length;
-	const numCols    = model.columns.length;
-	const hiddenRows = new Set(model.hiddenRows ?? []);
-	const grid: boolean[][] = Array.from({ length: numRows }, () =>
-		new Array(numCols).fill(false) as boolean[],
-	);
+function buildOccupied(model: TableModelV2): Set<string> {
+	const occupied = new Set<string>();
 	for (const m of model.merges) {
-		// If the merge origin is hidden, don't mark any cells as occupied —
-		// the covered cells should render as normal cells instead.
-		if (hiddenRows.has(m.startRow) || model.columns[m.startCol]?.hidden) continue;
-
-		for (let r = m.startRow; r <= Math.min(m.endRow, numRows - 1); r++) {
-			for (let c = m.startCol; c <= Math.min(m.endCol, numCols - 1); c++) {
-				if (r === m.startRow && c === m.startCol) continue;
-				(grid[r] as boolean[])[c] = true;
+		const dotA = m.anchor.indexOf('.');
+		const dotE = m.end.indexOf('.');
+		if (dotA < 0 || dotE < 0) continue;
+		const anchorRowId = m.anchor.slice(0, dotA);
+		const anchorColId = m.anchor.slice(dotA + 1);
+		const endRowId    = m.end.slice(0, dotE);
+		const endColId    = m.end.slice(dotE + 1);
+		const r1 = model.rows.findIndex(r => r.id === anchorRowId);
+		const c1 = model.columns.findIndex(c => c.id === anchorColId);
+		const r2 = model.rows.findIndex(r => r.id === endRowId);
+		const c2 = model.columns.findIndex(c => c.id === endColId);
+		if (r1 < 0 || c1 < 0 || r2 < 0 || c2 < 0) continue;
+		// If the merge origin row/col is hidden, don't mark cells as occupied
+		if (model.rows[r1]?.hidden || model.columns[c1]?.hidden) continue;
+		for (let ri = r1; ri <= r2; ri++) {
+			for (let ci = c1; ci <= c2; ci++) {
+				if (ri === r1 && ci === c1) continue; // anchor is not occupied
+				const rId = model.rows[ri]?.id ?? '';
+				const cId = model.columns[ci]?.id ?? '';
+				if (rId && cId) occupied.add(`${rId}.${cId}`);
 			}
 		}
 	}
-	return grid;
+	return occupied;
 }
 
 /** Number of visible cells per row (visible cols + one indicator per hidden group). */
-function countVisibleCells(model: TableModel): number {
+function countVisibleCells(model: TableModelV2): number {
 	let count = 0;
 	let inHiddenGroup = false;
 	for (const col of model.columns) {
@@ -2592,6 +2677,28 @@ function countVisibleCells(model: TableModel): number {
 	return count;
 }
 
-function getMergeOrigin(row: number, col: number, merges: MergeRange[]): MergeRange | undefined {
-	return merges.find(m => m.startRow === row && m.startCol === col);
+function getMergeOrigin(rowIdx: number, colIdx: number, model: TableModelV2): ResolvedMerge | undefined {
+	if (rowIdx === 0) return undefined; // header row cannot be a merge origin
+	const row = model.rows[rowIdx - 1];
+	const col = model.columns[colIdx];
+	if (!row || !col) return undefined;
+	for (const m of model.merges) {
+		const dotA = m.anchor.indexOf('.');
+		const dotE = m.end.indexOf('.');
+		if (dotA < 0 || dotE < 0) continue;
+		const anchorRowId = m.anchor.slice(0, dotA);
+		const anchorColId = m.anchor.slice(dotA + 1);
+		if (anchorRowId !== row.id || anchorColId !== col.id) continue;
+		const endRowId = m.end.slice(0, dotE);
+		const endColId = m.end.slice(dotE + 1);
+		const r2 = model.rows.findIndex(r => r.id === endRowId);
+		const c2 = model.columns.findIndex(c => c.id === endColId);
+		if (r2 < 0 || c2 < 0) continue;
+		return {
+			anchorRowId, anchorColId, endRowId, endColId,
+			startRow: rowIdx, startCol: colIdx,
+			endRow:   r2 + 1, endCol:   c2,  // 1-based
+		};
+	}
+	return undefined;
 }
