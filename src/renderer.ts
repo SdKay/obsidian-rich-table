@@ -581,12 +581,11 @@ export async function renderTable(
 				const fit = autoFitColWidth(table, colIdx, colMinWidth(col, getRegistry()));
 				void onStructuralOp({ type: 'set-col-width', colIdx, width: fit });
 			}
-			// Auto-fit every row (header + data, skip hidden)
-			const hiddenSet = new Set(model.hiddenRows ?? []);
+			// Auto-fit every row: clear all forced heights so the browser sizes
+			// rows to their natural content height. This keeps rowHeights sparse
+			// (only manually-resized rows stay in the YAML array).
 			for (let ri = 0; ri < model.rows.length; ri++) {
-				if (hiddenSet.has(ri)) continue;
-				const fit = autoFitRowHeight(table, ri, 24);
-				void onStructuralOp({ type: 'set-row-height', rowIdx: ri, height: fit });
+				void onStructuralOp({ type: 'set-row-height', rowIdx: ri, height: 0 });
 			}
 		});
 	}
@@ -1336,16 +1335,17 @@ async function renderDataCell(
 		if (onStructuralOp) {
 			el.addEventListener('dblclick', (evt: MouseEvent) => {
 				const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
-				const sTarget = cellStyleTarget(rowIdx, colIdx, model.merges);
-				const isMerge = sTarget.includes(':');
+				const sTarget = cellStyleTarget(rowIdx, colIdx, model.merges, model.styles);
+				const isRange = sTarget !== colIndexToLetter(colIdx) + (rowIdx + 1);
 				openCellPanel({
 					anchor: el, els: [el],
 					styleTarget: sTarget,
 					existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
 					inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, sTarget),
-					showTextColor: isMerge,
+					showTextColor: isRange,
+					showBoldItalic: false, // pill CSS overrides bold/italic on typed cells
 					cellOps: ops,
-					onApplyStyle: isMerge
+					onApplyStyle: isRange
 						? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size, bold, italic })
 						: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size, bold, italic }),
 				});
@@ -1387,8 +1387,8 @@ async function renderDataCell(
 		el.addEventListener('dblclick', () => {
 			if (el.hasClass('bt-editing')) return;
 			const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
-			const sTarget = cellStyleTarget(rowIdx, colIdx, model.merges);
-			const isMerge = sTarget.includes(':');
+			const sTarget = cellStyleTarget(rowIdx, colIdx, model.merges, model.styles);
+			const isRange = sTarget !== colIndexToLetter(colIdx) + (rowIdx + 1);
 			openCellPanel({
 				anchor: el, els: [el],
 				styleTarget: sTarget,
@@ -1396,7 +1396,7 @@ async function renderDataCell(
 				inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, sTarget),
 				showTextColor: true,
 				cellOps: ops,
-				onApplyStyle: isMerge
+				onApplyStyle: isRange
 					? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size, bold, italic })
 					: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size, bold, italic }),
 			});
@@ -1454,8 +1454,8 @@ function renderDateCell(
 		el.addEventListener('dblclick', () => {
 			if (el.hasClass('bt-editing')) return;
 			const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
-			const sTarget = cellStyleTarget(rowIdx, colIdx, model.merges);
-			const isMerge = sTarget.includes(':');
+			const sTarget = cellStyleTarget(rowIdx, colIdx, model.merges, model.styles);
+			const isRange = sTarget !== colIndexToLetter(colIdx) + (rowIdx + 1);
 			openCellPanel({
 				anchor: el, els: [el],
 				styleTarget: sTarget,
@@ -1463,7 +1463,7 @@ function renderDateCell(
 				inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, sTarget),
 				showTextColor: true,
 				cellOps: ops,
-				onApplyStyle: isMerge
+				onApplyStyle: isRange
 					? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: sTarget, bg, color, size, bold, italic })
 					: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-cell-style', rowIdx, colIdx, bg, color, size, bold, italic }),
 			});
@@ -1485,6 +1485,7 @@ interface CellPanelConfig {
 	existingStyle:   { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean };
 	inheritedStyle?: { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean };
 	showTextColor:   boolean;
+	showBoldItalic?: boolean; // default true; false for typed cells where pill overrides bold/italic
 	cellOps:       CellOpDef[];
 	typeSection?:  {
 		colIdx:          number;
@@ -1537,16 +1538,27 @@ function cellInheritedStyle(
 }
 
 /**
- * Returns the style target for a cell: if the cell is a merge origin, returns
- * the full range string (e.g. "C3:C4"); otherwise the single-cell coordinate.
- * This ensures set-range-style / set-cell-style find the right existing rule.
+ * Returns the most specific style target for a cell:
+ *   1. Merge origin → full range string (e.g. "C3:C4")
+ *   2. Exact cell-specific rule exists → single-cell coordinate (e.g. "B2")
+ *   3. Matching range/wildcard rule exists → that rule's target (last-wins)
+ *   4. No existing rule → single-cell coordinate
+ *
+ * This ensures the panel's Apply/Clear operates on the rule that ACTUALLY
+ * holds the displayed style, not a phantom cell-specific rule.
  */
-function cellStyleTarget(rowIdx: number, colIdx: number, merges: MergeRange[]): string {
+function cellStyleTarget(rowIdx: number, colIdx: number, merges: MergeRange[], styles: StyleRule[]): string {
 	const merge = getMergeOrigin(rowIdx, colIdx, merges);
 	if (merge) {
 		return `${colIndexToLetter(merge.startCol)}${merge.startRow + 1}:${colIndexToLetter(merge.endCol)}${merge.endRow + 1}`;
 	}
-	return `${colIndexToLetter(colIdx)}${rowIdx + 1}`;
+	const singleTarget = `${colIndexToLetter(colIdx)}${rowIdx + 1}`;
+	if (styles.some(s => s.target === singleTarget)) return singleTarget;
+	let rangeTarget: string | null = null;
+	for (const rule of styles) {
+		if (matchTarget(rowIdx, colIdx, rule.target)) rangeTarget = rule.target;
+	}
+	return rangeTarget ?? singleTarget;
 }
 
 /** Standard cell-op buttons for a data cell (row/col insert/delete/hide + optional unmerge).
@@ -1785,15 +1797,19 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 	});
 	sizeWrap.createSpan({ text: 'px' });
 
-	const boldRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
-	boldRow.createSpan({ cls: 'bt-cp-style-label', text: t('bold') });
-	const boldCheck = boldRow.createEl('input', { attr: { type: 'checkbox' } });
-	boldCheck.checked = !!existingStyle.bold;
+	let boldCheck: HTMLInputElement | null = null;
+	let italicCheck: HTMLInputElement | null = null;
+	if (config.showBoldItalic !== false) {
+		const boldRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+		boldRow.createSpan({ cls: 'bt-cp-style-label', text: t('bold') });
+		boldCheck = boldRow.createEl('input', { attr: { type: 'checkbox' } });
+		boldCheck.checked = !!existingStyle.bold;
 
-	const italicRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
-	italicRow.createSpan({ cls: 'bt-cp-style-label', text: t('italic') });
-	const italicCheck = italicRow.createEl('input', { attr: { type: 'checkbox' } });
-	italicCheck.checked = !!existingStyle.italic;
+		const italicRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+		italicRow.createSpan({ cls: 'bt-cp-style-label', text: t('italic') });
+		italicCheck = italicRow.createEl('input', { attr: { type: 'checkbox' } });
+		italicCheck.checked = !!existingStyle.italic;
+	}
 
 	const styleFoot = styleEl.createDiv({ cls: 'bt-cp-style-footer' });
 	const clearBtn  = styleFoot.createEl('button', { cls: 'bt-sp-clear-btn', text: t('clearFormat') });
@@ -1815,8 +1831,8 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 				e.style.removeProperty('font-size');
 				e.style.removeProperty('--bt-cell-font-size');
 			}
-			e.toggleClass('bt-bold',   boldCheck.checked   || !!(inheritedStyle.bold   && !boldCheck.checked));
-			e.toggleClass('bt-italic', italicCheck.checked || !!(inheritedStyle.italic && !italicCheck.checked));
+			e.toggleClass('bt-bold',   !!(boldCheck?.checked   || (inheritedStyle.bold   && !boldCheck?.checked)));
+			e.toggleClass('bt-italic', !!(italicCheck?.checked || (inheritedStyle.italic && !italicCheck?.checked)));
 		}
 	};
 	bgEnable.addEventListener('change', () => { bgPicker.disabled = !bgEnable.checked; preview(); });
@@ -1824,8 +1840,8 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 	colorEnable?.addEventListener('change', () => { if (colorPicker) colorPicker.disabled = !colorEnable?.checked; preview(); });
 	colorPicker?.addEventListener('input', preview);
 	sizeInput.addEventListener('input', preview);
-	boldCheck.addEventListener('change', preview);
-	italicCheck.addEventListener('change', preview);
+	boldCheck?.addEventListener('change', preview);
+	italicCheck?.addEventListener('change', preview);
 
 	// Type section
 	if (typeSection) {
@@ -1868,8 +1884,8 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 			bgEnable.checked ? bgPicker.value : null,
 			colorEnable?.checked ? (colorPicker?.value ?? null) : null,
 			sizeInput.value.trim() ? parseInt(sizeInput.value.trim(), 10) : null,
-			boldCheck.checked ? true : null,
-			italicCheck.checked ? true : null,
+			boldCheck ? (boldCheck.checked ? true : null) : null,
+			italicCheck ? (italicCheck.checked ? true : null) : null,
 		);
 		panel.remove(); config.onClose?.();
 	});
