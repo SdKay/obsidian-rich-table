@@ -8,7 +8,7 @@ import type { ColumnDefV2, TableModelV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { StructuralOpV2 } from './operations';
 import { colIndexToLetter } from './utils';
-import { SEL_TOTAL, SEL_LABEL, AUTOFIT_OFFSET } from './selectorLayout';
+import { SEL_TOTAL, AUTOFIT_OFFSET } from './selectorLayout';
 import { resolveStylesV2, resolveHeaderStylesV2, parseStyleTarget, matchesHeaderCell, matchesCell, type ResolvedStyleV2 } from './styleTarget';
 import type { StyleRuleV2 } from './model';
 
@@ -849,7 +849,8 @@ export async function renderTable(
 				if (h) h.setCssProps({ '--rx': `${cx}px` });
 			}
 			for (const [ri, h] of rowResizeHandles) {
-				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri}"]`);
+				// data-row is 1-based (header=0, data rows=1,2,3…); ri is 0-based model index.
+				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri + 1}"]`);
 				const tr = firstCell?.closest<HTMLElement>('tr');
 				if (tr) {
 					const trR = tr.getBoundingClientRect();

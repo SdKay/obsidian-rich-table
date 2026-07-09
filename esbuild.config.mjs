@@ -47,6 +47,7 @@ const context = await esbuild.context({
 /** Append all src/themes/*.css into styles.css after each build. */
 function appendThemeCSS() {
 	const themeDir = 'src/themes';
+	if (!fs.existsSync(themeDir)) return;
 	const files = fs.readdirSync(themeDir).filter(f => f.endsWith('.css')).sort();
 	if (files.length === 0) return;
 	const separator = '\n\n/* ── Built-in themes (auto-generated — do not edit below) ──── */\n';
