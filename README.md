@@ -216,8 +216,10 @@ Themes are purely visual — they never affect data or layout.
 | **Styles** | |
 | Per-cell bg color, text color, and font size — via panel or YAML | ✅ |
 | Row / column selector strips — hover to reveal, click or drag to style entire rows/columns | ✅ |
-| Per-table lock — click the 🔒 icon at the top-right corner to disable / re-enable all editing | ✅ |
+| Per-table lock — click the 🔒 icon at the top-left corner to disable / re-enable all editing | ✅ |
 | **Themes** — set `theme: academic` (booktabs), `theme: plain` (colorful gradient + animated border) | ✅ |
+| Custom cell padding (top / bottom / left / right) | 🔜 |
+| Collapsible table — toggle button shows/hides table body, keeping only the title visible | 🔜 |
 | Conditional formatting — auto-apply styles based on cell value rules | 🔜 |
 | Progress bar column type · aggregate row (SUM / COUNT) | 🔜 |
 | **Merges** | |
