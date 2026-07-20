@@ -1318,8 +1318,11 @@
     box-shadow: inset 0 -0.8px 0 var(--text-muted);
 }
 
-/* Bottomrule — thick line after the last data row. */
-.bt-theme-academic .bt-table tbody tr:last-child .bt-td {
+/* Bottomrule — thick line after the last data row. Drawn on tbody itself (not on
+ * tr:last-child .bt-td) because a rowspanned cell from a merge that reaches the last
+ * row lives in an earlier <tr> and would never receive a tr:last-child-scoped shadow,
+ * leaving a gap in the rule under that column. */
+.bt-theme-academic .bt-table tbody {
     box-shadow: inset 0 -1.5px 0 var(--text-muted);
 }
 

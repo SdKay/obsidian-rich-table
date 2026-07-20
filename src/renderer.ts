@@ -64,7 +64,13 @@ export async function renderTable(
 		if (ri === 0) {
 			void onOp({ type: 'set-col-name', colId: colId(model, ci), name: value });
 		} else {
-			void onOp({ type: 'set-cell-content', rowId: rowId(model, ri), colId: colId(model, ci), value });
+			// Editing a merge's effective anchor (possibly promoted past a hidden literal
+			// anchor, see getMergeOrigin) must write to the merge's literal anchor cell —
+			// this row may just be standing in for a hidden anchor and has no data of its own.
+			const merge = getMergeOrigin(ri, ci, model);
+			const targetRowId = merge?.anchorRowId ?? rowId(model, ri);
+			const targetColId = merge?.anchorColId ?? colId(model, ci);
+			void onOp({ type: 'set-cell-content', rowId: targetRowId, colId: targetColId, value });
 		}
 	} : undefined;
 
@@ -1317,8 +1323,15 @@ async function renderRow(
 		if (rh) el.style.setProperty('--bt-row-height', `${rh}px`);
 		else el.style.removeProperty('--bt-row-height');
 
-		// Cell value: header uses col.name; data uses cells record keyed by colId
-		const value = isHeader ? (col.name ?? '') : (currentRow?.cells[col.id] ?? '');
+		// Cell value: header uses col.name; data uses cells record keyed by colId.
+		// When this cell is a merge's (possibly hidden-row-promoted) effective anchor,
+		// always read from the merge's literal anchor cell — the row being rendered here
+		// may just be standing in for a hidden literal anchor and has no data of its own.
+		const value = isHeader
+			? (col.name ?? '')
+			: merge
+				? (model.rows.find(r => r.id === merge.anchorRowId)?.cells[merge.anchorColId] ?? '')
+				: (currentRow?.cells[col.id] ?? '');
 
 		if (isHeader) {
 			renderHeaderCell(el, value, col, colIdx, getRegistry, app, sourcePath, model, component, onCellChange, onColTypeChange, onStructuralOp);
@@ -2786,11 +2799,18 @@ function buildOccupied(model: TableModelV2): Set<string> {
 		const r2 = model.rows.findIndex(r => r.id === endRowId);
 		const c2 = model.columns.findIndex(c => c.id === endColId);
 		if (r1 < 0 || c1 < 0 || r2 < 0 || c2 < 0) continue;
-		// If the merge origin row/col is hidden, don't mark cells as occupied
-		if (model.rows[r1]?.hidden || model.columns[c1]?.hidden) continue;
-		for (let ri = r1; ri <= r2; ri++) {
-			for (let ci = c1; ci <= c2; ci++) {
-				if (ri === r1 && ci === c1) continue; // anchor is not occupied
+		// If the literal anchor row/col is hidden, the merge survives by promoting the
+		// effective anchor to the first visible row/col within the range — the merge
+		// still displays (with the literal anchor's content, see renderRow) instead of
+		// collapsing into empty standalone cells. Only give up if the whole range is hidden.
+		let effR1 = r1;
+		while (effR1 <= r2 && model.rows[effR1]?.hidden) effR1++;
+		let effC1 = c1;
+		while (effC1 <= c2 && model.columns[effC1]?.hidden) effC1++;
+		if (effR1 > r2 || effC1 > c2) continue;
+		for (let ri = effR1; ri <= r2; ri++) {
+			for (let ci = effC1; ci <= c2; ci++) {
+				if (ri === effR1 && ci === effC1) continue; // effective anchor is not occupied
 				const rId = model.rows[ri]?.id ?? '';
 				const cId = model.columns[ci]?.id ?? '';
 				if (rId && cId) occupied.add(`${rId}.${cId}`);
@@ -2826,12 +2846,23 @@ function getMergeOrigin(rowIdx: number, colIdx: number, model: TableModelV2): Re
 		if (dotA < 0 || dotE < 0) continue;
 		const anchorRowId = m.anchor.slice(0, dotA);
 		const anchorColId = m.anchor.slice(dotA + 1);
-		if (anchorRowId !== row.id || anchorColId !== col.id) continue;
 		const endRowId = m.end.slice(0, dotE);
 		const endColId = m.end.slice(dotE + 1);
+		const r1 = model.rows.findIndex(r => r.id === anchorRowId);
+		const c1 = model.columns.findIndex(c => c.id === anchorColId);
 		const r2 = model.rows.findIndex(r => r.id === endRowId);
 		const c2 = model.columns.findIndex(c => c.id === endColId);
-		if (r2 < 0 || c2 < 0) continue;
+		if (r1 < 0 || c1 < 0 || r2 < 0 || c2 < 0) continue;
+		// Match against the effective anchor (promoted past a hidden literal anchor row/col,
+		// same rule as buildOccupied) — see the "Table format versioning"-adjacent comment
+		// in buildOccupied for why. anchorRowId/anchorColId stay literal for style targets
+		// and unmerge, which key off the merge record's actual identity, not the render position.
+		let effR1 = r1;
+		while (effR1 <= r2 && model.rows[effR1]?.hidden) effR1++;
+		let effC1 = c1;
+		while (effC1 <= c2 && model.columns[effC1]?.hidden) effC1++;
+		if (effR1 > r2 || effC1 > c2) continue;
+		if (rowIdx - 1 !== effR1 || colIdx !== effC1) continue;
 		return {
 			anchorRowId, anchorColId, endRowId, endColId,
 			startRow: rowIdx, startCol: colIdx,
