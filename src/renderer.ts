@@ -660,11 +660,17 @@ export async function renderTable(
 			});
 			setIcon(autoFitBtn, 'maximize-2');
 			autoFitBtn.addEventListener('click', () => {
-				for (const { colIdx } of visibleCols) {
+				const cols = visibleCols
+					.map(({ colIdx }) => {
+						const col = model.columns[colIdx];
+						return col ? { colIdx, minW: colMinWidth(col, getRegistry()) } : null;
+					})
+					.filter((c): c is { colIdx: number; minW: number } => c !== null);
+				const fits = autoFitAllColWidths(table, cols);
+				for (const { colIdx } of cols) {
 					const col = model.columns[colIdx];
 					if (!col) continue;
-					const fit = autoFitColWidth(table, colIdx, colMinWidth(col, getRegistry()));
-					void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fit });
+					void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fits.get(colIdx) ?? colMinWidth(col, getRegistry()) });
 				}
 				for (const row of model.rows) {
 					void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: 0 });
@@ -1226,6 +1232,11 @@ export async function renderTable(
 		let rootRect: DOMRect | null = null;
 		root.addEventListener('mouseenter', () => { rootRect = root.getBoundingClientRect(); });
 		root.addEventListener('mousemove', (e: MouseEvent) => {
+			// Skip while a write-back is pending on this (about-to-be-replaced) root —
+			// same reasoning as .bt-write-pending's animation pause: every write here
+			// repaints a theme's cursor-glow gradient for no visual benefit, and competes
+			// with the main thread for the time it needs to resolve the vault write.
+			if (root.hasClass('bt-write-pending')) return;
 			if (!rootRect) rootRect = root.getBoundingClientRect();
 			root.setCssProps({
 				'--bt-mx': `${Math.round(e.clientX - rootRect.left)}px`,
@@ -2449,9 +2460,11 @@ function colMinWidth(col: ColumnDefV2, registry: ChoiceRegistry): number {
 }
 
 /**
- * Auto-fit a column's width to the widest content among its cells.
- * Clones each cell into an off-screen auto-layout table with white-space:nowrap
- * so the browser reports each cell's intrinsic single-line width; returns the max.
+ * Auto-fit a column's width to the widest content among its cells. Measures each
+ * cell in place: toggles white-space:nowrap on its content to get the intrinsic
+ * single-line width, then restores it. For a single column this read-after-write
+ * per cell is cheap; auto-fitting every column at once uses autoFitAllColWidths
+ * instead, which batches the same measurement to avoid forcing a reflow per cell.
  */
 function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number): number {
 	const cells = Array.from(tbl.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`));
@@ -2486,10 +2499,23 @@ function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number): number
 
 		// 2. Header cell: measure the inline text span (not the cell itself).
 		//    cell.scrollWidth == clientWidth == current column width for table-cell
-		//    elements — useless. The inline span's offsetWidth is the actual text width.
+		//    elements — useless. The inline span's offsetWidth is the actual text width —
+		//    but only once it's forced to one line first: if the column is already too
+		//    narrow, the header text is already wrapped, and offsetWidth on a wrapped
+		//    inline span reports the widest wrapped line, not the text's true natural
+		//    width, which would just confirm the too-narrow width forever.
 		const textSpan = cell.querySelector<HTMLElement>('.bt-th-text');
 		if (textSpan) {
-			max = Math.max(max, textSpan.offsetWidth + padH + borderH);
+			textSpan.addClass('bt-nowrap-measure');
+			const w = textSpan.offsetWidth;
+			textSpan.removeClass('bt-nowrap-measure');
+			// Buffer by one letter-spacing unit — engines don't consistently include the
+			// trailing letter-spacing after the last character in the measured width, so a
+			// theme with non-zero letter-spacing (e.g. plain's bold header text) can measure
+			// a hair short of what's actually needed to avoid wrapping.
+			const spanStyle = view ? view.getComputedStyle(textSpan) : null;
+			const letterSpacing = spanStyle ? parseFloat(spanStyle.letterSpacing) || 0 : 0;
+			max = Math.max(max, w + letterSpacing + padH + borderH);
 			continue;
 		}
 
@@ -2518,6 +2544,91 @@ function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number): number
 		// using it would cause the column to grow on every double-click.
 	}
 	return Math.ceil(max);
+}
+
+/**
+ * Auto-fit every column's width in one pass. autoFitColWidth measures a single column
+ * by toggling white-space:nowrap and reading the result per cell — interleaving those
+ * writes and reads across every cell in every column forces one synchronous layout per
+ * cell (classic layout thrashing), which gets dramatically slower under heavy theme CSS
+ * (animations, gradients, filters make every forced layout more expensive). This does
+ * the same measurement but strictly phased — add every nowrap class first, read every
+ * width in one batch, then remove every class — so the browser only needs one layout
+ * pass for the whole table instead of one per cell.
+ */
+function autoFitAllColWidths(
+	tbl: HTMLElement,
+	cols: { colIdx: number; minW: number }[],
+): Map<number, number> {
+	const results = new Map<number, number>();
+	for (const { colIdx, minW } of cols) results.set(colIdx, minW);
+
+	const pills:      { colIdx: number; el: HTMLElement }[] = [];
+	const textSpans:  { colIdx: number; el: HTMLElement }[] = [];
+	const nowrapEls:  { colIdx: number; el: HTMLElement }[] = [];
+
+	// Phase 1 — classify cells and apply the one write each nowrap target needs. No reads yet.
+	for (const { colIdx } of cols) {
+		const cells = Array.from(tbl.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`));
+		for (const cell of cells) {
+			if ((cell.tagName === 'TD' || cell.tagName === 'TH') && (cell as HTMLTableCellElement).colSpan > 1) continue;
+
+			const pill = cell.querySelector<HTMLElement>('.bt-choice');
+			if (pill) { pills.push({ colIdx, el: pill }); continue; }
+			// Force nowrap before reading offsetWidth below — if the column is already too
+			// narrow, the header text is already wrapped, and offsetWidth on a wrapped inline
+			// span reports the widest wrapped line, not the text's true natural width.
+			const textSpan = cell.querySelector<HTMLElement>('.bt-th-text');
+			if (textSpan) { textSpan.addClass('bt-nowrap-measure'); textSpans.push({ colIdx, el: textSpan }); continue; }
+			const text = cell.textContent?.trim() ?? '';
+			if (!text) continue;
+			const pEls = Array.from(cell.querySelectorAll<HTMLElement>('p'));
+			const targets = pEls.length > 0 ? pEls : [cell];
+			for (const target of targets) {
+				target.addClass('bt-nowrap-measure');
+				nowrapEls.push({ colIdx, el: target });
+			}
+		}
+	}
+
+	// Phase 2 — read everything. No writes are interleaved here, so the browser
+	// computes layout once (lazily, on the first read below) and reuses it for the rest.
+	const view = activeDocument.defaultView;
+	const grow = (colIdx: number, w: number) => {
+		results.set(colIdx, Math.max(results.get(colIdx) ?? 0, w));
+	};
+	const padBorder = (cell: HTMLElement) => {
+		const style = view ? view.getComputedStyle(cell) : null;
+		return {
+			padH:    style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24,
+			borderH: style ? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) : 2,
+		};
+	};
+	for (const { colIdx, el } of pills) {
+		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
+		grow(colIdx, el.offsetWidth + padH + borderH);
+	}
+	for (const { colIdx, el } of textSpans) {
+		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
+		// Buffer by one letter-spacing unit — see autoFitColWidth's header-cell comment.
+		const style = view ? view.getComputedStyle(el) : null;
+		const letterSpacing = style ? parseFloat(style.letterSpacing) || 0 : 0;
+		grow(colIdx, el.offsetWidth + letterSpacing + padH + borderH);
+	}
+	for (const { colIdx, el } of nowrapEls) {
+		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
+		const range = activeDocument.createRange();
+		range.selectNodeContents(el);
+		const rw = range.getBoundingClientRect().width;
+		if (rw > 0) grow(colIdx, rw + padH + borderH);
+	}
+
+	// Phase 3 — cleanup writes.
+	for (const { el } of nowrapEls) el.removeClass('bt-nowrap-measure');
+	for (const { el } of textSpans) el.removeClass('bt-nowrap-measure');
+
+	for (const [colIdx, w] of results) results.set(colIdx, Math.ceil(w));
+	return results;
 }
 
 /** Viewport x of a column's right edge, summing <col> widths in DOM order. */

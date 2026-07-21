@@ -22,6 +22,15 @@
 	--bt-title-mb-pull:  0px;
 	--bt-cell-border:    none;
 }
+/* Applied the instant a write-back is queued (tableBlock.ts) and left on until this root
+ * is torn down and replaced by the re-render it triggers. Themes with continuous filter/
+ * box-shadow/background animations (e.g. plain) repaint every frame, which competes with
+ * the main thread for the time it needs to resolve the vault.process() write promptly —
+ * pausing costs nothing visually since this root is about to be discarded anyway. */
+.bt-render-root.bt-write-pending,
+.bt-render-root.bt-write-pending * {
+	animation-play-state: paused !important;
+}
 /* All overlay strips (col/row selectors + edge-add buttons) use position:absolute
  * within root. Coordinates are set from getBoundingClientRect() deltas so they
  * track the TABLE's actual position regardless of how the theme aligns the table

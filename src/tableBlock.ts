@@ -233,6 +233,11 @@ export class TableBlock extends MarkdownRenderChild {
 		this.pendingOps.push(op);
 		if (this.writeBackScheduled) return; // already scheduled by an earlier op
 		this.writeBackScheduled = true;
+		// Freeze any running theme animations now — this root is about to be replaced by
+		// the re-render this write triggers, so there's nothing to lose visually, and the
+		// main thread is freed up to resolve the write promptly instead of competing with
+		// continuous repaints (see .bt-write-pending in styles.css).
+		this.renderedRoot?.addClass('bt-write-pending');
 
 		await new Promise<void>(resolve => { window.setTimeout(resolve, 0); });
 		this.writeBackScheduled = false;
