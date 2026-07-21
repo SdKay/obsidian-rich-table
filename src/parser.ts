@@ -17,6 +17,7 @@ export function parseTable(source: string): TableModelV2 {
 
 	const columns = parseColumns(yaml?.columns);
 	const rows    = parseRows(yaml?.rows);
+	const sort    = parseSort(yaml?.sort);
 
 	return {
 		version:  2,
@@ -26,10 +27,10 @@ export function parseTable(source: string): TableModelV2 {
 		styles:   parseStyles(yaml?.styles),
 		...(typeof yaml?.title === 'string' ? { title: yaml.title } : {}),
 		...(yaml?.footer ? { footer: parseFooter(yaml.footer) } : {}),
-		...(yaml?.filter ? { filter: parseFilter(yaml.filter) } : {}),
 		...(typeof yaml?.theme === 'string' ? { theme: yaml.theme } : {}),
 		...(yaml?.locked === true ? { locked: true } : {}),
 		...(yaml?.collapsed === true ? { collapsed: true } : {}),
+		...(sort ? { sort } : {}),
 	};
 }
 
@@ -55,6 +56,7 @@ function parseColumns(raw: unknown): ColumnDefV2[] {
 		if (typeof c.type  === 'string')                         col.type   = c.type;
 		if (typeof c.width === 'number')                         col.width  = c.width;
 		if (c.align === 'left' || c.align === 'center' || c.align === 'right') col.align = c.align;
+		if (Array.isArray(c.filter))                             col.filter = c.filter.map(v => String(v));
 		return col;
 	}).filter((c): c is ColumnDefV2 => c !== null);
 }
@@ -110,11 +112,10 @@ function parseFooter(raw: unknown): string | string[] {
 	return String(raw);
 }
 
-function parseFilter(raw: unknown): Record<string, string[]> {
-	if (typeof raw !== 'object' || raw === null) return {};
-	const out: Record<string, string[]> = {};
-	for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-		if (Array.isArray(v)) out[k] = v.map(x => String(x));
-	}
-	return out;
+function parseSort(raw: unknown): { colId: string; dir: 'asc' | 'desc' } | null {
+	if (typeof raw !== 'object' || raw === null) return null;
+	const s = raw as Record<string, unknown>;
+	if (typeof s.colId !== 'string') return null;
+	if (s.dir !== 'asc' && s.dir !== 'desc') return null;
+	return { colId: s.colId, dir: s.dir };
 }

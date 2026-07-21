@@ -60,6 +60,13 @@ const EN = {
 	filterClear:    'Clear filter',
 	filterActive:   'filter active',
 
+	// Row sorting (menu items in the column-selector popup)
+	sortAscending:        'Sort ascending',
+	sortDescending:       'Sort descending',
+	keepSortedAscending:  'Keep sorted ascending',
+	keepSortedDescending: 'Keep sorted descending',
+	clearLiveSort:        'Clear live sort',
+
 	// Table lock
 	lockTable:   'Lock table (disable graphical editing)',
 	unlockTable: 'Unlock table (enable graphical editing)',
@@ -122,6 +129,12 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	filterSelectAll: '全选',
 	filterClear:     '清除筛选',
 	filterActive:    '筛选中',
+
+	sortAscending:        '升序排序',
+	sortDescending:       '降序排序',
+	keepSortedAscending:  '自动保持升序排序',
+	keepSortedDescending: '自动保持降序排序',
+	clearLiveSort:        '取消自动排序',
 
 	lockTable:   '锁定表格（禁用图形化编辑）',
 	unlockTable: '解锁表格（启用图形化编辑）',
@@ -208,4 +221,10 @@ export function collapsedRowsLabel(): string {
 	return isZh()
 		? `表格已折叠 · 点击展开`
 		: `Table collapsed · click to expand`;
+}
+
+export function sortActiveLabel(colName: string, dir: 'asc' | 'desc'): string {
+	return isZh()
+		? `按"${colName}"排序（${dir === 'asc' ? '升序' : '降序'}）· 点击取消`
+		: `Sorted by "${colName}" (${dir === 'asc' ? 'ascending' : 'descending'}) · click to clear`;
 }

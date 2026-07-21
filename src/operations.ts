@@ -36,7 +36,12 @@ export type StructuralOpV2 =
 	| { type: 'set-theme';       theme: string | null }
 	| { type: 'toggle-lock' }
 	| { type: 'toggle-collapse' }
-	| { type: 'paste-values';   anchorRowId: string; anchorColId: string; values: string[][] };
+	| { type: 'paste-values';   anchorRowId: string; anchorColId: string; values: string[][] }
+	| { type: 'set-sort';       sort: { colId: string; dir: 'asc' | 'desc' } | null }
+	/** One-time sort: physically commits the given row order to storage — the
+	 *  caller (renderer.ts) computes `rowIds` since it owns the type-aware
+	 *  comparators; the reducer just applies the already-decided order. */
+	| { type: 'reorder-rows';   rowIds: string[] };
 
 export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): void {
 	switch (op.type) {
@@ -97,12 +102,13 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'delete-col': {
 			const idx = model.columns.findIndex(c => c.id === op.colId);
 			if (idx < 0) break;
-			model.columns.splice(idx, 1);
+			model.columns.splice(idx, 1); // takes col.filter with it — no separate cleanup needed
 			for (const row of model.rows) delete row.cells[op.colId];
 			model.merges = model.merges.filter(m =>
 				!m.anchor.endsWith(`.${op.colId}`) && !m.end.endsWith(`.${op.colId}`));
 			model.styles = model.styles.filter(s =>
 				!s.target.endsWith(`.${op.colId}`) && s.target !== op.colId);
+			if (model.sort?.colId === op.colId) delete model.sort;
 			break;
 		}
 		case 'move-col': {
@@ -215,14 +221,10 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		}
 		case 'set-filter': {
 			const { colId, values } = op;
-			if (!values || values.length === 0) {
-				if (model.filter) {
-					delete model.filter[colId];
-					if (Object.keys(model.filter).length === 0) delete model.filter;
-				}
-			} else {
-				(model.filter ??= {})[colId] = values;
-			}
+			const col = model.columns.find(c => c.id === colId);
+			if (!col) break;
+			if (!values || values.length === 0) delete col.filter;
+			else col.filter = values;
 			break;
 		}
 		case 'set-theme':
@@ -235,6 +237,18 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'toggle-collapse':
 			model.collapsed = !model.collapsed || undefined;
 			break;
+		case 'set-sort':
+			if (op.sort) model.sort = op.sort; else delete model.sort;
+			break;
+		case 'reorder-rows': {
+			const byId = new Map(model.rows.map(r => [r.id, r]));
+			const reordered = op.rowIds.map(id => byId.get(id)).filter((r): r is RowDefV2 => !!r);
+			// Bail out rather than drop rows if the id set no longer matches exactly
+			// (e.g. a row was deleted in the same batch before this op applied).
+			if (reordered.length !== model.rows.length) break;
+			model.rows = reordered;
+			break;
+		}
 
 		// ── Paste (from Excel/clipboard) ────────────────────────────────────────
 		case 'paste-values': {

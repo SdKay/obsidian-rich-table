@@ -94,6 +94,15 @@ Each entry has:
 | `width`  | number | auto | Column width in px |
 | `align`  | `left` \| `center` \| `right` | — | Text alignment |
 | `hidden` | boolean | false | Hidden (collapsed) column |
+| `filter` | array of strings | — | Values to SHOW for this column (row filtering). Managed automatically by the plugin UI. |
+
+```yaml
+- id: c_000001
+  name: 状态
+  filter:
+    - done
+    - in-progress
+```
 
 > **Quote column names containing YAML special characters.**  
 > Characters `[ ] { } : , #` need double-quoting:
@@ -108,7 +117,7 @@ Each entry has:
 | Field    | Type | Description |
 | -------- | ---- | ----------- |
 | `id`     | string | Stable ID, e.g. `r_000000` |
-| `cells`  | object | Map of column-id → cell content string |
+| `cells`  | object | Map of column-id → cell content string. Sparse — a missing colId key means an empty cell, never an error; the parser must not require every column to be present. |
 | `hidden` | boolean | Row is hidden (collapsed) |
 | `height` | number | Forced row height in px |
 
@@ -161,16 +170,6 @@ styles:
     size: 14
 ```
 
-### `filter` (object, optional)
-Map of column-id → array of visible values. Managed automatically by the plugin UI.
-
-```yaml
-filter:
-  c_000001:
-    - done
-    - in-progress
-```
-
 ### `footer` (string or array of strings, optional)
 Displayed below the table. Supports inline Markdown. Use an array for multiple lines.
 
@@ -202,6 +201,32 @@ When `true`, all graphical editing is disabled for this table.
 ### `collapsed` (boolean, optional)
 When `true`, only the title (if any) and header row render — the table body
 and footer are hidden. Toggle via the fold-icon button in the top-left corner.
+
+### `sort` (object, optional)
+Live/persistent row sort — the popup menu opened by selecting a single column
+in the column selector strip has two sort modes:
+- **"Sort ascending" / "Sort descending"** — one-time: reorders `rows[]` in the
+  YAML immediately, then forgets about it. No `sort` field is written; manual
+  drag-reorder keeps working normally afterward.
+- **"Keep sorted ascending" / "Keep sorted descending" / "Clear live sort"** —
+  live: writes this `sort` field instead of touching `rows[]`. Re-applied on
+  every render (so newly-inserted rows also land in the right place), and
+  disables the row drag-grip while active since the display order is derived,
+  not stored. A live sort in effect also shows a small always-visible
+  indicator directly in that column's header cell (same corner as the filter
+  button, stacked above it if both are active on that column), independent of
+  the popup menu, specifically so it's never silently forgotten — click it to
+  clear.
+
+Both modes are omitted/disabled while any `merges` entry spans more than one
+row (filter stays on its own funnel icon in the header — unaffected by any of
+this).
+
+```yaml
+sort:
+  colId: c_000001
+  dir: desc  # or asc
+```
 
 ---
 

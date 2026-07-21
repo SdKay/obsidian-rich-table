@@ -263,20 +263,6 @@
 	color: var(--text-on-accent);
 	border-color: var(--interactive-accent);
 }
-/* Hidden row/column group indicator in selector strips */
-.bt-sel-cell.bt-sel-hidden {
-	background: var(--background-modifier-border);
-	color: var(--text-faint);
-	border-style: dashed;
-	border-radius: 2px;
-	font-size: 7px;
-	overflow: hidden;
-}
-.bt-sel-cell.bt-sel-hidden:hover {
-	background: color-mix(in srgb, var(--interactive-accent) 25%, var(--background-secondary));
-	color: var(--interactive-accent);
-	border-color: var(--interactive-accent);
-}
 /* Col selector: labels sit in the lower label zone; top grip zone reserved for drag grips */
 .bt-col-selector .bt-sel-cell {
 	top: var(--bt-sel-grip); height: var(--bt-sel-cell);
@@ -729,6 +715,32 @@
 	opacity: 1;
 	color: var(--interactive-accent);
 }
+.bt-table .bt-th .bt-filter-btn:hover {
+	background: var(--background-modifier-hover);
+}
+
+/* Live-sort indicator — same corner as the filter button, one slot higher, so
+ * a column that's both filtered and live-sorted shows both stacked instead of
+ * overlapping. Always opaque (unlike the filter button) since it's only ever
+ * in the DOM at all while a live sort is actually active on this column. */
+.bt-table .bt-th .bt-sort-active-btn {
+	position: absolute;
+	bottom: 21px;
+	right: 3px;
+	width: 16px;
+	height: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	border-radius: var(--radius-s);
+	color: var(--interactive-accent);
+}
+.bt-table .bt-th .bt-sort-active-btn svg { width: 11px; height: 11px; }
+.bt-table .bt-th .bt-sort-active-btn:hover {
+	background: var(--background-modifier-hover);
+}
+
 
 /* ── Filter status bar ────────────────────────────────────────────────────── */
 .bt-filter-bar {

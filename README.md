@@ -216,7 +216,7 @@ Themes are purely visual — they never affect data or layout.
 | Custom types defined in **Settings → Rich Table** | ✅ |
 | Row filtering — funnel icon on each column header; click to open a checkbox panel and filter by value | ✅ |
 | Filter status bar — "Showing X of Y · Clear" unified with sort / aggregate info | 🔜 |
-| Row sorting — click a column header to sort | 🔜 |
+| Row sorting — via the column selector's popup menu: one-time (reorders rows once) or live (auto-sorts, shown by an indicator until cleared) | ✅ |
 | **Styles** | |
 | Per-cell bg color, text color, and font size — via panel or YAML | ✅ |
 | Row / column selector strips — hover to reveal, click or drag to style entire rows/columns | ✅ |

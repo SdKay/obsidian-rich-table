@@ -64,6 +64,9 @@ export interface ColumnDefV2 {
 	type?: string;
 	width?: number;
 	align?: 'left' | 'center' | 'right';
+	/** Values to SHOW for this column (empty/absent = no filter). Lives on the
+	 *  column itself — deleting the column drops its filter for free. */
+	filter?: string[];
 }
 
 /**
@@ -110,13 +113,13 @@ export interface TableModelV2 {
 	rows: RowDefV2[];                    // data rows only — no header
 	merges: MergeRangeV2[];
 	styles: StyleRuleV2[];
-	/** key = colId, value = values to SHOW (empty/absent = no filter) */
-	filter?: Record<string, string[]>;
 	footer?: string | string[];
 	locked?: boolean;
 	theme?: string;   // e.g. 'academic' | 'plain' — absent = default (see src/themes/)
 	/** When true, only the title (if any) and header row render; body and footer are hidden. */
 	collapsed?: boolean;
+	/** Display-only row sort — never reorders `rows[]` itself, applied at render time. */
+	sort?: { colId: string; dir: 'asc' | 'desc' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ function buildYaml(m: TableModelV2): string {
 		if (c.type)    entry.type   = c.type;
 		if (c.width)   entry.width  = c.width;
 		if (c.align)   entry.align  = c.align;
+		if (c.filter && c.filter.length > 0) entry.filter = c.filter;
 		return entry;
 	});
 
@@ -75,11 +76,11 @@ function buildYaml(m: TableModelV2): string {
 		});
 	}
 
-	if (m.filter && Object.keys(m.filter).length > 0) obj.filter = m.filter;
 	if (m.footer) obj.footer = m.footer;
 	if (m.theme)  obj.theme  = m.theme;
 	if (m.locked) obj.locked = true;
 	if (m.collapsed) obj.collapsed = true;
+	if (m.sort) obj.sort = { colId: m.sort.colId, dir: m.sort.dir };
 
 	return stringifyYaml(obj);
 }

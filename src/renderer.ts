@@ -2,11 +2,11 @@ import { App, Component, MarkdownRenderer, Menu, Notice, setIcon } from 'obsidia
 import {
 	t, isZh, typeLabel,
 	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
-	collapsedRowsLabel,
+	collapsedRowsLabel, sortActiveLabel,
 } from './i18n';
 import { BUILTIN_THEMES } from './themes/index';
 import { WikilinkInputSuggest } from './wikilinkInputSuggest';
-import type { ColumnDefV2, TableModelV2 } from './model';
+import type { ColumnDefV2, RowDefV2, TableModelV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { StructuralOpV2 } from './operations';
 import { colIndexToLetter } from './utils';
@@ -27,6 +27,94 @@ type StructuralOpHandler  = (op: StructuralOpV2) => void;
 // di = 1-based data row display index (1 = first data row)
 const rowId  = (model: TableModelV2, di: number): string => model.rows[di - 1]?.id ?? '';
 const colId  = (model: TableModelV2, ci: number): string => model.columns[ci]?.id ?? '';
+
+/** True if any merge spans more than one row — sorting would scatter its rows apart. */
+function hasRowSpanningMerge(model: TableModelV2): boolean {
+	return model.merges.some(m => m.anchor.split('.')[0] !== m.end.split('.')[0]);
+}
+
+/** Parses the "YYYY-MM-DD" value stored for a `date`-type cell (same parsing as
+ *  renderDateCell) into a timestamp; NaN for empty/unparseable values. */
+function parseDateCellValue(v: string): number {
+	if (!v.trim()) return NaN;
+	const [y, m, d] = v.split('-').map(Number);
+	if (y === undefined || m === undefined || d === undefined) return NaN;
+	return new Date(y, m - 1, d).getTime();
+}
+
+/** Default comparator for untyped/text/number cell values — shared fallback below. */
+function compareGenericCellValue(av: string, bv: string): number {
+	// Number(), not parseFloat() — parseFloat truncates at the first non-numeric
+	// character ("1.8/3.3" → 1.8), silently mis-sorting values like ratios or
+	// ranges as if they were clean numbers. Number() requires the whole
+	// trimmed string to be numeric, so those correctly fall through to text sort.
+	const an = Number(av.trim()), bn = Number(bv.trim());
+	const bothNumeric = av.trim() !== '' && bv.trim() !== '' && Number.isFinite(an) && Number.isFinite(bn);
+	return bothNumeric ? an - bn : av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/**
+ * Per-column-type comparators for sort. `date` compares as actual dates (a plain
+ * string/numeric compare breaks the moment a value isn't zero-padded, e.g.
+ * "2026-7-5"). Every other registered choice type (task-status, priority, ...,
+ * and any custom type) compares by the type's own defined option ORDER, not
+ * alphabetically — e.g. task-status naturally orders todo → pending →
+ * in-progress → done → cancel, which alphabetical order would scramble.
+ * Falls through to compareGenericCellValue() for untyped/unknown-type columns.
+ */
+const TYPE_COMPARATORS: Record<string, (av: string, bv: string, registry: ChoiceRegistry, typeId: string) => number> = {
+	date: (av, bv) => {
+		const at = parseDateCellValue(av), bt = parseDateCellValue(bv);
+		const aValid = !Number.isNaN(at), bValid = !Number.isNaN(bt);
+		return aValid && bValid ? at - bt : aValid ? -1 : bValid ? 1 : 0; // empty dates sort last
+	},
+};
+
+function compareChoiceCellValue(av: string, bv: string, registry: ChoiceRegistry, typeId: string): number {
+	const options = registry.get(typeId)?.options;
+	if (!options) return compareGenericCellValue(av, bv);
+	const ai = options.findIndex(o => o.value === av.trim());
+	const bi = options.findIndex(o => o.value === bv.trim());
+	if (ai < 0 && bi < 0) return 0;
+	if (ai < 0) return 1;  // value not in the option list sorts last
+	if (bi < 0) return -1;
+	return ai - bi;
+}
+
+/**
+ * Sorts a COPY of `rows` by the given column, picking a type-aware comparator
+ * the same way for both the live display sort and a one-time commit — the two
+ * modes must agree on ordering, or "sort once" would visibly differ from what
+ * "keep sorted" would have shown for the same column/direction.
+ */
+function sortRowsByColumn(
+	rows: RowDefV2[], columns: ColumnDefV2[], sortColId: string, dir: 'asc' | 'desc', registry: ChoiceRegistry,
+): RowDefV2[] {
+	const typeId = columns.find(c => c.id === sortColId)?.type;
+	const compare = typeId
+		? (TYPE_COMPARATORS[typeId] ?? ((av, bv) => compareChoiceCellValue(av, bv, registry, typeId)))
+		: compareGenericCellValue;
+	const sorted = [...rows];
+	sorted.sort((a, b) => {
+		const av = a.cells[sortColId] ?? '';
+		const bv = b.cells[sortColId] ?? '';
+		const cmp = compare(av, bv, registry, typeId ?? '');
+		return dir === 'asc' ? cmp : -cmp;
+	});
+	return sorted;
+}
+
+/**
+ * Reorders a LOCAL copy of `rows` to match `model.sort`, for rendering only — the
+ * object returned here is never the one the caller writes back, so this can never
+ * persist a reorder. No-ops (returns `model` unchanged) while any merge spans
+ * multiple rows, since a rowspan requires its rows to stay physically adjacent.
+ */
+function applySortForDisplay(model: TableModelV2, registry: ChoiceRegistry): TableModelV2 {
+	if (!model.sort || hasRowSpanningMerge(model)) return model;
+	const { colId: sortColId, dir } = model.sort;
+	return { ...model, rows: sortRowsByColumn(model.rows, model.columns, sortColId, dir, registry) };
+}
 
 // Apply a ResolvedStyleV2 to an element via inline style + CSS classes
 function applyResolvedStyle(el: HTMLElement, rs: ResolvedStyleV2): void {
@@ -56,6 +144,11 @@ export async function renderTable(
 	isSwapping?: () => boolean,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
+	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
+	// object the caller holds for write-back) so every existing display-index-based
+	// lookup below (rowId(), isRowFiltered(), cellRawValue(), etc.) keeps working
+	// unmodified — display index and storage index are the same again after this.
+	model = applySortForDisplay(model, getRegistry());
 	// Unified op handler — replaces separate onCellChange / onColTypeChange / onStructuralOp.
 	// Wrapped as void-returning so helpers typed StructuralOpHandler=(op)=>void are satisfied.
 	const onStructuralOp: StructuralOpHandler | undefined = onOp ? (op) => void onOp(op) : undefined;
@@ -371,7 +464,6 @@ export async function renderTable(
 	let dragOverCol = -1;
 	const clearDropIndicators = () => {
 		table.querySelectorAll<HTMLElement>('.bt-drop-before').forEach(e => e.removeClass('bt-drop-before'));
-		table.querySelectorAll<HTMLElement>('.bt-drop-after').forEach(e => e.removeClass('bt-drop-after'));
 		table.querySelectorAll<HTMLElement>('.bt-col-drop-before').forEach(e => e.removeClass('bt-col-drop-before'));
 	};
 
@@ -743,6 +835,7 @@ export async function renderTable(
 			collapseBtn.addEventListener('click', () => void onStructuralOp({ type: 'toggle-collapse' }));
 		}
 
+
 		// Position the column just left of the row selector
 		const positionCtrlCol = () => {
 			const tr = table.getBoundingClientRect();
@@ -852,23 +945,6 @@ export async function renderTable(
 			// Column selector — cells positioned by --cl/--cw relative to the selector's
 			// own left edge, which CSS Grid aligns with the table wrapper automatically.
 			colSel.querySelectorAll('.bt-sel-cell, .bt-sel-col-drag').forEach(e => e.remove());
-			// Pre-index hidden-group indicators from the header by their left-edge x.
-			const hiddenGroupByX = new Map<number, string[]>();
-			let hiddenColX = 0;
-			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
-				const w = parseInt(c.style.width) || 0;
-				if (c.dataset.col === undefined) {
-					// Find matching bt-col-indicator in thead
-					for (const th2 of Array.from(thead.querySelectorAll<HTMLElement>('th.bt-col-indicator[data-hidden-group]'))) {
-						if (!hiddenGroupByX.has(Math.round(hiddenColX))) {
-							const grp = JSON.parse(th2.dataset.hiddenGroup ?? '[]') as string[];
-							hiddenGroupByX.set(Math.round(hiddenColX), grp);
-							break;
-						}
-					}
-				}
-				hiddenColX += w;
-			}
 
 			let colX = 0;
 			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
@@ -900,18 +976,9 @@ export async function renderTable(
 						cell.addClass('bt-dragging');
 					});
 					colGrip.addEventListener('dragend', () => cell.removeClass('bt-dragging'));
-				} else {
-					// Hidden column group — match by x position
-					const group = hiddenGroupByX.get(Math.round(colX)) ?? [];
-					const cell = colSel.createDiv({ cls: 'bt-sel-cell bt-sel-hidden' });
-					cell.setAttribute('aria-label', `${group.length} hidden column${group.length > 1 ? 's' : ''} — click to show`);
-					cell.setAttribute('data-tooltip-position', 'top');
-					cell.setCssProps({ '--cl': `${colX}px`, '--cw': `${w}px` });
-					if (group.length > 0) {
-						const g = group;
-						cell.addEventListener('click', () => void onStructuralOp({ type: 'show-col-group', colIds: g }));
-					}
 				}
+				// Hidden column groups get no selector-strip cell — the in-table
+				// bt-col-indicator (§ renderRow) is the single "click to show" entry point.
 				colX += w;
 			}
 
@@ -934,12 +1001,8 @@ export async function renderTable(
 				const rowTop = trRect.top - tableTop;
 				const rowH   = trRect.height;
 				if (tr.hasClass('bt-row-indicator')) {
-					const group = JSON.parse(tr.dataset.hiddenGroup ?? '[]') as string[];
-					const cell = rowSel.createDiv({ cls: 'bt-sel-cell bt-sel-hidden' });
-					cell.setAttribute('aria-label', `${group.length} hidden row${group.length > 1 ? 's' : ''} — click to show`);
-					cell.setAttribute('data-tooltip-position', 'right');
-					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
-					cell.addEventListener('click', () => void onStructuralOp({ type: 'show-row-group', rowIds: group }));
+					// Hidden row groups get no selector-strip cell — the in-table
+					// row itself is the single "click to show" entry point.
 				} else {
 					const firstCell = tr.querySelector<HTMLElement>('[data-row]');
 					if (!firstCell) continue;
@@ -956,7 +1019,11 @@ export async function renderTable(
 					// Drag grip: sibling of the sel-cell, lives in the outer 10px of the
 					// row selector (left zone), completely separate from the 22px selection
 					// zone — no pointer-event conflict with range-selection.
-					if (ri > 0) {
+					// Hidden while a sort is actually applied — the display order is
+					// derived from the sort, so a manual reorder drag would have no
+					// visible effect. (Sort is disabled — see hasRowSpanningMerge —
+					// while a row-spanning merge exists, so the grip stays available then.)
+					if (ri > 0 && !(model.sort && !hasRowSpanningMerge(model))) {
 						const grip = rowSel.createDiv({
 							cls: 'bt-sel-row-drag',
 							attr: { draggable: 'true', 'aria-label': t('dragReorderRow') },
@@ -1127,11 +1194,38 @@ export async function renderTable(
 						? copyRangeAsMarkdown(model, 0, model.rows.length, lo, hi)
 						: copyRangeAsMarkdown(model, lo, hi, 0, model.columns.length - 1) },
 			];
+			// Sort — single column only (the model supports one sort key), and not
+			// while a row-spanning merge exists (see hasRowSpanningMerge). Two modes:
+			// "Sort ascending/descending" commits the current order to storage once
+			// (rows[] itself changes, no lingering state, drag-reorder stays usable
+			// right after); "Keep sorted ..." is the live view — it never touches
+			// rows[], persists as model.sort, and disables manual drag-reorder while
+			// active since the display order is derived, not stored.
+			const sortOps: CellOpEntry[] = (axis === 'col' && lo === hi && !hasRowSpanningMerge(model)) ? (() => {
+				const sortColId = colId(model, lo);
+				const sortDir = model.sort?.colId === sortColId ? model.sort.dir : null;
+				const commitSort = (dir: 'asc' | 'desc') => {
+					const sorted = sortRowsByColumn(model.rows, model.columns, sortColId, dir, registry);
+					void onStructuralOp({ type: 'reorder-rows', rowIds: sorted.map(r => r.id) });
+				};
+				return [
+					{ icon: 'arrow-up', label: t('sortAscending'), action: () => commitSort('asc') },
+					{ icon: 'arrow-down', label: t('sortDescending'), action: () => commitSort('desc') },
+					{ icon: 'repeat', label: (sortDir === 'asc' ? '✓ ' : '') + t('keepSortedAscending'),
+						action: () => void onStructuralOp({ type: 'set-sort', sort: { colId: sortColId, dir: 'asc' } }) },
+					{ icon: 'repeat', label: (sortDir === 'desc' ? '✓ ' : '') + t('keepSortedDescending'),
+						action: () => void onStructuralOp({ type: 'set-sort', sort: { colId: sortColId, dir: 'desc' } }) },
+					...(sortDir ? [{ icon: 'x', label: t('clearLiveSort'),
+						action: () => void onStructuralOp({ type: 'set-sort', sort: null }) }] : []),
+				];
+			})() : [];
+
 			const cellOps: CellOpEntry[] = axis === 'col' ? [
 				{ icon: 'eye-off', label: hideColsLabel(lo, hi, colIndexToLetter),
 					action: () => { for (let ci = lo; ci <= hi; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
 				{ icon: 'trash',   label: deleteColsLabel(lo, hi, colIndexToLetter), danger: true,
 					action: () => { for (let ci = hi; ci >= lo; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
+				...(sortOps.length > 0 ? [{ divider: true } as CellOpEntry, ...sortOps] : []),
 				{ divider: true },
 				...copyOps,
 			] : lo === 0 && hi === 0 ? copyOps : [  // no hide/delete for header row
@@ -1346,7 +1440,6 @@ async function renderRow(
 				indicator.setAttribute('aria-label',
 					`${groupIds.length} hidden column${groupIds.length > 1 ? 's' : ''}. Click to show.`);
 				indicator.setAttribute('data-tooltip-position', 'top');
-				indicator.dataset.hiddenGroup = JSON.stringify(groupIds); // string IDs for selector strip
 				if (onStructuralOp) {
 					indicator.addEventListener('click', () =>
 						void onStructuralOp({ type: 'show-col-group', colIds: groupIds }));
@@ -1516,9 +1609,13 @@ function renderHeaderCell(
 		openPanel(evt, true);
 	});
 
-	// Filter button — bottom-right corner of the header cell
+	// Filter button — bottom-right corner of the header cell. (The sort MENU
+	// lives in the column-selector's popup instead of a second always-hoverable
+	// header icon — filter is used more often and keeps the hover-reveal spot.
+	// A live sort's ACTIVE-state indicator still surfaces here though, directly
+	// above the filter button, so it's never silently forgotten — see below.)
 	if (onStructuralOp) {
-		const activeValues = model.filter?.[col.id];
+		const activeValues = col.filter;
 		const filterBtn = el.createDiv({
 			cls: 'bt-filter-btn' + (activeValues ? ' bt-filter-active' : ''),
 			attr: { 'aria-label': t('filterColumn'), 'data-tooltip-position': 'top' },
@@ -1528,6 +1625,44 @@ function renderHeaderCell(
 			e.stopPropagation();
 			e.preventDefault();
 			openFilterPanel(el, colIdx, model, getRegistry(), onStructuralOp, component);
+		});
+	}
+
+	// Live-sort active indicator — stacks directly above the filter button (same
+	// corner) so a column that's both filtered and live-sorted shows both at
+	// once instead of one covering the other. Only rendered for the one column
+	// currently driving a live sort. Click opens a small menu (same pattern as
+	// the filter button opening its panel) to switch direction or clear.
+	if (onStructuralOp && model.sort?.colId === col.id) {
+		const dir = model.sort.dir;
+		const sortIndicatorBtn = el.createDiv({
+			cls: 'bt-sort-active-btn',
+			attr: {
+				'aria-label':            sortActiveLabel(col.name, dir),
+				'data-tooltip-position': 'top',
+			},
+		});
+		setIcon(sortIndicatorBtn, dir === 'asc' ? 'arrow-up' : 'arrow-down');
+		sortIndicatorBtn.addEventListener('click', (e: MouseEvent) => {
+			e.stopPropagation();
+			e.preventDefault();
+			const menu = new Menu();
+			menu.addItem(item => {
+				item.setTitle(t('keepSortedAscending')).setIcon('arrow-up');
+				if (dir === 'asc') item.setChecked(true);
+				item.onClick(() => void onStructuralOp({ type: 'set-sort', sort: { colId: col.id, dir: 'asc' } }));
+			});
+			menu.addItem(item => {
+				item.setTitle(t('keepSortedDescending')).setIcon('arrow-down');
+				if (dir === 'desc') item.setChecked(true);
+				item.onClick(() => void onStructuralOp({ type: 'set-sort', sort: { colId: col.id, dir: 'desc' } }));
+			});
+			menu.addSeparator();
+			menu.addItem(item => {
+				item.setTitle(t('clearLiveSort')).setIcon('x');
+				item.onClick(() => void onStructuralOp({ type: 'set-sort', sort: null }));
+			});
+			menu.showAtMouseEvent(e);
 		});
 	}
 	// Column resize is handled by the selector-strip handles (works with merges too)
@@ -2022,6 +2157,42 @@ function dataCellOps(
 // Module-level reference so any new openCellPanel call can close the previous one first.
 let closeActivePanel: (() => void) | null = null;
 
+/**
+ * Wires outside-click + Escape dismissal for a floating panel; every popup
+ * (cell panel, filter panel, future ones) shares this one implementation.
+ * Deferred via setTimeout(0) so the click/pointerup that OPENED the panel
+ * doesn't immediately count as an "outside" click and close it again.
+ *
+ * Listens for both 'mousedown' and 'click' — clicking somewhere the editor
+ * can't place a cursor (e.g. blank space past the end of a rendered table)
+ * doesn't reliably fire both event types, and a panel with only one has no
+ * other way to close in that case. Calling onDismiss() twice for one
+ * physical click is expected to be harmless (idempotent) on the caller's side.
+ *
+ * Returns a detach function — call it once the panel is closed some other
+ * way (Apply/Clear button, etc.) so these listeners don't leak.
+ */
+function bindPanelDismiss(component: Component, panel: HTMLElement, onDismiss: () => void): () => void {
+	let detach: (() => void) | null = null;
+	window.setTimeout(() => {
+		const outside = (evt: MouseEvent) => {
+			if (!panel.contains(evt.target as Node)) onDismiss();
+		};
+		const escKey = (evt: KeyboardEvent) => {
+			if (evt.key === 'Escape') { evt.stopPropagation(); onDismiss(); }
+		};
+		component.registerDomEvent(activeDocument, 'mousedown', outside);
+		component.registerDomEvent(activeDocument, 'click', outside);
+		component.registerDomEvent(activeDocument, 'keydown', escKey);
+		detach = () => {
+			activeDocument.removeEventListener('mousedown', outside);
+			activeDocument.removeEventListener('click', outside);
+			activeDocument.removeEventListener('keydown', escKey);
+		};
+	}, 0);
+	return () => detach?.();
+}
+
 /** Filter dropdown panel for a column. */
 function openFilterPanel(
 	anchor: HTMLElement,
@@ -2054,7 +2225,7 @@ function openFilterPanel(
 		defined.sort((a, b) => a.label.localeCompare(b.label));
 	}
 
-	const current = new Set(model.filter?.[col.id] ?? []);
+	const current = new Set(col.filter ?? []);
 	const noFilter = current.size === 0;
 
 	// Position panel
@@ -2106,13 +2277,11 @@ function openFilterPanel(
 	const clearBtn = foot.createEl('button', { cls: 'bt-sp-clear-btn', text: t('filterClear') });
 	const applyBtn = foot.createEl('button', { cls: 'bt-sp-apply',     text: t('apply') });
 
-	let committed = false;
-	let detachGlobalListeners: (() => void) | null = null;
+	let detach: (() => void) | null = null;
 	const close = () => {
-		if (!committed) committed = true;
 		panel.remove();
 		if (closeActivePanel === doClose) closeActivePanel = null;
-		detachGlobalListeners?.();
+		detach?.();
 	};
 	const doClose = close;
 	closeActivePanel = doClose;
@@ -2127,19 +2296,12 @@ function openFilterPanel(
 		void onStructuralOp({ type: 'set-filter', colId: col.id, values: allSelected ? null : selected });
 		close();
 	});
+	// Enter-confirms is specific to this panel's checkbox list; dismissal
+	// (outside-click / Escape) is shared with every other panel.
 	panel.addEventListener('keydown', (e: KeyboardEvent) => {
-		if (e.key === 'Escape') { e.stopPropagation(); close(); }
-		if (e.key === 'Enter')  { e.preventDefault(); applyBtn.click(); }
+		if (e.key === 'Enter') { e.preventDefault(); applyBtn.click(); }
 	});
-	// Bound via component.registerDomEvent (not raw addEventListener) so an abrupt unload
-	// (note closed/switched while the panel is open) still detaches this from activeDocument.
-	window.setTimeout(() => {
-		const outside = (e: MouseEvent) => {
-			if (!panel.contains(e.target as Node)) close();
-		};
-		component.registerDomEvent(activeDocument, 'mousedown', outside);
-		detachGlobalListeners = () => activeDocument.removeEventListener('mousedown', outside);
-	}, 0);
+	detach = bindPanelDismiss(component, panel, close);
 }
 
 /** Unified panel shown on double-click for all cell types (header / data / selection). */
@@ -2325,23 +2487,7 @@ function openCellPanel(config: CellPanelConfig): HTMLElement {
 	panel.addEventListener('keydown', (evt: KeyboardEvent) => {
 		if (evt.key === 'Enter' && evt.target !== sizeInput) { evt.preventDefault(); applyBtn.click(); }
 	});
-	// Escape and outside-click close the panel regardless of where focus is. Bound via
-	// component.registerDomEvent (not raw addEventListener) so an abrupt unload (note closed/
-	// switched while the panel is open) still detaches these from activeDocument.
-	window.setTimeout(() => {
-		const outside = (evt: MouseEvent) => {
-			if (!panel.contains(evt.target as Node)) close(true);
-		};
-		const escKey = (evt: KeyboardEvent) => {
-			if (evt.key === 'Escape') { evt.stopPropagation(); close(true); }
-		};
-		component.registerDomEvent(activeDocument, 'mousedown', outside);
-		component.registerDomEvent(activeDocument, 'keydown', escKey);
-		detachGlobalListeners = () => {
-			activeDocument.removeEventListener('mousedown', outside);
-			activeDocument.removeEventListener('keydown', escKey);
-		};
-	}, 0);
+	detachGlobalListeners = bindPanelDismiss(component, panel, () => close(true));
 	return panel;
 }
 
@@ -2584,12 +2730,13 @@ function enterEditMode(
 
 /** Returns true when displayIdx (1-based, 0=header) should be hidden by active filters. */
 function isRowFiltered(displayIdx: number, model: TableModelV2): boolean {
-	if (!model.filter || displayIdx === 0) return false;
+	if (displayIdx === 0) return false;
 	const row = model.rows[displayIdx - 1];
 	if (!row) return false;
-	for (const [cId, values] of Object.entries(model.filter)) {
+	for (const col of model.columns) {
+		const values = col.filter;
 		if (!values || values.length === 0) continue;
-		const cellValue = (row.cells[cId] ?? '').trim();
+		const cellValue = (row.cells[col.id] ?? '').trim();
 		if (!values.includes(cellValue)) return true;
 	}
 	return false;
