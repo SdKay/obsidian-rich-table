@@ -223,7 +223,7 @@ Themes are purely visual — they never affect data or layout.
 | Per-table lock — click the 🔒 icon at the top-left corner to disable / re-enable all editing | ✅ |
 | **Themes** — set `theme: academic` (booktabs), `theme: plain` (colorful gradient + animated border) | ✅ |
 | Custom cell padding (top / bottom / left / right) | 🔜 |
-| Collapsible table — toggle button shows/hides table body, keeping only the title visible | 🔜 |
+| Collapsible table — fold-icon button in the top-left corner shows/hides the table body, keeping the title and header row visible | ✅ |
 | Conditional formatting — auto-apply styles based on cell value rules | 🔜 |
 | Progress bar column type · aggregate row (SUM / COUNT) | 🔜 |
 | **Merges** | |

@@ -29,6 +29,7 @@ export function parseTable(source: string): TableModelV2 {
 		...(yaml?.filter ? { filter: parseFilter(yaml.filter) } : {}),
 		...(typeof yaml?.theme === 'string' ? { theme: yaml.theme } : {}),
 		...(yaml?.locked === true ? { locked: true } : {}),
+		...(yaml?.collapsed === true ? { collapsed: true } : {}),
 	};
 }
 

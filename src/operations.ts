@@ -34,7 +34,8 @@ export type StructuralOpV2 =
 	| { type: 'set-footer';      footer: string | string[] | undefined }
 	| { type: 'set-filter';      colId: string; values: string[] | null }
 	| { type: 'set-theme';       theme: string | null }
-	| { type: 'toggle-lock' };
+	| { type: 'toggle-lock' }
+	| { type: 'toggle-collapse' };
 
 export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): void {
 	switch (op.type) {
@@ -229,6 +230,9 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			break;
 		case 'toggle-lock':
 			model.locked = !model.locked || undefined;
+			break;
+		case 'toggle-collapse':
+			model.collapsed = !model.collapsed || undefined;
 			break;
 	}
 }

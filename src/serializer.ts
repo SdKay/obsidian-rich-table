@@ -79,6 +79,7 @@ function buildYaml(m: TableModelV2): string {
 	if (m.footer) obj.footer = m.footer;
 	if (m.theme)  obj.theme  = m.theme;
 	if (m.locked) obj.locked = true;
+	if (m.collapsed) obj.collapsed = true;
 
 	return stringifyYaml(obj);
 }

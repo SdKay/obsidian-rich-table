@@ -190,7 +190,6 @@ Built-in visual theme applied to the table. Themes control appearance only
 |-------|-----------|
 | *(omit)* | Default — no special styling |
 | `academic` | Booktabs style: three horizontal rules only (toprule / midrule / bottomrule), no vertical lines, no backgrounds |
-| `striped` | Alternating row backgrounds for easy scanning |
 | `plain` | Purple/blue gradient header, rounded corners with outline border, row hover highlight, centered |
 
 ```yaml
@@ -199,6 +198,10 @@ theme: academic
 
 ### `locked` (boolean, optional)
 When `true`, all graphical editing is disabled for this table.
+
+### `collapsed` (boolean, optional)
+When `true`, only the title (if any) and header row render — the table body
+and footer are hidden. Toggle via the fold-icon button in the top-left corner.
 
 ---
 
@@ -453,17 +456,10 @@ Set the `theme` field in the YAML front-matter to apply a built-in visual theme.
 theme: academic
 ```
 
-**`striped`** — Alternating row backgrounds
-- Even rows get a subtle tinted background for easy row-tracking
-
-```yaml
-theme: striped
-```
-
-**`plain`** — Colorful and centered *(work-in-progress, will be enhanced)*
-- Purple → blue gradient header
-- Rounded corners with purple outline border
-- Row hover highlight
+**`plain`** — Colorful and animated
+- Rainbow gradient header that slowly cycles hue, rounded corners with an animated
+  outline border and comet-flash effect
+- Row hover highlight with a cursor-following glow
 - Table centered in the reading pane
 
 ```yaml

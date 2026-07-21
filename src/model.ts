@@ -114,7 +114,9 @@ export interface TableModelV2 {
 	filter?: Record<string, string[]>;
 	footer?: string | string[];
 	locked?: boolean;
-	theme?: string;   // e.g. 'academic' | 'minimal' | 'striped' — absent = default
+	theme?: string;   // e.g. 'academic' | 'plain' — absent = default (see src/themes/)
+	/** When true, only the title (if any) and header row render; body and footer are hidden. */
+	collapsed?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

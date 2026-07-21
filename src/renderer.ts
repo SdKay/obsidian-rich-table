@@ -2,6 +2,7 @@ import { App, Component, MarkdownRenderer, Menu, setIcon } from 'obsidian';
 import {
 	t, isZh, typeLabel,
 	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
+	collapsedRowsLabel,
 } from './i18n';
 import { BUILTIN_THEMES } from './themes/index';
 import { WikilinkInputSuggest } from './wikilinkInputSuggest';
@@ -103,7 +104,7 @@ export async function renderTable(
 	// edge-add strips) can use position:absolute and stay naturally inside
 	// Obsidian's content pane — no viewport coordinate math needed.
 	const themeClass = model.theme ? `bt-render-root bt-theme-${model.theme}` : 'bt-render-root';
-	const root = container.createDiv({ cls: themeClass });
+	const root = container.createDiv({ cls: themeClass + (model.collapsed ? ' bt-collapsed' : '') });
 	onRootReady?.(root);
 
 	const wrapper = root.createDiv({ cls: 'bt-table-wrapper' });
@@ -425,46 +426,62 @@ export async function renderTable(
 		});
 	}
 	const visibleCellCount = countVisibleCells(model);
-	// v2: model.rows[] contains only data rows; iterate 0-based, use displayIdx = ri+1
-	let di = 0;
-	while (di < model.rows.length) {
-		const currentRow = model.rows[di];
-		if (!currentRow) { di++; continue; }
-		if (currentRow.hidden) {
-			// Collect the contiguous hidden-row group (by ID)
-			const groupIds: string[] = [];
-			while (di < model.rows.length && model.rows[di]?.hidden) {
-				groupIds.push(model.rows[di]!.id);
-				di++;
-			}
-
-			const indicatorTr = tbody.createEl('tr', { cls: 'bt-row-indicator' });
-			indicatorTr.dataset.hiddenGroup = JSON.stringify(groupIds);
-			const td = indicatorTr.createEl('td', {
-				cls: 'bt-row-indicator-cell',
-				attr: { colspan: String(visibleCellCount) },
-			});
-			td.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
-			td.createSpan({ cls: 'bt-indicator-label',
-				text: ` ${groupIds.length} hidden row${groupIds.length > 1 ? 's' : ''}` });
-			if (onStructuralOp) {
-				td.addEventListener('click', () =>
-					void onStructuralOp({ type: 'show-row-group', rowIds: groupIds }));
-			}
-			continue;
+	if (model.collapsed) {
+		// Collapsed: skip every data row and render one clickable indicator instead —
+		// makes the collapsed state obvious at a glance (same pattern as a hidden-row
+		// group) rather than an empty-looking table body.
+		const indicatorTr = tbody.createEl('tr', { cls: 'bt-collapsed-indicator' });
+		const td = indicatorTr.createEl('td', {
+			cls: 'bt-row-indicator-cell',
+			attr: { colspan: String(visibleCellCount) },
+		});
+		td.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
+		td.createSpan({ cls: 'bt-indicator-label', text: ` ${collapsedRowsLabel()}` });
+		if (onStructuralOp) {
+			td.addEventListener('click', () => void onStructuralOp({ type: 'toggle-collapse' }));
 		}
-		const displayIdx = di + 1; // 1-based: 0 = header
-		if (isRowFiltered(displayIdx, model)) { di++; continue; }
-		const tr = tbody.createEl('tr');
-		await renderRow(tr, displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, false, onCellChange, onColTypeChange, onStructuralOp);
-		di++;
+	} else {
+		// v2: model.rows[] contains only data rows; iterate 0-based, use displayIdx = ri+1
+		let di = 0;
+		while (di < model.rows.length) {
+			const currentRow = model.rows[di];
+			if (!currentRow) { di++; continue; }
+			if (currentRow.hidden) {
+				// Collect the contiguous hidden-row group (by ID)
+				const groupIds: string[] = [];
+				while (di < model.rows.length && model.rows[di]?.hidden) {
+					groupIds.push(model.rows[di]!.id);
+					di++;
+				}
+
+				const indicatorTr = tbody.createEl('tr', { cls: 'bt-row-indicator' });
+				indicatorTr.dataset.hiddenGroup = JSON.stringify(groupIds);
+				const td = indicatorTr.createEl('td', {
+					cls: 'bt-row-indicator-cell',
+					attr: { colspan: String(visibleCellCount) },
+				});
+				td.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
+				td.createSpan({ cls: 'bt-indicator-label',
+					text: ` ${groupIds.length} hidden row${groupIds.length > 1 ? 's' : ''}` });
+				if (onStructuralOp) {
+					td.addEventListener('click', () =>
+						void onStructuralOp({ type: 'show-row-group', rowIds: groupIds }));
+				}
+				continue;
+			}
+			const displayIdx = di + 1; // 1-based: 0 = header
+			if (isRowFiltered(displayIdx, model)) { di++; continue; }
+			const tr = tbody.createEl('tr');
+			await renderRow(tr, displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, false, onCellChange, onColTypeChange, onStructuralOp);
+			di++;
+		}
 	}
 
 	// TODO: filter status bar ("Showing X of Y rows · Clear filter") — deferred until
 	// a unified table status bar is designed that can also host sort/aggregate info.
 
-	// Footer
-	if (model.footer) {
+	// Footer — hidden while collapsed, along with the table body.
+	if (model.footer && !model.collapsed) {
 		// Flatten array and split strings on \n so YAML arrays and \n-strings both work
 		const rawLines = Array.isArray(model.footer) ? model.footer : [model.footer];
 		const lines = rawLines.flatMap(l => l.split('\n'));
@@ -638,8 +655,9 @@ export async function renderTable(
 	if (onStructuralOp || onToggleLock) {
 		const ctrlCol = root.createDiv({ cls: 'bt-ctrl-col' + (model.locked ? ' is-locked' : '') });
 
-		// Lock button — first in column
-		if (onToggleLock) {
+		// Lock button — first in column. Hidden while collapsed: only the expand
+		// button is shown, since the other buttons act on the now-invisible body.
+		if (onToggleLock && !model.collapsed) {
 			const lockBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn' + (model.locked ? ' is-locked' : ''),
 				attr: {
@@ -652,8 +670,8 @@ export async function renderTable(
 			repositionLockBtn = () => { /* handled by ctrlCol */ };
 		}
 
-		// Autofit button — second in column
-		if (onStructuralOp) {
+		// Autofit button — second in column. Hidden while collapsed (see lock button above).
+		if (onStructuralOp && !model.collapsed) {
 			const autoFitBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('autoFitAll'), 'data-tooltip-position': 'right' },
@@ -679,8 +697,8 @@ export async function renderTable(
 			repositionAutoFitBtn = () => { /* positioning handled by ctrlCol */ };
 		}
 
-		// Theme picker button — third in column
-		if (onStructuralOp) {
+		// Theme picker button — third in column. Hidden while collapsed (see lock button above).
+		if (onStructuralOp && !model.collapsed) {
 			const THEMES: { id: string | null; label: string }[] = [
 				{ id: null, label: t('themeDefault') },
 				...BUILTIN_THEMES.map(th => ({
@@ -704,6 +722,19 @@ export async function renderTable(
 				}
 				menu.showAtMouseEvent(evt);
 			});
+		}
+
+		// Collapse/expand button — fourth in column
+		if (onStructuralOp) {
+			const collapseBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: {
+					'aria-label':            model.collapsed ? t('expandTable') : t('collapseTable'),
+					'data-tooltip-position': 'right',
+				},
+			});
+			setIcon(collapseBtn, model.collapsed ? 'unfold-vertical' : 'fold-vertical');
+			collapseBtn.addEventListener('click', () => void onStructuralOp({ type: 'toggle-collapse' }));
 		}
 
 		// Position the column just left of the row selector

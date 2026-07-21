@@ -228,6 +228,15 @@ export class TableBlock extends MarkdownRenderChild {
 			}
 		}
 
+		// Same instant-apply treatment for collapse/expand — toggled onto the existing
+		// class list (not overwritten) since a theme class may already be present.
+		if (op.type === 'toggle-collapse' && this.renderedRoot) {
+			const willCollapse = !this.model.collapsed;
+			this.renderedRoot.toggleClass('bt-collapsed', willCollapse);
+			const cachedRoot = renderCache.get(this.cacheKey)?.querySelector<HTMLElement>('.bt-render-root');
+			cachedRoot?.toggleClass('bt-collapsed', willCollapse);
+		}
+
 		// Queue the op — it will be applied along with any other ops that
 		// arrive in the same JS tick before the single write-back fires.
 		this.pendingOps.push(op);

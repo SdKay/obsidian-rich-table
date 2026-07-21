@@ -67,6 +67,10 @@ const EN = {
 	// Theme picker (individual theme names live in @theme-label-en/zh CSS comments)
 	changeTheme:      'Change table theme',
 	themeDefault:     'Default',
+
+	// Collapse/expand
+	collapseTable: 'Collapse table',
+	expandTable:   'Expand table',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -120,6 +124,9 @@ const ZH: { [K in keyof typeof EN]: string } = {
 
 	changeTheme:      '切换表格主题',
 	themeDefault:     '默认',
+
+	collapseTable: '收起表格',
+	expandTable:   '展开表格',
 };
 
 export function t(key: keyof typeof EN): string {
@@ -189,4 +196,10 @@ export function filterStatusLabel(shown: number, total: number): string {
 	return isZh()
 		? `已筛选：显示 ${shown} / ${total} 行`
 		: `Filtered: showing ${shown} of ${total} rows`;
+}
+
+export function collapsedRowsLabel(): string {
+	return isZh()
+		? `表格已折叠 · 点击展开`
+		: `Table collapsed · click to expand`;
 }
