@@ -69,9 +69,7 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 
 > **⬆️ Upgrading from v0.x?** — v1 → v2 migration: the upgrade banner on old-format tables, converting in one click or keeping the old format read-only.
 >
-> <!-- TODO: record demo-00-migration.gif -->
-> 🎬 *Demo GIF coming soon*
-
+> ![Upgrade](docs/demo-00-migration.gif)
 **1 · Quick start from template**
 
 ![Quick start demo](docs/demo-01-template.gif)
@@ -107,33 +105,27 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 
 **9 · Row sorting** — column selector popup: one-time sort or live auto-sort with a header indicator
 
-<!-- TODO: record demo-10-sort.gif -->
-> 🎬 *Demo GIF coming soon*
+![行排序](docs/demo-10-sort.gif)
 
 **10 · Summary/aggregate rows** — Sum/Average/Min/Max/Count via the Σ icon or column selector popup; per-row remove and reorder
 
-<!-- TODO: record demo-11-aggregate.gif -->
-> 🎬 *Demo GIF coming soon*
+![汇总行](docs/demo-11-aggregate.gif)
 
 **11 · Collapse/expand table** — fold-icon button hides/shows the body while keeping the title and header row visible
 
-<!-- TODO: record demo-12-collapse.gif -->
-> 🎬 *Demo GIF coming soon*
+![表格折叠/展开](docs/demo-12-collapse.gif)
 
 **12 · Table lock** — 🔒 icon disables all graphical editing for that table
 
-<!-- TODO: record demo-13-lock.gif -->
-> 🎬 *Demo GIF coming soon*
+![表格锁定](docs/demo-13-lock.gif)
 
 **13 · Auto-fit all** — ⊞ icon fits every column width and row height to its content in one click
 
-<!-- TODO: record demo-14-autofit.gif -->
-> 🎬 *Demo GIF coming soon*
+![一键自适应](docs/demo-14-autofit.gif)
 
 **14 · Theme picker** — 🎨 icon switches between built-in themes (`academic`, `plain`)
 
-<!-- TODO: record demo-15-theme.gif -->
-> 🎬 *Demo GIF coming soon*
+![主题切换](docs/demo-15-theme.gif)
 
 ---
 

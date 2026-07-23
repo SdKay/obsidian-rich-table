@@ -69,8 +69,8 @@
 
 > **⬆️ 从 v0.x 升级？** — v1 → v2 迁移：旧格式表格的升级提示横幅，一键转换或保持旧格式只读浏览。
 >
-> <!-- TODO: record demo-00-migration.gif -->
-> 🎬 *演示 GIF 即将发布*
+> ![一键升级版本](docs/demo-00-migration.gif)
+
 
 **1 · 模板快速开始**
 
@@ -98,7 +98,7 @@
 
 **7 · 列筛选** — 筛选展示表格
 
-![标题与备注演示](docs/demo-08-filter.gif)
+![表格筛选](docs/demo-08-filter.gif)
 
 **8 · 富内容单元格** — 数学公式 · 加粗/斜体 · 链接 · 图片 · 列表 · 多行
 
@@ -107,33 +107,27 @@
 
 **9 · 行排序** — 列选择器弹出菜单：一次性排序或自动排序（表头常驻提示）
 
-<!-- TODO: record demo-10-sort.gif -->
-> 🎬 *演示 GIF 即将发布*
+![行排序](docs/demo-10-sort.gif)
 
 **10 · 汇总行** — 通过 Σ 图标或列选择器弹出菜单开启求和/平均/最小值/最大值/计数；每行可单独删除或拖拽调整顺序
 
-<!-- TODO: record demo-11-aggregate.gif -->
-> 🎬 *演示 GIF 即将发布*
+![汇总行](docs/demo-11-aggregate.gif)
 
 **11 · 表格折叠/展开** — 折叠图标按钮收起/展开表格内容，保留标题和表头可见
 
-<!-- TODO: record demo-12-collapse.gif -->
-> 🎬 *演示 GIF 即将发布*
+![表格折叠/展开](docs/demo-12-collapse.gif)
 
 **12 · 表格锁定** — 🔒 图标禁用该表格的全部图形化编辑
 
-<!-- TODO: record demo-13-lock.gif -->
-> 🎬 *演示 GIF 即将发布*
+![表格锁定](docs/demo-13-lock.gif)
 
 **13 · 一键自适应** — ⊞ 图标一次性把所有列宽和行高调整到贴合内容
 
-<!-- TODO: record demo-14-autofit.gif -->
-> 🎬 *演示 GIF 即将发布*
+![一键自适应](docs/demo-14-autofit.gif)
 
 **14 · 主题切换** — 🎨 图标切换内置主题（`academic`、`plain`）
 
-<!-- TODO: record demo-15-theme.gif -->
-> 🎬 *演示 GIF 即将发布*
+![主题切换](docs/demo-15-theme.gif)
 
 ---
 
