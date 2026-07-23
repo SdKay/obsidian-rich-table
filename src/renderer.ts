@@ -1,11 +1,11 @@
 import { App, Component, Menu, setIcon } from 'obsidian';
 import {
-	t, isZh,
+	t, isZh, aggLabel,
 	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
 	collapsedRowsLabel,
 } from './i18n';
 import { BUILTIN_THEMES } from './themes/index';
-import type { TableModelV2 } from './model';
+import type { TableModelV2, AggType } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
 import { SEL_TOTAL, AUTOFIT_OFFSET } from './selectorLayout';
@@ -19,6 +19,7 @@ import { colMinWidth, autoFitAllColWidths, autoFitRowHeight } from './renderAuto
 import { setupColResize, bindResizeHandle } from './renderResize';
 import { type CellOpEntry, openCellPanel } from './renderPanel';
 import { renderRow } from './renderCell';
+import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
 
 export async function renderTable(
 	model: TableModelV2,
@@ -354,6 +355,7 @@ export async function renderTable(
 	// selector-strip block can both read/write the same indicator state.
 	let dragOverRow = -1;
 	let dragOverCol = -1;
+	let dragOverAgg: AggType | null = null;
 	const clearDropIndicators = () => {
 		table.querySelectorAll<HTMLElement>('.bt-drop-before').forEach(e => e.removeClass('bt-drop-before'));
 		table.querySelectorAll<HTMLElement>('.bt-col-drop-before').forEach(e => e.removeClass('bt-col-drop-before'));
@@ -468,10 +470,11 @@ export async function renderTable(
 			});
 			di++;
 		}
+		renderAggregateRows(tbody, model);
 	}
 
 	// TODO: filter status bar ("Showing X of Y rows · Clear filter") — deferred until
-	// a unified table status bar is designed that can also host sort/aggregate info.
+	// a unified table status bar is designed that can also host sort info.
 
 	// Footer — hidden while collapsed, along with the table body.
 	if (model.footer && !model.collapsed) {
@@ -642,9 +645,9 @@ export async function renderTable(
 		component?.register(() => resizeObs.disconnect());
 	}
 
-	// ── Control column: autofit · lock · theme — left of the row-drag strip ──
-	// All three buttons share a vertical flex column positioned just left of the
-	// row selector. Autofit and theme need onStructuralOp; lock needs onToggleLock.
+	// ── Control column: lock · autofit · theme · aggregate · collapse — left of the row-drag strip ──
+	// All buttons share a vertical flex column positioned just left of the
+	// row selector. All but lock need onStructuralOp; lock needs onToggleLock.
 	if (onStructuralOp || onToggleLock) {
 		const ctrlCol = root.createDiv({ cls: 'bt-ctrl-col' + (model.locked ? ' is-locked' : '') });
 
@@ -717,7 +720,32 @@ export async function renderTable(
 			});
 		}
 
-		// Collapse/expand button — fourth in column
+		// Summary/aggregate button — fourth in column. Same toggle set as the
+		// column-selector popup's Sum/Average/More group (see endDrag('col')) —
+		// this is just a second, table-wide-only entry point to the same state,
+		// for when the user wants to add a summary row without first selecting
+		// a column. Hidden while collapsed (see lock button above).
+		if (onStructuralOp && !model.collapsed) {
+			const aggBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('aggMore'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(aggBtn, 'sigma');
+			aggBtn.addEventListener('click', (evt: MouseEvent) => {
+				const active = new Set(model.aggregate ?? []);
+				const menu = new Menu();
+				for (const agg of AGG_ORDER) {
+					menu.addItem(item => {
+						item.setTitle(aggLabel(agg));
+						if (active.has(agg)) item.setChecked(true);
+						item.onClick(() => void onStructuralOp({ type: 'toggle-aggregate', agg }));
+					});
+				}
+				menu.showAtMouseEvent(evt);
+			});
+		}
+
+		// Collapse/expand button — fifth in column
 		if (onStructuralOp) {
 			const collapseBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
@@ -898,6 +926,41 @@ export async function renderTable(
 				if (tr.hasClass('bt-row-indicator')) {
 					// Hidden row groups get no selector-strip cell — the in-table
 					// row itself is the single "click to show" entry point.
+				} else if (tr.dataset.agg) {
+					// Summary/aggregate row — a small icon cell (not a row number, this
+					// isn't part of model.rows) whose click opens a one-item "remove this
+					// summary row" menu, plus a drag grip to reorder among summary rows
+					// only. Uses [data-agg-idx] (not [data-idx]) so it never collides with
+					// the real-row drag machinery above, which assumes a numeric row index.
+					const agg = tr.dataset.agg as AggType;
+					const cell = rowSel.createDiv({ cls: 'bt-sel-cell bt-sel-agg-cell' });
+					cell.dataset.aggIdx = agg;
+					setIcon(cell, 'sigma');
+					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
+					cell.addEventListener('click', (e: MouseEvent) => {
+						e.stopPropagation();
+						const m = new Menu();
+						m.addItem(item => {
+							item.setTitle(t('clearAggregate')).setIcon('trash');
+							item.onClick(() => void onStructuralOp({ type: 'clear-aggregate', agg }));
+						});
+						m.showAtMouseEvent(e);
+					});
+					const grip = rowSel.createDiv({
+						cls: 'bt-sel-row-drag bt-sel-agg-drag',
+						attr: { draggable: 'true', 'aria-label': t('dragReorderAgg') },
+					});
+					setIcon(grip, 'grip-vertical');
+					const midY = rowTop + rowH / 2 - 9;
+					grip.setCssProps({ '--rdy': `${midY}px` });
+					grip.addEventListener('dragstart', (evt: DragEvent) => {
+						selDragging = false;
+						selAxis = null; selI1 = selI2 = -1;
+						updateTableHighlights();
+						evt.dataTransfer?.setData('bt-drag-agg', agg);
+						cell.addClass('bt-dragging');
+					});
+					grip.addEventListener('dragend', () => cell.removeClass('bt-dragging'));
 				} else {
 					const firstCell = tr.querySelector<HTMLElement>('[data-row]');
 					if (!firstCell) continue;
@@ -1115,12 +1178,42 @@ export async function renderTable(
 				];
 			})() : [];
 
+			// Summary/aggregate statistics — table-wide (not tied to which column is
+			// selected; the column strip is just a convenient place to reach the
+			// toggle). Sum/avg are common enough to show directly; min/max/count live
+			// behind a native Menu flyout ("More") to keep the primary list short.
+			// Every click toggles exactly one statistic and closes (this panel, plus
+			// the flyout if used) — adding another one means reopening this popup, a
+			// deliberate simplicity tradeoff over a persistent checkbox list.
+			const aggOps: CellOpEntry[] = axis === 'col' ? (() => {
+				const active = new Set(model.aggregate ?? []);
+				const toggle = (agg: AggType) => void onStructuralOp({ type: 'toggle-aggregate', agg });
+				const mark = (agg: AggType) => active.has(agg) ? '✓ ' : '';
+				return [
+					{ icon: 'sigma',  label: mark('sum') + t('aggSum'), action: () => toggle('sum') },
+					{ icon: 'divide', label: mark('avg') + t('aggAvg'), action: () => toggle('avg') },
+					{ icon: 'chevron-right', label: t('aggMore'), action: (evt: MouseEvent) => {
+						const moreMenu = new Menu();
+						(['min', 'max', 'count'] as AggType[]).forEach(agg => {
+							moreMenu.addItem(item => {
+								item.setTitle(aggLabel(agg));
+								item.setIcon(agg === 'min' ? 'move-down' : agg === 'max' ? 'move-up' : 'hash');
+								if (active.has(agg)) item.setChecked(true);
+								item.onClick(() => toggle(agg));
+							});
+						});
+						moreMenu.showAtMouseEvent(evt);
+					} },
+				];
+			})() : [];
+
 			const cellOps: CellOpEntry[] = axis === 'col' ? [
 				{ icon: 'eye-off', label: hideColsLabel(lo, hi, colIndexToLetter),
 					action: () => { for (let ci = lo; ci <= hi; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
 				{ icon: 'trash',   label: deleteColsLabel(lo, hi, colIndexToLetter), danger: true,
 					action: () => { for (let ci = hi; ci >= lo; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
 				...(sortOps.length > 0 ? [{ divider: true } as CellOpEntry, ...sortOps] : []),
+				...(aggOps.length > 0 ? [{ divider: true } as CellOpEntry, ...aggOps] : []),
 				{ divider: true },
 				...copyOps,
 			] : lo === 0 && hi === 0 ? copyOps : [  // no hide/delete for header row
@@ -1237,6 +1330,44 @@ export async function renderTable(
 			if (fromIdx >= 1 && toIdx >= 1 && fromIdx !== toIdx)
 				void onStructuralOp({ type: 'move-row', fromRowId: rowId(model, fromIdx), toRowId: rowId(model, toIdx) });
 			dragOverRow = -1;
+		});
+
+		// Reorder summary/aggregate rows among themselves — separate [data-agg-idx]
+		// pool (not [data-idx]) so this never interferes with real-row drag targeting.
+		rowSel.addEventListener('dragover', (evt: DragEvent) => {
+			if (!evt.dataTransfer?.types.includes('bt-drag-agg')) return;
+			evt.preventDefault();
+			const cells = Array.from(rowSel.querySelectorAll<HTMLElement>('[data-agg-idx]'));
+			let toAgg: AggType | null = null, minD = Infinity;
+			for (const c of cells) {
+				const r = c.getBoundingClientRect();
+				const d = Math.abs(evt.clientY - (r.top + r.height / 2));
+				if (d < minD) { minD = d; toAgg = (c.dataset.aggIdx as AggType | undefined) ?? null; }
+			}
+			if (toAgg && toAgg !== dragOverAgg) {
+				clearDropIndicators();
+				dragOverAgg = toAgg;
+				tbody.querySelector<HTMLElement>(`tr[data-agg="${toAgg}"]`)?.addClass('bt-drop-before');
+			}
+		});
+		rowSel.addEventListener('drop', (evt: DragEvent) => {
+			if (!evt.dataTransfer?.types.includes('bt-drag-agg')) return;
+			evt.preventDefault();
+			clearDropIndicators();
+			const fromAgg = (evt.dataTransfer?.getData('bt-drag-agg') || null) as AggType | null;
+			const cells = Array.from(rowSel.querySelectorAll<HTMLElement>('[data-agg-idx]'));
+			let toAgg: AggType | null = null, minD = Infinity;
+			for (const c of cells) {
+				const r = c.getBoundingClientRect();
+				const d = Math.abs(evt.clientY - (r.top + r.height / 2));
+				if (d < minD) { minD = d; toAgg = (c.dataset.aggIdx as AggType | undefined) ?? null; }
+			}
+			if (fromAgg && toAgg && fromAgg !== toAgg) {
+				const order = activeAggTypes(model).filter(a => a !== fromAgg);
+				order.splice(order.indexOf(toAgg), 0, fromAgg);
+				void onStructuralOp({ type: 'reorder-aggregate', order });
+			}
+			dragOverAgg = null;
 		});
 
 		// Column/row resize changes cell geometry → reposition + rebuild selector strips

@@ -73,6 +73,7 @@ rows:
         - Click to edit · double-click for cell menu (merge / style / insert / delete)
         - Shift+Enter for newline; `- ` prefix for list; `<br>` for inline break
         - Right-click column header: set type / filter / hide column
+        - Column-selector popup (select a column, top strip): sort, or add Sum/Average/… summary rows
         - Hover left/top selector strip: select row/col, apply style to all
         - Drag ⠿ to reorder · dbl-click handle to auto-fit · ⊞ to fit all columns
         - 🔒 Lock (top-left): prevent editing · click title or footer to edit them

@@ -104,6 +104,9 @@ Each entry has:
     - in-progress
 ```
 
+Summary/aggregate rows are **not** a per-column field — see the top-level
+`aggregate` field below.
+
 > **Quote column names containing YAML special characters.**  
 > Characters `[ ] { } : , #` need double-quoting:
 > ```yaml
@@ -226,6 +229,25 @@ this).
 sort:
   colId: c_000001
   dir: desc  # or asc
+```
+
+### `aggregate` (array of `sum`|`avg`|`min`|`max`|`count`, optional)
+Active summary/statistic rows — **table-wide, not per-column**: turning on
+`sum` shows one summary row computing a sum for every column where that's
+meaningful (numeric cells), leaving columns with no numeric data blank in that
+row. Array order is render order (top to bottom).
+
+Toggle via the Σ icon in the left control column (next to lock/auto-fit/theme),
+or via the "Sum"/"Average"/"More" group in the column selector's popup menu
+(same table-wide toggle, just reachable from a column-selection context too —
+it does **not** scope the statistic to that column). Each rendered summary row
+also gets its own row-selector cell — click it for a "Remove this summary row"
+menu, or drag its grip to reorder that row among the other summary rows.
+
+```yaml
+aggregate:
+  - sum
+  - avg
 ```
 
 ---

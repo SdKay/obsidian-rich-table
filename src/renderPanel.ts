@@ -11,7 +11,9 @@ export interface CellOpDef {
 	icon:    string;
 	label:   string;
 	danger?: boolean;
-	action:  () => void;
+	/** Receives the triggering click event — lets an op open its own native
+	 *  Obsidian Menu (e.g. a "more options" flyout) positioned at the click. */
+	action:  (evt: MouseEvent) => void;
 }
 
 /** A thin visual divider between groups of cell-op buttons. */
@@ -288,7 +290,7 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 			const iconEl = item.createSpan({ cls: 'bt-cp-item-icon' });
 			setIcon(iconEl, op.icon);
 			item.createSpan({ text: op.label });
-			item.addEventListener('click', () => { op.action(); close(false); });
+			item.addEventListener('click', (evt: MouseEvent) => { op.action(evt); close(false); });
 		}
 		panel.createDiv({ cls: 'bt-cp-divider' });
 	}

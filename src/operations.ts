@@ -1,4 +1,4 @@
-import type { TableModelV2, ColumnDefV2, RowDefV2, StyleRuleV2 } from './model';
+import type { TableModelV2, ColumnDefV2, RowDefV2, StyleRuleV2, AggType } from './model';
 import { genId } from './idGen';
 
 /**
@@ -33,6 +33,12 @@ export type StructuralOpV2 =
 	| { type: 'set-title';       title: string | undefined }
 	| { type: 'set-footer';      footer: string | string[] | undefined }
 	| { type: 'set-filter';      colId: string; values: string[] | null }
+	/** Adds `agg` to the table-wide active summary rows if absent, removes it if present. */
+	| { type: 'toggle-aggregate'; agg: AggType }
+	/** Removes `agg` from the active summary rows — the "delete this summary row" action. */
+	| { type: 'clear-aggregate'; agg: AggType }
+	/** Sets the explicit render order for summary rows (drag-reorder in the row selector). */
+	| { type: 'reorder-aggregate'; order: AggType[] }
 	| { type: 'set-theme';       theme: string | null }
 	| { type: 'toggle-lock' }
 	| { type: 'toggle-collapse' }
@@ -225,6 +231,25 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			if (!col) break;
 			if (!values || values.length === 0) delete col.filter;
 			else col.filter = values;
+			break;
+		}
+		case 'toggle-aggregate': {
+			const list = model.aggregate ?? [];
+			const next = list.includes(op.agg) ? list.filter(a => a !== op.agg) : [...list, op.agg];
+			if (next.length === 0) delete model.aggregate;
+			else model.aggregate = next;
+			break;
+		}
+		case 'clear-aggregate': {
+			if (!model.aggregate) break;
+			const next = model.aggregate.filter(a => a !== op.agg);
+			if (next.length === 0) delete model.aggregate;
+			else model.aggregate = next;
+			break;
+		}
+		case 'reorder-aggregate': {
+			if (op.order.length === 0) delete model.aggregate;
+			else model.aggregate = op.order;
 			break;
 		}
 		case 'set-theme':

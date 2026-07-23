@@ -236,6 +236,7 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | Row filtering — funnel icon on each column header; click to open a checkbox panel and filter by value | ✅ |
 | Filter status bar — "Showing X of Y · Clear" unified with sort / aggregate info | 🔜 |
 | Row sorting — via the column selector's popup menu: one-time (reorders rows once) or live (auto-sorts, shown by an indicator until cleared) | ✅ |
+| Summary rows — Sum / Average / Min / Max / Count, table-wide (toggle via the Σ icon in the left control column, or the column selector's popup menu); one row per active statistic at the table's bottom, computed over currently-visible rows, columns without meaningful data left blank. Each summary row gets its own selector cell (remove) and drag grip (reorder) | ✅ |
 | **Styles** | |
 | Per-cell bg color, text color, and font size — via panel or YAML | ✅ |
 | Row / column selector strips — hover to reveal, click or drag to style entire rows/columns | ✅ |
@@ -244,7 +245,7 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | Custom cell padding (top / bottom / left / right) | 🔜 |
 | Collapsible table — fold-icon button in the top-left corner shows/hides the table body, keeping the title and header row visible | ✅ |
 | Conditional formatting — auto-apply styles based on cell value rules | 🔜 |
-| Progress bar column type · aggregate row (SUM / COUNT) | 🔜 |
+| Progress bar column type | 🔜 |
 | **Merges** | |
 | Cell merging — drag-select → Merge in popup, or declare in YAML | ✅ |
 | Copy selection to Excel / Sheets or as a Markdown table — selection/cell/header menus | ✅ |

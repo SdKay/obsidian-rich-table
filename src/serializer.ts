@@ -81,6 +81,7 @@ function buildYaml(m: TableModelV2): string {
 	if (m.locked) obj.locked = true;
 	if (m.collapsed) obj.collapsed = true;
 	if (m.sort) obj.sort = { colId: m.sort.colId, dir: m.sort.dir };
+	if (m.aggregate && m.aggregate.length > 0) obj.aggregate = m.aggregate;
 
 	return stringifyYaml(obj);
 }

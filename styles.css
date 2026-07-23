@@ -276,6 +276,10 @@
 	height: var(--rh, 30px);
 }
 
+/* Summary/aggregate row selector cell — icon instead of a row number (it isn't
+ * part of model.rows, so there's no index to show). */
+.bt-sel-agg-cell svg { width: 11px; height: 11px; }
+
 /* Resize handles living in the selector strips — one per column / row.
  * Positioned at each column's right edge / row's bottom edge. Work regardless
  * of cell merges since they read <col>/<tr> geometry. */
@@ -495,6 +499,25 @@
 .bt-table .bt-th {
 	background-color: var(--bt-header-bg, var(--background-secondary));
 	font-weight: var(--font-semibold);
+}
+
+/* Summary/aggregate rows — visually distinct from data rows. border-top on
+ * every row (not just the first) is intentional: border-collapse merges
+ * adjacent rows' borders into one shared line either way, so this reads as a
+ * single rule above the summary block and a thin divider between its rows.
+ * !important + .bt-render-root prefix: must win over the --bt-cell-border
+ * block above, same reasoning as the drag-reorder drop indicator below. */
+.bt-table .bt-agg-td {
+	background-color: var(--background-secondary-alt, var(--background-secondary));
+	font-weight: var(--font-semibold);
+}
+.bt-render-root .bt-table .bt-agg-td {
+	border-top: 2px solid var(--background-modifier-border) !important;
+}
+.bt-table .bt-agg-label {
+	color: var(--text-muted);
+	font-weight: var(--font-normal);
+	margin-right: 4px;
 }
 
 /* Column alignment overrides */

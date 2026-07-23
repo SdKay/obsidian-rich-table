@@ -81,6 +81,17 @@ const EN = {
 	// Collapse/expand
 	collapseTable: 'Collapse table',
 	expandTable:   'Expand table',
+
+	// Summary/aggregate row (menu items in the column-selector popup, and the
+	// row-label cell of the rendered summary row)
+	aggSum:   'Sum',
+	aggAvg:   'Average',
+	aggMin:   'Min',
+	aggMax:   'Max',
+	aggCount: 'Count',
+	aggMore:  'More statistics',
+	clearAggregate:  'Remove this summary row',
+	dragReorderAgg:  'Drag to reorder summary rows',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -146,6 +157,15 @@ const ZH: { [K in keyof typeof EN]: string } = {
 
 	collapseTable: '收起表格',
 	expandTable:   '展开表格',
+
+	aggSum:   '求和',
+	aggAvg:   '平均',
+	aggMin:   '最小值',
+	aggMax:   '最大值',
+	aggCount: '计数',
+	aggMore:  '更多统计',
+	clearAggregate:  '删除这一行统计',
+	dragReorderAgg:  '拖拽调整统计行顺序',
 };
 
 export function t(key: keyof typeof EN): string {
@@ -221,6 +241,16 @@ export function collapsedRowsLabel(): string {
 	return isZh()
 		? `表格已折叠 · 点击展开`
 		: `Table collapsed · click to expand`;
+}
+
+export function aggLabel(agg: 'sum' | 'avg' | 'min' | 'max' | 'count'): string {
+	switch (agg) {
+		case 'sum':   return t('aggSum');
+		case 'avg':   return t('aggAvg');
+		case 'min':   return t('aggMin');
+		case 'max':   return t('aggMax');
+		case 'count': return t('aggCount');
+	}
 }
 
 export function sortActiveLabel(colName: string, dir: 'asc' | 'desc'): string {

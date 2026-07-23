@@ -5,6 +5,7 @@
 
 import { parseYaml } from 'obsidian';
 import type {
+	AggType,
 	ColumnDefV2,
 	MergeRangeV2,
 	RowDefV2,
@@ -12,12 +13,15 @@ import type {
 	TableModelV2,
 } from './model';
 
+const AGG_TYPES: AggType[] = ['sum', 'avg', 'min', 'max', 'count'];
+
 export function parseTable(source: string): TableModelV2 {
 	const yaml = extractFrontmatter(source);
 
 	const columns = parseColumns(yaml?.columns);
 	const rows    = parseRows(yaml?.rows);
 	const sort    = parseSort(yaml?.sort);
+	const aggregate = parseAggregate(yaml?.aggregate);
 
 	return {
 		version:  2,
@@ -31,6 +35,7 @@ export function parseTable(source: string): TableModelV2 {
 		...(yaml?.locked === true ? { locked: true } : {}),
 		...(yaml?.collapsed === true ? { collapsed: true } : {}),
 		...(sort ? { sort } : {}),
+		...(aggregate.length > 0 ? { aggregate } : {}),
 	};
 }
 
@@ -118,4 +123,9 @@ function parseSort(raw: unknown): { colId: string; dir: 'asc' | 'desc' } | null 
 	if (typeof s.colId !== 'string') return null;
 	if (s.dir !== 'asc' && s.dir !== 'desc') return null;
 	return { colId: s.colId, dir: s.dir };
+}
+
+function parseAggregate(raw: unknown): AggType[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.filter((v): v is AggType => AGG_TYPES.includes(v as AggType));
 }

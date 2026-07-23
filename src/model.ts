@@ -56,6 +56,9 @@ export interface TableModel {
 // V2 model — ID-based, pipe table is a generated read-only mirror
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Aggregate/summary-row statistic types, computed over a column's visible cells. */
+export type AggType = 'sum' | 'avg' | 'min' | 'max' | 'count';
+
 /** Column definition for v2 (adds stable `id`). */
 export interface ColumnDefV2 {
 	id: string;
@@ -120,6 +123,12 @@ export interface TableModelV2 {
 	collapsed?: boolean;
 	/** Display-only row sort — never reorders `rows[]` itself, applied at render time. */
 	sort?: { colId: string; dir: 'asc' | 'desc' };
+	/** Active summary/aggregate rows, table-wide (not per-column) — array order is
+	 *  render order, set by dragging a summary row's selector-strip grip. Each
+	 *  active type computes a value for every column where that's meaningful
+	 *  (numeric cells for sum/avg/min/max, any non-empty cell for count) and
+	 *  leaves the rest blank — see `computeAggregateValue` in renderAggregate.ts. */
+	aggregate?: AggType[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
