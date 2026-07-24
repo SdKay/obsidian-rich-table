@@ -5,6 +5,7 @@ import type { BetterTableSettings, ChoiceType } from './model';
 export const DEFAULT_SETTINGS: BetterTableSettings = {
 	customChoices: [],
 	allowReadingViewEdit: false,
+	singleClickEdit: false,
 };
 
 export class BetterTableSettingTab extends PluginSettingTab {
@@ -31,6 +32,23 @@ export class BetterTableSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.allowReadingViewEdit)
 					.onChange(async (value) => {
 						this.plugin.settings.allowReadingViewEdit = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Single-click to edit')
+			.setDesc(
+				'When on, a single click on a cell enters edit mode immediately (no ~200ms delay), ' +
+				'and the style panel opens with Ctrl/Cmd+click instead of double-click. Speeds up ' +
+				'rapid consecutive editing. When off (default), single click enters edit after a short ' +
+				'delay and double click opens the style panel.',
+			)
+			.addToggle(toggle =>
+				toggle
+					.setValue(this.plugin.settings.singleClickEdit)
+					.onChange(async (value) => {
+						this.plugin.settings.singleClickEdit = value;
 						await this.plugin.saveSettings();
 					}),
 			);

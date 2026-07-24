@@ -1,13 +1,25 @@
 import type { App } from 'obsidian';
 import { WikilinkInputSuggest } from './wikilinkInputSuggest';
 import type { CellChangeHandler } from './renderTypes';
+import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
 
+/**
+ * `cacheKey` + `initialValue` are only present when this call is itself a
+ * resume of an edit that a write-back-triggered rebuild interrupted (see
+ * renderEditHandoff.ts) — `initialValue` then holds the draft text/date the
+ * user had typed but not yet committed, instead of the cell's actual stored
+ * value. `cacheKey` alone (with `initialValue` omitted) is what a normal,
+ * first-time edit passes so this edit can register itself for a FUTURE
+ * rebuild to resume, if one happens before this edit commits.
+ */
 export function enterDateEditMode(
 	el: HTMLElement,
 	currentValue: string,
 	rowIdx: number,
 	colIdx: number,
 	onCellChange: CellChangeHandler,
+	cacheKey?: string,
+	initialValue?: string,
 ): void {
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
 	el.empty();
@@ -15,26 +27,45 @@ export function enterDateEditMode(
 
 	const input = el.createEl('input', {
 		cls: 'bt-date-input',
-		attr: { type: 'date', value: currentValue },
+		attr: { type: 'date', value: initialValue ?? currentValue },
 	});
+
+	if (cacheKey) registerLiveEdit(cacheKey, rowIdx, colIdx, () => input.value);
 
 	let committed = false;
 
 	const save = () => {
 		if (committed) return;
-		committed = true;
-		el.removeClass('bt-editing');
-		if (input.value !== currentValue) {
-			void onCellChange(rowIdx, colIdx, input.value);
-		} else {
-			el.empty();
-			for (const node of savedNodes) el.appendChild(node);
-		}
+		// A write-back rebuild tearing down this cell's old DOM detaches this
+		// input while it's still focused, which fires a real `blur` — but the
+		// browser's "remove a node" algorithm dispatches that `blur` as an
+		// INTERMEDIATE step, before the node's connectedness is actually updated,
+		// so `input.isConnected` still reads `true` here, synchronously, even
+		// when this element is mid-removal (confirmed empirically: checking again
+		// one microtask later correctly flips to `false`). A same-tick check
+		// can't tell a teardown blur from a real user blur; deferring by one
+		// microtask can, without any user-visible delay (nothing else can run in
+		// between — microtasks drain before the next real event). See the
+		// matching comment in enterEditMode's save() for the full story.
+		queueMicrotask(() => {
+			if (committed) return;
+			if (!input.isConnected) return; // teardown blur — ignore; don't touch the registry
+			committed = true;
+			if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
+			el.removeClass('bt-editing');
+			if (input.value !== currentValue) {
+				void onCellChange(rowIdx, colIdx, input.value);
+			} else {
+				el.empty();
+				for (const node of savedNodes) el.appendChild(node);
+			}
+		});
 	};
 
 	const cancel = () => {
 		if (committed) return;
 		committed = true;
+		if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
 		input.removeEventListener('blur', save);
 		el.removeClass('bt-editing');
 		el.empty();
@@ -153,6 +184,8 @@ export function enterEditMode(
 	sourcePath: string,
 	onCellChange: CellChangeHandler,
 	onPasteGrid?: (values: string[][]) => void,
+	cacheKey?: string,
+	initialText?: string,
 ): void {
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
 
@@ -169,28 +202,46 @@ export function enterEditMode(
 		cls: 'bt-cell-editor',
 		attr: { contenteditable: 'true' },
 	});
-	editor.textContent = rawValue;
+	editor.textContent = initialText ?? rawValue;
 
 	// WikilinkInputSuggest attaches to the div directly (no hacks needed)
 	new WikilinkInputSuggest(app, editor, sourcePath);
+
+	if (cacheKey) registerLiveEdit(cacheKey, rowIdx, colIdx, () => editor.textContent ?? '');
 
 	let committed = false;
 
 	const save = () => {
 		if (committed) return;
-		committed = true;
-		el.removeClass('bt-editing');
-		const newValue = editor.textContent ?? '';
-		if (newValue !== rawValue) {
-			void onCellChange(rowIdx, colIdx, newValue);
-		} else {
-			restoreNodes();
-		}
+		// A write-back rebuild tearing down this cell's old DOM detaches this
+		// editor while it's still focused, which fires a real `blur` — but the
+		// browser's "remove a node" algorithm dispatches that `blur` as an
+		// INTERMEDIATE step, before the node's connectedness is actually updated,
+		// so `editor.isConnected` still reads `true` here, synchronously, even
+		// when this element is mid-removal (confirmed empirically: checking
+		// again one microtask later correctly flips to `false`). A same-tick
+		// check can't tell a teardown blur from a real user blur; deferring by
+		// one microtask can, without any user-visible delay (nothing else can
+		// run in between — microtasks drain before the next real event).
+		queueMicrotask(() => {
+			if (committed) return;
+			if (!editor.isConnected) return; // teardown blur — ignore; don't touch the registry
+			committed = true;
+			if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
+			el.removeClass('bt-editing');
+			const newValue = editor.textContent ?? '';
+			if (newValue !== rawValue) {
+				void onCellChange(rowIdx, colIdx, newValue);
+			} else {
+				restoreNodes();
+			}
+		});
 	};
 
 	const cancel = () => {
 		if (committed) return;
 		committed = true;
+		if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
 		editor.removeEventListener('blur', save);
 		el.removeClass('bt-editing');
 		restoreNodes();

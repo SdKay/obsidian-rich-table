@@ -33,6 +33,14 @@ export async function renderTable(
 	onToggleLock?: ToggleLockHandler,
 	onRootReady?: (root: HTMLElement) => void,
 	isSwapping?: () => boolean,
+	/** Table identity for renderEditHandoff.ts's cross-rebuild edit resume —
+	 *  same key tableBlock.ts's renderCache uses. */
+	cacheKey?: string,
+	/** Read fresh on each click (not captured once) so toggling the setting takes
+	 *  effect on already-rendered tables without a re-render. When it returns true,
+	 *  single click enters edit immediately and Ctrl/Cmd+click opens the style panel
+	 *  (vs the default single-click-delay / double-click-panel). */
+	getSingleClickEdit?: () => boolean,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
@@ -94,6 +102,32 @@ export async function renderTable(
 
 	const wrapper = root.createDiv({ cls: 'bt-table-wrapper' });
 	const table = wrapper.createEl('table', { cls: 'bt-table' });
+
+	// Visible-viewport geometry, all in root-relative px. The wrapper (overflow-x:auto)
+	// is the horizontal scroll viewport; a wide table scrolls INSIDE it while the wrapper
+	// rect itself stays put. All hover strips anchor to this VISIBLE region rather than
+	// the (possibly scrolled far off-screen) full table rect, so they behave like a fixed
+	// overlay pinned around the visible table on all four sides regardless of scroll.
+	//   vl/vt   visible top-left corner        vw/vh   visible width/height
+	//   colOffset  how far the table's own left sits left of the visible left (≤ 0) —
+	//              added to every column-selector child's left so column letters/grips/
+	//              resize seams scroll horizontally in lockstep with the table body and
+	//              clip cleanly at the visible edges (overflow:hidden on the col strip).
+	const computeVisibleGeom = () => {
+		const tr = table.getBoundingClientRect();
+		const rr = root.getBoundingClientRect();
+		const wr = wrapper.getBoundingClientRect();
+		const visLeft  = Math.max(tr.left, wr.left);
+		const visRight = Math.min(tr.right, wr.right);
+		return {
+			tr, rr, wr,
+			tt: tr.top - rr.top,              // table top rel root (no horizontal-scroll effect)
+			th: tr.height,
+			vl: visLeft - rr.left,            // visible left rel root
+			vw: Math.max(0, visRight - visLeft),
+			colOffset: tr.left - visLeft,     // ≤ 0
+		};
+	};
 
 	// <colgroup> for precise column widths (used when table-layout:fixed).
 	// If no column has an explicit width we leave widths unset and let the
@@ -243,7 +277,7 @@ export async function renderTable(
 	const headerTr = thead.createEl('tr');
 	await renderRow({
 		tr: headerTr, rowIdx: 0, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: true,
-		onCellChange, onColTypeChange, onStructuralOp,
+		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
 	});
 
 	const tbody = table.createEl('tbody');
@@ -467,7 +501,7 @@ export async function renderTable(
 			const tr = tbody.createEl('tr');
 			await renderRow({
 				tr, rowIdx: displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: false,
-				onCellChange, onColTypeChange, onStructuralOp,
+				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
 			});
 			di++;
 		}
@@ -523,6 +557,7 @@ export async function renderTable(
 	let restoreLayout     = () => { /* assigned in selector block */ };
 	let repositionLockBtn    = () => { /* assigned in lock-button block */ };
 	let repositionAutoFitBtn = () => { /* assigned in auto-fit-button block */ };
+	let repositionCtrlCol    = () => { /* assigned in ctrl-column block */ };
 
 	// ── Edge-hover add strips (CSS Grid cells inside bt-render-root) ──
 	if (onStructuralOp) {
@@ -563,8 +598,8 @@ export async function renderTable(
 			// unrelated or detached element — bail immediately.
 			if (!root.isConnected) return false;
 
-			const tr = table.getBoundingClientRect();
-			const rr = root.getBoundingClientRect();
+			const g = computeVisibleGeom();
+			const { tr, rr } = g;
 			if (tr.width === 0 || tr.height === 0) return false;
 			if (rr.width === 0) return false;
 			if (rr.height === 0) {
@@ -576,30 +611,31 @@ export async function renderTable(
 			// rr.height >> tr.height means the DOM contains two stacked roots (cache clone
 			// injection window), producing the anomalous rr.height≈1113 observed in logs.
 			if (rr.height > tr.height + 60) return false;
-
-			const tl = tr.left - rr.left;
-			const tt = tr.top  - rr.top;
-			if (tt < -5 || tl < -5 || tt > rr.height + 5) return false;
-			const tw = tr.width;
-			const th = tr.height;
+			if (g.tt < -5 || g.tt > rr.height + 5) return false;
+			if (g.vw <= 0) return false; // table fully scrolled out of the visible viewport
+			// Add-row strip along the bottom, add-col button at the right — both anchored
+			// to the VISIBLE table region so they stay reachable when a wide table is
+			// horizontally scrolled (previously pinned to the off-screen full-table edges).
 			addRowBtn.setCssProps({
-				'--strip-top':   `${tt + th + 2}px`,
-				'--strip-left':  `${tl}px`,
-				'--strip-width': `${tw}px`,
+				'--strip-top':   `${g.tt + g.th + 2}px`,
+				'--strip-left':  `${g.vl}px`,
+				'--strip-width': `${g.vw}px`,
 			});
 			addColBtn.setCssProps({
-				'--strip-top':    `${tt}px`,
-				'--strip-left':   `${tl + tw + 2}px`,
-				'--strip-height': `${th}px`,
+				'--strip-top':    `${g.tt}px`,
+				'--strip-left':   `${g.vl + g.vw + 2}px`,
+				'--strip-height': `${g.th}px`,
 			});
-			// Expose table geometry so themes can compute table-local cursor coordinates.
+			// Expose full table geometry so themes can compute table-local cursor coordinates.
 			// Themes subtract these from --bt-mx/--bt-my to get cursor position within
-			// the table's own coordinate space (e.g. for cursor-glow on row hover).
+			// the table's own coordinate space (e.g. for cursor-glow on row hover) — this
+			// stays the ACTUAL table rect (not the clamped visible region) so the math is
+			// correct even while scrolled.
 			root.setCssProps({
-				'--bt-tbl-l': `${tl}px`,
-				'--bt-tbl-t': `${tt}px`,
-				'--bt-tbl-w': `${tw}px`,
-				'--bt-tbl-h': `${th}px`,
+				'--bt-tbl-l': `${tr.left - rr.left}px`,
+				'--bt-tbl-t': `${g.tt}px`,
+				'--bt-tbl-w': `${tr.width}px`,
+				'--bt-tbl-h': `${g.th}px`,
 			});
 			return true;
 		};
@@ -644,6 +680,18 @@ export async function renderTable(
 		});
 		resizeObs.observe(table);
 		component?.register(() => resizeObs.disconnect());
+
+		// Horizontal scroll inside the wrapper doesn't move the wrapper (only the table
+		// content within it), so no resize/layout event fires — reposition the edge
+		// strips explicitly against the new visible region. rAF-coalesced so a burst of
+		// scroll events costs at most one reposition per frame.
+		let edgeScrollScheduled = false;
+		wrapper.addEventListener('scroll', () => {
+			if (!addRowBtn.hasClass('bt-strip-visible') && !addColBtn.hasClass('bt-strip-visible')) return;
+			if (edgeScrollScheduled) return;
+			edgeScrollScheduled = true;
+			window.requestAnimationFrame(() => { edgeScrollScheduled = false; positionEdgeStrips(); });
+		});
 	}
 
 	// ── Control column: lock · autofit · theme · aggregate · collapse — left of the row-drag strip ──
@@ -760,19 +808,24 @@ export async function renderTable(
 		}
 
 
-		// Position the column just left of the row selector
+		// Position the column just left of the row selector — anchored to the VISIBLE
+		// left edge (not the table's own left) so it stays on-screen when a wide table
+		// is horizontally scrolled.
 		const positionCtrlCol = () => {
-			const tr = table.getBoundingClientRect();
-			const rr = root.getBoundingClientRect();
-			if (tr.width === 0) return;
+			const g = computeVisibleGeom();
+			if (g.tr.width === 0) return;
 			ctrlCol.setCssProps({
-				'--cc-top':  `${tr.top - rr.top + 2}px`,
-				'--cc-left': `${tr.left - rr.left - SEL_TOTAL - AUTOFIT_OFFSET - 4}px`,
+				'--cc-top':  `${g.tt + 2}px`,
+				'--cc-left': `${g.vl - SEL_TOTAL - AUTOFIT_OFFSET - 4}px`,
 			});
 		};
 		window.requestAnimationFrame(positionCtrlCol);
 		table.addEventListener('bt-layout-changed', positionCtrlCol);
 		new ResizeObserver(positionCtrlCol).observe(table);
+		// A wide table shifted right by --bt-sel-pad-left on hover doesn't change the
+		// table's own size (it just overflows less/more), so ResizeObserver won't fire
+		// — the mouseenter handler calls this explicitly after prepareLayout instead.
+		repositionCtrlCol = positionCtrlCol;
 	}
 
 	// ── Row / column selector strips (Excel-style whole-row/column selection) ──
@@ -1044,19 +1097,22 @@ export async function renderTable(
 		// centering offset.  The viewport-coordinate subtraction always gives the correct
 		// root-relative position regardless of offsetParent.
 		const positionSelectors = () => {
-			const tr = table.getBoundingClientRect();
-			const rr = root.getBoundingClientRect();
-			const tl = tr.left - rr.left;
-			const tt = tr.top  - rr.top;
+			const g = computeVisibleGeom();
+			// Col selector: pinned to the visible top edge, spanning the visible width,
+			// clipped (overflow:hidden in CSS). --cs-off shifts its column cells so they
+			// track the table body as it scrolls (see computeVisibleGeom).
 			colSel.setCssProps({
-				'--cs-left':  `${tl}px`,
-				'--cs-top':   `${tt - SEL_TOTAL}px`,
-				'--cs-width': `${tr.width}px`,
+				'--cs-left':  `${g.vl}px`,
+				'--cs-top':   `${g.tt - SEL_TOTAL}px`,
+				'--cs-width': `${g.vw}px`,
+				'--cs-off':   `${g.colOffset}px`,
 			});
+			// Row selector: pinned just left of the visible left edge, full table height.
+			// Rows don't move horizontally, so no scroll offset is needed here.
 			rowSel.setCssProps({
-				'--rs-left':   `${tl - SEL_TOTAL}px`,
-				'--rs-top':    `${tt}px`,
-				'--rs-height': `${tr.height}px`,
+				'--rs-left':   `${g.vl - SEL_TOTAL}px`,
+				'--rs-top':    `${g.tt}px`,
+				'--rs-height': `${g.th}px`,
 			});
 		};
 
@@ -1064,7 +1120,23 @@ export async function renderTable(
 		// show/hide so that positionEdgeStrips() and positionSelectors() both see
 		// the same layout (table already shifted by --bt-sel-pad).
 		prepareLayout = () => {
-			root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px`, '--bt-add-pad': '24px' });
+			// The left strips (row selector + ctrl column) sit to the LEFT of the table.
+			// A centered/narrow table has ample margin room there, but a wide table that
+			// fills the container is flush-left inside root — the strips would land at a
+			// negative left and get clipped off-screen (reported: wide tables show no left
+			// toolbar/row-selector). Measured against the WRAPPER's left (the visible
+			// viewport edge, which — unlike the table's own left — stays put no matter how
+			// far the table is horizontally scrolled): if the gap to root's left edge is
+			// smaller than the widest left element needs (the ctrl column, reaching
+			// SEL_TOTAL + AUTOFIT_OFFSET + 4 px left of the visible edge), reserve the
+			// shortfall as padding-left so the table shifts right just enough to expose them.
+			// Narrow tables measure a large gap → 0 padding → no visible shift.
+			const wr0 = wrapper.getBoundingClientRect();
+			const rr0 = root.getBoundingClientRect();
+			const leftNeed = SEL_TOTAL + AUTOFIT_OFFSET + 4;
+			const leftRoom = wr0.left - rr0.left;
+			const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
+			root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px`, '--bt-add-pad': '24px', '--bt-sel-pad-left': `${leftPad}px` });
 			// Cancel whatever --bt-title-mb-pull the active theme set (bridged onto titleEl in
 			// tableBlock.ts) so the title sits flush above the col-selector strip on hover
 			// instead of stacking a second gap on top of the theme's own pull-closer value.
@@ -1072,7 +1144,7 @@ export async function renderTable(
 			titleEl?.setCssProps({ '--bt-title-mb-adj': `${-pull}px` });
 		};
 		restoreLayout = () => {
-			root.setCssProps({ '--bt-sel-pad': '0px', '--bt-add-pad': '0px' });
+			root.setCssProps({ '--bt-sel-pad': '0px', '--bt-add-pad': '0px', '--bt-sel-pad-left': '0px' });
 			titleEl?.setCssProps({ '--bt-title-mb-adj': '0px' });
 			repositionLockBtn();
 			repositionAutoFitBtn();
@@ -1378,6 +1450,21 @@ export async function renderTable(
 				rebuild();
 			}
 		});
+
+		// Horizontal scroll: only the containers + the --cs-off shift need updating —
+		// the per-column cells stay table-relative and follow --cs-off via CSS, so no
+		// full rebuild() is needed (keeps scrolling smooth). rAF-coalesced.
+		let selScrollScheduled = false;
+		wrapper.addEventListener('scroll', () => {
+			if (!colSel.hasClass('bt-strip-visible') && !rowSel.hasClass('bt-strip-visible')) return;
+			if (selScrollScheduled) return;
+			selScrollScheduled = true;
+			window.requestAnimationFrame(() => {
+				selScrollScheduled = false;
+				positionSelectors();
+				repositionCtrlCol();
+			});
+		});
 	}
 
 	// ── Show/hide overlays on mouse enter/leave ───────────────────────────────
@@ -1390,6 +1477,7 @@ export async function renderTable(
 			prepareLayout();
 			repositionLockBtn();
 			repositionAutoFitBtn();
+			repositionCtrlCol();
 			showEdgeStrips();
 			showSelectors();
 		});

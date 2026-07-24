@@ -152,4 +152,13 @@ export interface BetterTableSettings {
 	 * Live preview / source mode is never affected by this setting.
 	 */
 	allowReadingViewEdit: boolean;
+	/**
+	 * When true, a single click on a cell enters edit mode *immediately* (no 200ms
+	 * wait), and the style panel moves to Ctrl/Cmd+click (instead of double-click).
+	 * Removes the per-cell 200ms single-vs-double-click disambiguation delay, which
+	 * is the biggest contributor to sluggishness during rapid consecutive editing.
+	 * When false (default), the classic behaviour is kept: single click enters edit
+	 * after a 200ms delay, double click opens the style panel.
+	 */
+	singleClickEdit: boolean;
 }

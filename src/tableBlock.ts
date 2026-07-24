@@ -7,16 +7,53 @@ import { parseTable } from './parser';
 import { serializeTable } from './serializer';
 import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
+import { registerHoverState, takeHoverState } from './renderHoverHandoff';
 import zhTemplate from './templates/zh.yaml';
 import enTemplate from './templates/en.yaml';
 
 /**
- * Module-level render cache keyed by "sourcePath:lineStart".
- * When Obsidian rebuilds the code block after a write-back, the new instance
- * synchronously injects the cached DOM so the container is never blank —
- * same technique as drawio-view's contentCache.
+ * Module-level snapshot cache keyed by "sourcePath:lineStart". Each entry is a
+ * clone of a table's LIVE DOM taken at write-back time (in handleStructuralOp) —
+ * content, hover strips, editing look and all. The next (rebuilt) instance
+ * injects it synchronously in onload() as a visual placeholder so the table
+ * stays continuous (no blank/zero-height window) through Obsidian's ~200ms
+ * tear-down-and-async-rerender. Cross-instance by design: the new instance can't
+ * reach the old instance's DOM, so the old one publishes here and the new one reads.
  */
 const renderCache = new Map<string, HTMLElement>();
+
+/**
+ * Inject a live-DOM snapshot into a freshly-handed (blank) container as a
+ * transient placeholder, after de-fanging the two things that can't survive a
+ * cross-instance clone:
+ *  1. Editors are static `cloneNode` products (no event bindings). Left
+ *     editable they'd invite the user to type into a dead node during the
+ *     ~200ms window → input silently lost. So make them look-but-don't-touch:
+ *     contenteditable=false, no tabindex, inputs readonly.
+ *  2. Hover strips' `--strip-*` positions were computed against the OLD root's
+ *     geometry; injected into the new container (esp. when a scroll jump is
+ *     underway) they'd place the strips far from the table. Keep the visible
+ *     class (so the table doesn't look like it lost hover) but drop the stale
+ *     positions — the real hover handoff repositions them precisely after swap.
+ */
+function injectLiveSnapshot(container: HTMLElement, cached: HTMLElement | undefined): void {
+	if (!cached) return;
+	const clone = cached.cloneNode(true) as HTMLElement;
+	clone.querySelectorAll<HTMLElement>('[contenteditable="true"]').forEach(el => {
+		el.setAttribute('contenteditable', 'false');
+		el.removeAttribute('tabindex');
+	});
+	clone.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea').forEach(el => {
+		el.readOnly = true;
+	});
+	clone.querySelectorAll<HTMLElement>('.bt-strip-visible').forEach(el => {
+		el.style.removeProperty('--strip-top');
+		el.style.removeProperty('--strip-left');
+		el.style.removeProperty('--strip-width');
+		el.style.removeProperty('--strip-height');
+	});
+	while (clone.firstChild) container.appendChild(clone.firstChild);
+}
 
 function getEmptyTemplate(): string {
 	return isZh() ? zhTemplate : enTemplate;
@@ -59,15 +96,19 @@ export class TableBlock extends MarkdownRenderChild {
 	}
 
 	onload(): void {
-		// Synchronous cache hit: keeps the container non-blank while async
-		// render completes, eliminating the blank flash on write-back re-renders.
-		const cached = renderCache.get(this.cacheKey);
-		if (cached) {
-			const clone = cached.cloneNode(true) as HTMLElement;
-			while (clone.firstChild) {
-				this.containerEl.appendChild(clone.firstChild);
-			}
-		}
+		// Every write-back makes Obsidian tear down the old table's DOM and hand this
+		// new instance a *blank* container, which our async render() then takes ~200ms
+		// to fill (one MarkdownRenderer.render per cell). During that window the empty
+		// container has zero height — which (a) drops the hover strips → the "flicker",
+		// and (b) collapses the document height → the scroll position gets clobbered →
+		// the table jumps out of the viewport (both confirmed by diagnostics; same root
+		// cause). To keep the table visually continuous through that window, the PREVIOUS
+		// instance snapshotted its live DOM at write-back time (see handleStructuralOp);
+		// inject that snapshot synchronously here so the container is never blank/zero-
+		// height, then render() swaps in the real content and the hover/edit handoffs
+		// restore the true interactive state. (Replaces an older 40ms-delayed base-state
+		// snapshot that never actually fired — it was starved by render()'s microtask chain.)
+		injectLiveSnapshot(this.containerEl, renderCache.get(this.cacheKey));
 		void this.render();
 	}
 
@@ -162,6 +203,8 @@ export class TableBlock extends MarkdownRenderChild {
 				lockAvailable ? () => this.handleStructuralOp({ type: 'toggle-lock' }) : undefined,
 				(root) => { this.renderedRoot = root; },
 				() => this.isRendering,
+				this.cacheKey,
+				() => this.plugin.settings.singleClickEdit,
 			);
 			if (isEmpty) {
 				const banner = createDiv({ cls: 'bt-template-banner' });
@@ -179,8 +222,10 @@ export class TableBlock extends MarkdownRenderChild {
 			tmp.createDiv({ cls: 'bt-error', text: `Rich Table: ${msg}` });
 		}
 
-		// Update cache with the freshly rendered (non-interactive) snapshot
-		renderCache.set(this.cacheKey, tmp.cloneNode(true) as HTMLElement);
+		// NOTE: the placeholder snapshot is captured from the LIVE DOM at write-back
+		// time (handleStructuralOp), not here — a render()-end clone would be the
+		// pristine, never-hovered base state (strips hidden), i.e. exactly the "zeroed"
+		// look we're trying to avoid injecting. See injectLiveSnapshot / renderCache.
 
 		// Atomic swap: guard so showEdgeStrips rejects any attempt to display strips
 		// during the window between containerEl.empty() and the new root being in DOM.
@@ -194,17 +239,53 @@ export class TableBlock extends MarkdownRenderChild {
 		void this.containerEl.getBoundingClientRect();
 		this.isRendering = false;
 
+		// A resumed edit (renderEditHandoff.ts) builds its editor DURING the render
+		// pass above, while the cell is still part of the off-screen `tmp` tree — a
+		// detached element can't actually receive focus, so `enterEditMode`'s own
+		// `.focus()` call silently no-ops there. The editor exists and shows the
+		// right draft text, but isn't focused, so typing does nothing until the
+		// user clicks it again — which is exactly the "have to click again" bug
+		// this closes. Now that the tree is live, retry focusing whichever editor
+		// (if any) still carries `.bt-editing` after the swap.
+		const resumedEditor = this.containerEl.querySelector<HTMLElement>(
+			'.bt-editing .bt-cell-editor, .bt-editing .bt-date-input',
+		);
+		if (resumedEditor) {
+			resumedEditor.focus();
+			if (resumedEditor.isContentEditable) {
+				const range = activeDocument.createRange();
+				range.selectNodeContents(resumedEditor);
+				activeWindow.getSelection()?.removeAllRanges();
+				activeWindow.getSelection()?.addRange(range);
+			}
+		}
+
 		const rootEl = this.containerEl.querySelector<HTMLElement>('.bt-render-root');
-		// If the write-back that triggered this re-render happened while the mouse
-		// never left the table (e.g. delete-row from a popup menu, cursor still
-		// over the table the whole time), the brand-new root has no way to know
-		// it's currently hovered — mouseenter/mouseleave only fire in response to
-		// actual pointer movement, never just because a DOM swap happened under a
-		// stationary cursor. Left alone, the hover-only strips stay hidden until
-		// the next real mousemove, which reads as a jarring flicker even though
-		// the mouse genuinely never left. Dispatching a synthetic mouseenter here
-		// re-triggers renderer.ts's real listener immediately instead of waiting.
-		if (rootEl?.matches(':hover')) rootEl.dispatchEvent(new MouseEvent('mouseenter'));
+		// If this rebuild was triggered by a write-back while the table's hover
+		// strips were showing (mouse over the table, or strips pinned by an open
+		// menu), the brand-new root has never received a mouseenter — its strips
+		// start hidden and stay hidden until the next real mousemove, reading as a
+		// brief "drops out of hover, then recovers" flicker even though the mouse
+		// never left. A synchronous `:hover` check here can't fix it: the browser's
+		// :hover recalc for a just-inserted element lags a few ms behind the swap,
+		// so it returns false right now (see renderHoverHandoff.ts). Instead, carry
+		// the FACT forward: the previous instance recorded whether strips were
+		// showing (registerHoverState, at write-back trigger time); restore it here
+		// immediately by re-dispatching mouseenter — the strip listeners recompute
+		// their positions against the now-mounted, reliable layout.
+		if (rootEl && takeHoverState(this.cacheKey)) {
+			rootEl.dispatchEvent(new MouseEvent('mouseenter'));
+			// Self-correct the small case where the mouse genuinely DID leave during
+			// the rebuild: one frame later (past the :hover recalc lag) re-check, and
+			// undo the restore if it's truly not hovered and no menu is holding it open.
+			// This is bounded and one-shot — the root's real mouseenter/mouseleave
+			// listeners remain the final backstop.
+			window.requestAnimationFrame(() => {
+				if (rootEl.isConnected && !rootEl.matches(':hover')) {
+					rootEl.dispatchEvent(new MouseEvent('mouseleave'));
+				}
+			});
+		}
 
 		// Bridge --bt-title-mb-pull from root to sibling titleEl.
 		// CSS custom properties only inherit to descendants; a theme sets the variable
@@ -253,6 +334,20 @@ export class TableBlock extends MarkdownRenderChild {
 		this.pendingOps.push(op);
 		if (this.writeBackScheduled) return; // already scheduled by an earlier op
 		this.writeBackScheduled = true;
+		// Record — while this instance's DOM is still live and readable — whether the
+		// hover strips are currently showing, so the rebuilt instance can restore that
+		// hover state immediately instead of flickering out of it (see renderHoverHandoff.ts).
+		// Reading the class is more robust than :hover here: it also captures the
+		// "strips pinned open because a menu is up" case (renderHoverPin.ts).
+		registerHoverState(this.cacheKey,
+			!!this.renderedRoot?.querySelector('.bt-strip-visible'));
+		// Snapshot the CURRENT live DOM (content + hover strips + editing look, exactly
+		// what the user is seeing) so the rebuilt instance can inject it synchronously in
+		// onload() and stay visually continuous through the ~200ms tear-down/re-render —
+		// no blank/zero-height window, hence no flicker and no scroll jump. Captured here,
+		// before applyStructuralOpV2 mutates the model, so it reflects the pre-op look
+		// (the rebuild replaces it with the post-op content once render() finishes).
+		renderCache.set(this.cacheKey, this.containerEl.cloneNode(true) as HTMLElement);
 		// Freeze any running theme animations now — this root is about to be replaced by
 		// the re-render this write triggers, so there's nothing to lose visually, and the
 		// main thread is freed up to resolve the write promptly instead of competing with

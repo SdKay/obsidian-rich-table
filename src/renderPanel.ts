@@ -102,6 +102,42 @@ export function dataCellOps(
 let closeActivePanel: (() => void) | null = null;
 
 /**
+ * Clamp a fully-populated floating panel into the viewport using its REAL
+ * measured size. Callers set an initial guess-based position at creation time
+ * (so the panel doesn't flash at 0,0), then call this once the content exists —
+ * a fixed height estimate undershoots a tall panel (e.g. cell-ops + full style
+ * section + Apply/Clear footer) and pushes the buttons below the fold, where
+ * they can't be clicked. Prefers below the anchor, flips above if that
+ * overflows, and finally pins to the viewport edge (with a max-height so an
+ * over-tall panel scrolls internally rather than clipping its footer).
+ */
+function clampPanelToViewport(
+	panel: HTMLElement, anchor: DOMRect,
+	vars: { top: string; left: string; maxHeight: string },
+): void {
+	const gap = 8;
+	const vh = activeWindow.innerHeight;
+	const vw = activeWindow.innerWidth;
+
+	// Cap height to the viewport FIRST so the measurement below reflects the
+	// clamped (possibly internally-scrolling) size, not the natural overflow.
+	panel.setCssProps({ [vars.maxHeight]: `${vh - gap * 2}px` });
+	const h = panel.offsetHeight;
+	const w = panel.offsetWidth;
+
+	let top = anchor.bottom + 4;
+	if (top + h > vh - gap) top = anchor.top - h - 4;      // flip above the anchor
+	if (top + h > vh - gap) top = vh - gap - h;            // still overflowing: pin to bottom edge
+	top = Math.max(gap, top);
+
+	let left = anchor.left;
+	if (left + w > vw - gap) left = anchor.right - w;
+	left = Math.max(gap, left);
+
+	panel.setCssProps({ [vars.top]: `${top}px`, [vars.left]: `${left}px` });
+}
+
+/**
  * Wires outside-click + Escape dismissal for a floating panel; every popup
  * (cell panel, filter panel, future ones) shares this one implementation.
  * Deferred via setTimeout(0) so the click/pointerup that OPENED the panel
@@ -256,6 +292,10 @@ export function openFilterPanel(
 		if (e.key === 'Enter') { e.preventDefault(); applyBtn.click(); }
 	});
 	detach = bindPanelDismiss(component, panel, close);
+
+	clampPanelToViewport(panel, ar, {
+		top: '--fp-top', left: '--fp-left', maxHeight: '--fp-maxh',
+	});
 }
 
 /** Unified panel shown on double-click for all cell types (header / data / selection). */
@@ -457,5 +497,11 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 		if (evt.key === 'Enter' && evt.target !== sizeInput) { evt.preventDefault(); applyBtn.click(); }
 	});
 	detachGlobalListeners = bindPanelDismiss(component, panel, () => close(true));
+
+	// Re-clamp now that the panel is fully populated — the fixed estimate used at
+	// creation time can't know the real height (cell-ops + style rows + footer).
+	clampPanelToViewport(panel, ar, {
+		top: '--bt-cp-top', left: '--bt-cp-left', maxHeight: '--bt-cp-maxh',
+	});
 	return panel;
 }

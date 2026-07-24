@@ -42,6 +42,11 @@
 	/* --bt-add-pad mirrors --bt-sel-pad: JS sets it to 24px on hover (making room
 	 * for the add-row strip) and back to 0px on hide (footer stays tight). */
 	padding-bottom: var(--bt-add-pad, 0px);
+	/* --bt-sel-pad-left: JS sets it on hover ONLY when a wide/flush-left table has
+	 * no natural room to the left for the row selector + ctrl column (otherwise 0,
+	 * so centered/narrow tables don't shift). Shifts the table right just enough to
+	 * expose the left strips instead of leaving them clipped off-screen. */
+	padding-left: var(--bt-sel-pad-left, 0px);
 }
 .bt-render-root.bt-has-strips .bt-col-selector {
 	position: absolute;
@@ -49,6 +54,11 @@
 	top:    var(--cs-top,   0px);
 	width:  var(--cs-width, 100px);
 	height: var(--bt-sel-total); /* grip zone (top) + label zone (bottom) */
+	/* Clip column letters/grips/seams to the visible viewport: the strip is pinned to
+	 * the visible region and its children are offset by --cs-off to track horizontal
+	 * scroll, so anything scrolled past either edge is hidden rather than spilling over
+	 * the row selector / off-screen. */
+	overflow: hidden;
 }
 .bt-render-root.bt-has-strips .bt-row-selector {
 	position: absolute;
@@ -263,10 +273,11 @@
 	color: var(--text-on-accent);
 	border-color: var(--interactive-accent);
 }
-/* Col selector: labels sit in the lower label zone; top grip zone reserved for drag grips */
+/* Col selector: labels sit in the lower label zone; top grip zone reserved for drag grips.
+ * --cs-off (set on the strip container) shifts every child to track horizontal scroll. */
 .bt-col-selector .bt-sel-cell {
 	top: var(--bt-sel-grip); height: var(--bt-sel-cell);
-	left:  var(--cl, 0px);
+	left:  calc(var(--cl, 0px) + var(--cs-off, 0px));
 	width: var(--cw, 60px);
 }
 /* Row selector: labels sit in the right label zone; left grip zone reserved for drag grips */
@@ -288,7 +299,7 @@
 	top: 0;
 	height: var(--bt-sel-total); /* spans full col-selector height */
 	width: 9px;
-	left: var(--rx, 0px);
+	left: calc(var(--rx, 0px) + var(--cs-off, 0px));
 	transform: translateX(-50%);
 	cursor: col-resize;
 	z-index: 1;
@@ -387,7 +398,7 @@
 	top: 1px;
 	height: var(--bt-sel-grip);
 	width: var(--bt-sel-cell);
-	left: var(--cdx, 0px);
+	left: calc(var(--cdx, 0px) + var(--cs-off, 0px));
 	transform: translateX(-50%);
 	display: flex;
 	align-items: center;
@@ -819,7 +830,7 @@
 	left: var(--fp-left, 0px);
 	z-index: var(--layer-popover);
 	width: 220px;
-	max-height: 320px;
+	max-height: var(--fp-maxh, 320px);
 	display: flex;
 	flex-direction: column;
 	background: var(--background-primary);
@@ -912,11 +923,12 @@
 	left: var(--bt-cp-left, 0px);
 	z-index: var(--layer-popover);
 	width: 230px;
+	max-height: var(--bt-cp-maxh, none);
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	box-shadow: var(--shadow-m);
-	overflow: hidden;
+	overflow-y: auto;
 }
 
 .bt-cp-item {

@@ -12,6 +12,56 @@ import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { enterDateEditMode, enterEditMode } from './renderEditMode';
 import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel } from './renderPanel';
 import { showMenuPinned } from './renderHoverPin';
+import { takeLiveEdit } from './renderEditHandoff';
+
+/**
+ * Single source of truth for a cell's click→primary-action / panel-action wiring,
+ * shared by header / text / date / choice cells (which differ only in what the
+ * "primary action" is — enter text edit, open date picker, or open the choice
+ * menu — and the double-vs-single disambiguation delay).
+ *
+ * Two modes, chosen fresh on every click via `getSingleClickEdit()` (so toggling
+ * the setting takes effect on already-rendered tables without a re-render):
+ *  - classic (returns false): single click waits `delayMs` (to rule out a
+ *    double-click) then runs the primary action; double click opens the panel.
+ *  - single-click-edit (returns true): single click runs the primary action
+ *    immediately; Ctrl/Cmd+click opens the panel (double-click does nothing,
+ *    since its first click already fired the primary action).
+ */
+function bindCellActivation(el: HTMLElement, opts: {
+	getSingleClickEdit: () => boolean;
+	delayMs: number;
+	primaryAction: (evt: MouseEvent) => void;
+	panelAction: (evt: MouseEvent) => void;
+	/** Skip the click entirely (e.g. clicked an internal link, or a drag just ended). */
+	shouldSkip?: (evt: MouseEvent) => boolean;
+}): void {
+	const isEditing = () => el.hasClass('bt-editing');
+	let timer: number | null = null;
+	el.addEventListener('mousedown', (evt: MouseEvent) => {
+		// A double-click's first mousedown(detail=1) armed the timer; its second
+		// mousedown(detail>=2) cancels it so classic mode goes to the panel, not edit.
+		if (evt.detail >= 2 && timer !== null) { window.clearTimeout(timer); timer = null; }
+	});
+	el.addEventListener('click', (evt: MouseEvent) => {
+		if (isEditing()) return;
+		if (opts.shouldSkip?.(evt)) return;
+		if (evt.detail >= 2) return;
+		if (opts.getSingleClickEdit()) {
+			if (evt.ctrlKey || evt.metaKey) opts.panelAction(evt);
+			else opts.primaryAction(evt);
+			return;
+		}
+		if (timer !== null) return;
+		const saved = evt;
+		timer = window.setTimeout(() => { timer = null; opts.primaryAction(saved); }, opts.delayMs);
+	});
+	el.addEventListener('dblclick', (evt: MouseEvent) => {
+		if (isEditing()) return;
+		if (opts.getSingleClickEdit()) return; // panel is Ctrl/Cmd+click in this mode
+		opts.panelAction(evt);
+	});
+}
 
 export interface RenderRowOptions {
 	tr:              HTMLTableRowElement;
@@ -27,12 +77,17 @@ export interface RenderRowOptions {
 	onCellChange?:    CellChangeHandler;
 	onColTypeChange?: ColTypeChangeHandler;
 	onStructuralOp?:  StructuralOpHandler;
+	/** Table identity for renderEditHandoff.ts's cross-rebuild edit resume — see that
+	 *  file for why a write-back-triggered rebuild needs this instead of just DOM refs. */
+	cacheKey?:       string;
+	/** Single-click enters edit immediately; Ctrl/Cmd+click opens the style panel. */
+	getSingleClickEdit?: () => boolean;
 }
 
 export async function renderRow(options: RenderRowOptions): Promise<void> {
 	const {
 		tr, rowIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader,
-		onCellChange, onColTypeChange, onStructuralOp,
+		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
 	} = options;
 	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
 	let c = 0;
@@ -115,12 +170,12 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		if (isHeader) {
 			renderHeaderCell({
 				el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-				onCellChange, onColTypeChange, onStructuralOp,
+				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
 			});
 		} else {
 			await renderDataCell({
 				el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model,
-				onCellChange, onStructuralOp,
+				onCellChange, onStructuralOp, cacheKey, getSingleClickEdit,
 			});
 		}
 		c++;
@@ -140,12 +195,14 @@ export interface RenderHeaderCellOptions {
 	onCellChange?:    CellChangeHandler;
 	onColTypeChange?: ColTypeChangeHandler;
 	onStructuralOp?:  StructuralOpHandler;
+	cacheKey?:       string;
+	getSingleClickEdit?: () => boolean;
 }
 
 function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	const {
 		el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-		onCellChange, onColTypeChange, onStructuralOp,
+		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
 	} = options;
 	el.createSpan({ cls: 'bt-th-text', text: value });
 	if (col.type) el.addClass('bt-th-typed');
@@ -218,40 +275,43 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 
 	if (onCellChange) {
 		el.addClass('bt-th-editable');
-		let editTimer: number | null = null;
+		// Caret placement when clicking *inside* the active editor — the th would
+		// otherwise intercept the click and reset the selection. Kept as its own
+		// mousedown listener (independent of bindCellActivation's timer handling).
 		el.addEventListener('mousedown', (evt: MouseEvent) => {
-			if (evt.detail >= 2 && editTimer !== null) { window.clearTimeout(editTimer); editTimer = null; return; }
-			// In edit mode: place cursor at the click position using caretRangeFromPoint.
-			// Without this the second click has no effect because the th element intercepts it.
-			if (el.hasClass('bt-editing')) {
-				const editor = el.querySelector<HTMLElement>('.bt-cell-editor');
-				if (editor) {
-					// caretRangeFromPoint is the Chromium/Electron equivalent of the standard caretPositionFromPoint;
-					// cast through unknown (not `as Document & {...}`) so TS doesn't inherit the lib.dom.d.ts @deprecated tag
-					const range = (activeDocument as unknown as { caretRangeFromPoint?(x: number, y: number): Range | null })
-						.caretRangeFromPoint?.(evt.clientX, evt.clientY);
-					if (range) {
-						const sel = activeWindow.getSelection();
-						sel?.removeAllRanges();
-						sel?.addRange(range);
-					}
-					editor.focus();
-					evt.preventDefault(); // prevent the outer element from resetting selection
-				}
+			if (!el.hasClass('bt-editing')) return;
+			const editor = el.querySelector<HTMLElement>('.bt-cell-editor');
+			if (!editor) return;
+			// caretRangeFromPoint is the Chromium/Electron equivalent of the standard caretPositionFromPoint;
+			// cast through unknown (not `as Document & {...}`) so TS doesn't inherit the lib.dom.d.ts @deprecated tag
+			const range = (activeDocument as unknown as { caretRangeFromPoint?(x: number, y: number): Range | null })
+				.caretRangeFromPoint?.(evt.clientX, evt.clientY);
+			if (range) {
+				const sel = activeWindow.getSelection();
+				sel?.removeAllRanges();
+				sel?.addRange(range);
 			}
+			editor.focus();
+			evt.preventDefault(); // prevent the outer element from resetting selection
 		});
-		el.addEventListener('click', (evt: MouseEvent) => {
-			if (el.hasClass('bt-editing')) return;
-			if (evt.detail >= 2) return;
-			if (editTimer !== null) return;
-			editTimer = window.setTimeout(() => { editTimer = null; enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange); }, 200);
+		bindCellActivation(el, {
+			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
+			delayMs: 200,
+			primaryAction: () => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, undefined, cacheKey); },
+			panelAction: (evt) => openPanel(evt, true),
 		});
 	}
 
-	el.addEventListener('dblclick', (evt: MouseEvent) => {
-		if (el.hasClass('bt-editing')) return;
-		openPanel(evt, true);
-	});
+	// Resume: a write-back triggered by some OTHER cell's edit committing can have
+	// rebuilt this table while THIS header cell's name was mid-edit — see
+	// renderEditHandoff.ts. If so, re-enter edit mode immediately with whatever
+	// draft text was typed, instead of silently reverting to the column's stored name.
+	if (onCellChange && cacheKey) {
+		const resume = takeLiveEdit(cacheKey, 0, colIdx);
+		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, undefined, cacheKey, resume.getDraftText());
+	}
+
+	// Double-click / Ctrl+click → style-and-type panel is wired via bindCellActivation above.
 
 	// Filter button — bottom-right corner of the header cell. (The sort MENU
 	// lives in the column-selector's popup instead of a second always-hoverable
@@ -325,15 +385,17 @@ export interface RenderDataCellOptions {
 	model:           TableModelV2;
 	onCellChange?:   CellChangeHandler;
 	onStructuralOp?: StructuralOpHandler;
+	cacheKey?:       string;
+	getSingleClickEdit?: () => boolean;
 }
 
 async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
-	const { el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model, onCellChange, onStructuralOp } = options;
+	const { el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model, onCellChange, onStructuralOp, cacheKey, getSingleClickEdit } = options;
 	const trimmed = value.trim();
 
 	// Special type: date picker
 	if (col.type === 'date') {
-		renderDateCell(el, trimmed, rowIdx, colIdx, model, component, onCellChange, onStructuralOp);
+		renderDateCell(el, trimmed, rowIdx, colIdx, model, component, onCellChange, onStructuralOp, cacheKey, getSingleClickEdit);
 		return;
 	}
 
@@ -383,21 +445,32 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 				showMenuPinned(menu, evt);
 			};
 
-			// Single click → value menu (100 ms delay to allow double-click detection).
-			// mousedown.detail >= 2 fires before click(detail=2) and cancels the timer,
-			// keeping the transition to the unified panel clean with no dropdown flash.
-			let choiceTimer: number | null = null;
-			el.addEventListener('mousedown', (evt: MouseEvent) => {
-				if (evt.detail >= 2 && choiceTimer !== null) {
-					window.clearTimeout(choiceTimer);
-					choiceTimer = null;
-				}
-			});
-			el.addEventListener('click', (evt: MouseEvent) => {
-				if (evt.detail >= 2) return;
-				if (choiceTimer !== null) return;
-				const savedEvt = evt;
-				choiceTimer = window.setTimeout(() => { choiceTimer = null; openMenu(savedEvt); }, 100);
+			const openTypedPanel = () => {
+				if (!onStructuralOp) return;
+				const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
+				const { sTarget, exactTarget, isMerge, rangeRule, applyStyle } =
+					buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
+				openCellPanel({
+					component,
+					anchor: el, els: [el],
+					styleTarget: sTarget,
+					existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
+					inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
+					showTextColor: isMerge || !!rangeRule,
+					showBoldItalic: false,
+					cellOps: ops,
+					onApplyStyle: applyStyle,
+				});
+			};
+
+			// Primary action = open the value menu (classic: 100ms to allow double-click
+			// detection; singleClickEdit: immediate). Style panel = double-click (classic)
+			// or Ctrl/Cmd+click (singleClickEdit). Same entry point as text/date cells.
+			bindCellActivation(el, {
+				getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
+				delayMs: 100,
+				primaryAction: (evt) => openMenu(evt),
+				panelAction: () => openTypedPanel(),
 			});
 			el.addEventListener('keydown', (evt: KeyboardEvent) => {
 				if (evt.key === 'Enter' || evt.key === ' ') {
@@ -405,9 +478,8 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 					el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 				}
 			});
-		}
-
-		if (onStructuralOp) {
+		} else if (onStructuralOp) {
+			// Non-interactive-value typed cell (no onCellChange) still gets its style panel.
 			el.addEventListener('dblclick', (evt: MouseEvent) => {
 				const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
 				const { sTarget, exactTarget, isMerge, rangeRule, applyStyle } =
@@ -474,53 +546,61 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		el.createEl('p', { text: ' ' });
 	}
 
+	const onPasteGrid = (onCellChange && onStructuralOp) ? (values: string[][]) => {
+		const anchorRowId = rowId(model, rowIdx);
+		const anchorColId = colId(model, colIdx);
+		if (anchorRowId && anchorColId) void onStructuralOp({ type: 'paste-values', anchorRowId, anchorColId, values });
+	} : undefined;
+
+	const openDataPanel = () => {
+		if (el.hasClass('bt-editing') || !onStructuralOp) return;
+		const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
+		const { sTarget, exactTarget, applyStyle } =
+			buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
+		openCellPanel({
+			component,
+			anchor: el, els: [el],
+			styleTarget: sTarget,
+			existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
+			inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
+			showTextColor: true,
+			cellOps: ops,
+			onApplyStyle: applyStyle,
+		});
+	};
+
 	if (onCellChange) {
 		el.addClass('bt-td-editable');
 
-		// Single click (200 ms delay) — text editor; double click — style panel.
-		let editTimer: number | null = null;
-		el.addEventListener('mousedown', (evt: MouseEvent) => {
-			if (evt.detail >= 2 && editTimer !== null) {
-				window.clearTimeout(editTimer);
-				editTimer = null;
-			}
-		});
-		el.addEventListener('click', (evt: MouseEvent) => {
-			if (el.hasClass('bt-editing')) return;
-			if ((evt.target as HTMLElement).closest('.internal-link')) return;
-			if ((evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined) return;
-			if (evt.detail >= 2) return;
-			if (editTimer !== null) return;
-			editTimer = window.setTimeout(() => {
-				editTimer = null;
-				const onPasteGrid = onStructuralOp ? (values: string[][]) => {
-					const anchorRowId = rowId(model, rowIdx);
-					const anchorColId = colId(model, colIdx);
-					if (anchorRowId && anchorColId) void onStructuralOp({ type: 'paste-values', anchorRowId, anchorColId, values });
-				} : undefined;
-				enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid);
-			}, 200);
+		// Classic: single click (200 ms delay) → text editor, double click → style panel.
+		// singleClickEdit: single click → editor immediately, Ctrl/Cmd+click → panel.
+		// A write-back triggered by committing a DIFFERENT cell's edit can land in this
+		// same ~200ms window and rebuild the whole table from scratch (see "Write-back
+		// architecture") — el would then be a detached leftover; the isConnected guard
+		// avoids flashing a doomed editor on it.
+		bindCellActivation(el, {
+			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
+			delayMs: 200,
+			shouldSkip: (evt) =>
+				!!(evt.target as HTMLElement).closest('.internal-link') ||
+				(evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined,
+			primaryAction: () => {
+				if (!el.isConnected) return;
+				enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey);
+			},
+			panelAction: () => openDataPanel(),
 		});
 	}
 
-	if (onStructuralOp) {
-		el.addEventListener('dblclick', () => {
-			if (el.hasClass('bt-editing')) return;
-			const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
-			const { sTarget, exactTarget, applyStyle } =
-				buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
-			openCellPanel({
-				component,
-				anchor: el, els: [el],
-				styleTarget: sTarget,
-				existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
-				inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
-				showTextColor: true,
-				cellOps: ops,
-				onApplyStyle: applyStyle,
-			});
-		});
+	// Resume: a write-back triggered by some OTHER cell's edit committing can have
+	// rebuilt this table while THIS cell was mid-edit — see renderEditHandoff.ts.
+	// If so, re-enter edit mode immediately with whatever draft text was typed,
+	// instead of silently reverting to the cell's actual stored value.
+	if (onCellChange && cacheKey) {
+		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
+		if (resume) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, resume.getDraftText());
 	}
+
 }
 
 // ── Date cell ─────────────────────────────────────────────────────────────────
@@ -534,6 +614,8 @@ function renderDateCell(
 	component: Component,
 	onCellChange?: CellChangeHandler,
 	onStructuralOp?: StructuralOpHandler,
+	cacheKey?: string,
+	getSingleClickEdit?: () => boolean,
 ): void {
 	if (value) {
 		try {
@@ -547,45 +629,46 @@ function renderDateCell(
 		el.createSpan({ cls: 'bt-date-empty', text: '—' });
 	}
 
+	const openDatePanel = () => {
+		if (el.hasClass('bt-editing') || !onStructuralOp) return;
+		const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
+		const { sTarget, exactTarget, applyStyle } =
+			buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
+		openCellPanel({
+			component,
+			anchor: el, els: [el],
+			styleTarget: sTarget,
+			existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
+			inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
+			showTextColor: true,
+			cellOps: ops,
+			onApplyStyle: applyStyle,
+		});
+	};
+
 	if (onCellChange) {
 		el.addClass('bt-td-editable');
 
-		// Single click (delayed) → date picker; double click → style panel
-		let dateTimer: number | null = null;
-		el.addEventListener('mousedown', (evt: MouseEvent) => {
-			if (evt.detail >= 2 && dateTimer !== null) {
-				window.clearTimeout(dateTimer);
-				dateTimer = null;
-			}
-		});
-		el.addEventListener('click', (evt: MouseEvent) => {
-			if (el.hasClass('bt-editing')) return;
-			if ((evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined) return;
-			if (evt.detail >= 2) return;
-			if (dateTimer !== null) return;
-			dateTimer = window.setTimeout(() => {
-				dateTimer = null;
-				enterDateEditMode(el, value, rowIdx, colIdx, onCellChange);
-			}, 200);
+		// Same entry point as the text cell: classic = delayed single click → picker,
+		// double click → panel; singleClickEdit = single click → picker, Ctrl/Cmd+click
+		// → panel. isConnected guard mirrors renderDataCell (concurrent write-back can
+		// detach el before a delayed click fires).
+		bindCellActivation(el, {
+			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
+			delayMs: 200,
+			shouldSkip: (evt) =>
+				(evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined,
+			primaryAction: () => {
+				if (!el.isConnected) return;
+				enterDateEditMode(el, value, rowIdx, colIdx, onCellChange, cacheKey);
+			},
+			panelAction: () => openDatePanel(),
 		});
 	}
 
-	if (onStructuralOp) {
-		el.addEventListener('dblclick', () => {
-			if (el.hasClass('bt-editing')) return;
-			const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
-			const { sTarget, exactTarget, applyStyle } =
-				buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
-			openCellPanel({
-				component,
-				anchor: el, els: [el],
-				styleTarget: sTarget,
-				existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
-				inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
-				showTextColor: true,
-				cellOps: ops,
-				onApplyStyle: applyStyle,
-			});
-		});
+	// Resume: see the matching resume check in renderDataCell / renderEditHandoff.ts.
+	if (onCellChange && cacheKey) {
+		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
+		if (resume) enterDateEditMode(el, value, rowIdx, colIdx, onCellChange, cacheKey, resume.getDraftText());
 	}
 }
