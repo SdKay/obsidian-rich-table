@@ -26,6 +26,21 @@ export interface ResolvedMerge {
 	startCol:    number; endCol:      number;  // 0-based column indices
 }
 
+/**
+ * Resolves a merge anchor/end row-ID string to a 0-based row index, treating the
+ * literal sentinel `'header'` (used by header-only merges, see `renderer.ts`'s
+ * header drag-to-select) as index -1 — one position before the first data row.
+ * This lets header cells and data rows share the same range-comparison logic
+ * below instead of needing a parallel header-only code path. Real row IDs are
+ * never the string `'header'` (they're generated as `r_xxxxxx`), so there's no
+ * collision. Returns undefined when the ID matches no row and isn't the sentinel.
+ */
+function resolveMergeRowIndex(model: TableModelV2, id: string): number | undefined {
+	if (id === 'header') return -1;
+	const idx = model.rows.findIndex(r => r.id === id);
+	return idx >= 0 ? idx : undefined;
+}
+
 /** Build the set of "rowId.colId" keys that are COVERED (not anchor) by a merge. */
 export function buildOccupied(model: TableModelV2): Set<string> {
 	const occupied = new Set<string>();
@@ -37,11 +52,11 @@ export function buildOccupied(model: TableModelV2): Set<string> {
 		const anchorColId = m.anchor.slice(dotA + 1);
 		const endRowId    = m.end.slice(0, dotE);
 		const endColId    = m.end.slice(dotE + 1);
-		const r1 = model.rows.findIndex(r => r.id === anchorRowId);
+		const r1 = resolveMergeRowIndex(model, anchorRowId);
 		const c1 = model.columns.findIndex(c => c.id === anchorColId);
-		const r2 = model.rows.findIndex(r => r.id === endRowId);
+		const r2 = resolveMergeRowIndex(model, endRowId);
 		const c2 = model.columns.findIndex(c => c.id === endColId);
-		if (r1 < 0 || c1 < 0 || r2 < 0 || c2 < 0) continue;
+		if (r1 === undefined || c1 < 0 || r2 === undefined || c2 < 0) continue;
 		// If the literal anchor row/col is hidden, the merge survives by promoting the
 		// effective anchor to the first visible row/col within the range — the merge
 		// still displays (with the literal anchor's content, see renderRow) instead of
@@ -54,7 +69,7 @@ export function buildOccupied(model: TableModelV2): Set<string> {
 		for (let ri = effR1; ri <= r2; ri++) {
 			for (let ci = effC1; ci <= c2; ci++) {
 				if (ri === effR1 && ci === effC1) continue; // effective anchor is not occupied
-				const rId = model.rows[ri]?.id ?? '';
+				const rId = ri === -1 ? 'header' : (model.rows[ri]?.id ?? '');
 				const cId = model.columns[ci]?.id ?? '';
 				if (rId && cId) occupied.add(`${rId}.${cId}`);
 			}
@@ -78,12 +93,17 @@ export function countVisibleCells(model: TableModelV2): number {
 	return count;
 }
 
-/** Finds the merge whose effective (hidden-row/col-promoted) anchor is this cell. */
+/**
+ * Finds the merge whose effective (hidden-row/col-promoted) anchor is this cell.
+ * `rowIdx === 0` (header) is a valid origin too — a header-only merge's anchor/end
+ * row IDs are the `'header'` sentinel, which `resolveMergeRowIndex` maps to -1, one
+ * position before the first data row; `rowIdx - 1 === -1` for the header makes the
+ * same comparison below work for both header and data rows without a special case.
+ */
 export function getMergeOrigin(rowIdx: number, colIdx: number, model: TableModelV2): ResolvedMerge | undefined {
-	if (rowIdx === 0) return undefined; // header row cannot be a merge origin
-	const row = model.rows[rowIdx - 1];
 	const col = model.columns[colIdx];
-	if (!row || !col) return undefined;
+	if (!col) return undefined;
+	if (rowIdx > 0 && !model.rows[rowIdx - 1]) return undefined;
 	for (const m of model.merges) {
 		const dotA = m.anchor.indexOf('.');
 		const dotE = m.end.indexOf('.');
@@ -92,11 +112,11 @@ export function getMergeOrigin(rowIdx: number, colIdx: number, model: TableModel
 		const anchorColId = m.anchor.slice(dotA + 1);
 		const endRowId = m.end.slice(0, dotE);
 		const endColId = m.end.slice(dotE + 1);
-		const r1 = model.rows.findIndex(r => r.id === anchorRowId);
+		const r1 = resolveMergeRowIndex(model, anchorRowId);
 		const c1 = model.columns.findIndex(c => c.id === anchorColId);
-		const r2 = model.rows.findIndex(r => r.id === endRowId);
+		const r2 = resolveMergeRowIndex(model, endRowId);
 		const c2 = model.columns.findIndex(c => c.id === endColId);
-		if (r1 < 0 || c1 < 0 || r2 < 0 || c2 < 0) continue;
+		if (r1 === undefined || c1 < 0 || r2 === undefined || c2 < 0) continue;
 		// Match against the effective anchor (promoted past a hidden literal anchor row/col,
 		// same rule as buildOccupied) — see the "Table format versioning"-adjacent comment
 		// in buildOccupied for why. anchorRowId/anchorColId stay literal for style targets

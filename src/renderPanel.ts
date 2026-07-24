@@ -6,6 +6,7 @@ import { colIndexToLetter } from './utils';
 import { SPECIAL_TYPES, type ColTypeChangeHandler, type StructuralOpHandler } from './renderTypes';
 import { rowId, colId, getMergeOrigin } from './renderGridHelpers';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
+import { pinHover, showMenuPinned } from './renderHoverPin';
 
 export interface CellOpDef {
 	icon:    string;
@@ -72,6 +73,14 @@ export function dataCellOps(
 		{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterBelow }) },
 		{ icon: 'arrow-left',  label: t('insertColBefore'), action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterLeft }) },
 		{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterRight }) },
+		// Splitting only makes sense for a plain (unmerged) cell — an already-merged
+		// cell has no single "shape" to preserve on its neighbors.
+		...(!merge ? [
+			{ icon: 'rows-2',    label: t('splitCellRow'),
+				action: () => void onStructuralOp({ type: 'split-cell-row', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
+			{ icon: 'columns-2', label: t('splitCellCol'),
+				action: () => void onStructuralOp({ type: 'split-cell-col', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
+		] as CellOpEntry[] : []),
 		{ icon: 'eye-off', label: hideRowsLabel(r1, r2),
 			action: () => { for (let r = r1; r <= r2; r++) { const id = rowId(model, r); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
 		{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter),
@@ -212,11 +221,21 @@ export function openFilterPanel(
 	const clearBtn = foot.createEl('button', { cls: 'bt-sp-clear-btn', text: t('filterClear') });
 	const applyBtn = foot.createEl('button', { cls: 'bt-sp-apply',     text: t('apply') });
 
+	// This panel renders to document.body, outside the table's own DOM subtree —
+	// pin the table's hover state open so moving the mouse onto the panel doesn't
+	// collapse the selector/edge strips out from under it (see renderHoverPin.ts).
+	// Also registered on the component as a safety net (unpin is idempotent) —
+	// if the table's DOM gets torn down/re-rendered while this panel is still
+	// open, nothing else would ever call close(), which would otherwise leak
+	// the pin as permanently "open" for every table on the page.
+	const unpin = pinHover();
+	component.register(unpin);
 	let detach: (() => void) | null = null;
 	const close = () => {
 		panel.remove();
 		if (closeActivePanel === doClose) closeActivePanel = null;
 		detach?.();
+		unpin();
 	};
 	const doClose = close;
 	closeActivePanel = doClose;
@@ -394,9 +413,19 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 			for (const ct of typeSection.getRegistry().getAllTypes()) {
 				m.addItem(i => { i.setTitle(ct.id); if (ct.id === typeSection.currentType) i.setChecked(true); i.onClick(() => void typeSection.onColTypeChange(typeSection.colIdx, ct.id)); });
 			}
-			m.showAtMouseEvent(evt);
+			showMenuPinned(m, evt);
 		});
 	}
+
+	// This panel renders to document.body, outside the table's own DOM subtree —
+	// pin the table's hover state open so moving the mouse onto the panel doesn't
+	// collapse the selector/edge strips out from under it (see renderHoverPin.ts).
+	// Also registered on the component as a safety net (unpin is idempotent) —
+	// if the table's DOM gets torn down/re-rendered while this panel is still
+	// open, nothing else would ever call close(), which would otherwise leak
+	// the pin as permanently "open" for every table on the page.
+	const unpin = pinHover();
+	component.register(unpin);
 
 	// Actions
 	let committed = false;
@@ -407,6 +436,7 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 		if (closeActivePanel === thisClose) closeActivePanel = null;
 		detachGlobalListeners?.();
 		config.onClose?.();
+		unpin();
 	};
 	const thisClose = () => close(true);
 	closeActivePanel = thisClose;

@@ -1,5 +1,6 @@
-import type { TableModelV2, ColumnDefV2, RowDefV2, StyleRuleV2, AggType } from './model';
+import type { TableModelV2, ColumnDefV2, RowDefV2, StyleRuleV2, MergeRangeV2, AggType } from './model';
 import { genId } from './idGen';
+import { parseStyleTarget, serializeStyleTarget } from './styleTarget';
 
 /**
  * Structural operations for v2 tables.
@@ -21,6 +22,14 @@ export type StructuralOpV2 =
 	| { type: 'show-col-group';  colIds: string[] }
 	| { type: 'merge-cells';     anchorRowId: string; anchorColId: string; endRowId: string; endColId: string }
 	| { type: 'unmerge-cells';   anchorRowId: string; anchorColId: string }
+	/** Splits an unmerged cell into two stacked rows: inserts a real row right after
+	 *  `rowId`, then extends/creates a merge for every OTHER column at `rowId` so
+	 *  their content keeps looking like one unbroken block. No-ops if the target
+	 *  cell is already part of a merge. */
+	| { type: 'split-cell-row';  rowId: string; colId: string }
+	/** Column-axis mirror of `split-cell-row`: inserts a column, extends/creates a
+	 *  merge for every OTHER row at `colId`. */
+	| { type: 'split-cell-col';  rowId: string; colId: string }
 	| { type: 'set-cell-content'; rowId: string; colId: string; value: string }
 	| { type: 'set-col-name';    colId: string; name: string }
 	| { type: 'set-col-type';    colId: string; colType: string | undefined }
@@ -172,6 +181,69 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			model.merges = model.merges.filter(m => m.anchor !== anchor);
 			break;
 		}
+		case 'split-cell-row': {
+			if (findMergeCoveringCell(model, op.rowId, op.colId)) break; // only unmerged cells can be split
+			const rowIdx = model.rows.findIndex(r => r.id === op.rowId);
+			if (rowIdx < 0) break;
+			const existingIds = new Set(model.rows.map(r => r.id));
+			const newRow: RowDefV2 = { id: genId('r', existingIds), cells: {} };
+			model.rows.splice(rowIdx + 1, 0, newRow);
+			for (const col of model.columns) {
+				if (col.id === op.colId) continue;
+				const covering = findMergeCoveringCell(model, op.rowId, col.id);
+				if (!covering) {
+					model.merges.push({ anchor: `${op.rowId}.${col.id}`, end: `${newRow.id}.${col.id}` });
+				} else {
+					const [endRowId, endColId] = splitAnchor(covering.end);
+					if (endRowId === op.rowId) covering.end = `${newRow.id}.${endColId}`;
+					// else: the merge already extends past this row — the new row is
+					// physically inside its span, so it's absorbed automatically (merges
+					// resolve by ID, not position) and needs no change here.
+				}
+			}
+			// Every OTHER column's merged span already resolves its style from the
+			// unchanged anchor row (op.rowId), so it keeps looking right for free. The
+			// split TARGET column's cell in the new row is the one genuinely new,
+			// unmerged cell — carry over op.rowId's own row-level style so it doesn't
+			// default to unstyled and visually break the row.
+			extendStylesPastSplitRow(model, op.rowId, newRow.id);
+			// The split target cell's OWN cell-specific style (if the user set one
+			// directly on this exact cell, not row-wide) is the most common thing a
+			// user actually tests first — carry it to the new row's "twin" cell too.
+			duplicateCellStyle(model, op.rowId, op.colId, newRow.id, op.colId);
+			break;
+		}
+		case 'split-cell-col': {
+			if (findMergeCoveringCell(model, op.rowId, op.colId)) break; // only unmerged cells can be split
+			const colIdx = model.columns.findIndex(c => c.id === op.colId);
+			if (colIdx < 0) break;
+			const existingIds = new Set(model.columns.map(c => c.id));
+			const newCol: ColumnDefV2 = { id: genId('c', existingIds), name: '' };
+			model.columns.splice(colIdx + 1, 0, newCol);
+			// The header row is never the split target — it's always "another row" whose
+			// shape should be preserved, same as every data row below. 'header' is the
+			// sentinel row ID resolveMergeRowIndex()/findMergeCoveringCell() treat as one
+			// position before the first data row (see renderGridHelpers.ts).
+			for (const rId of ['header', ...model.rows.map(r => r.id)]) {
+				if (rId === op.rowId) continue;
+				const covering = findMergeCoveringCell(model, rId, op.colId);
+				if (!covering) {
+					model.merges.push({ anchor: `${rId}.${op.colId}`, end: `${rId}.${newCol.id}` });
+				} else {
+					const [endRowId, endColId] = splitAnchor(covering.end);
+					if (endColId === op.colId) covering.end = `${endRowId}.${newCol.id}`;
+					// else: already extends past this column — absorbed automatically.
+				}
+			}
+			// Column-axis mirror of the row-style carry-over above: every OTHER row's
+			// merged span still resolves via the unchanged anchor column (op.colId);
+			// only the split target row's new, unmerged cell in the new column needs
+			// op.colId's own whole-column style copied over.
+			extendStylesPastSplitCol(model, op.colId, newCol.id);
+			// Column-axis mirror of the cell-specific carry-over above.
+			duplicateCellStyle(model, op.rowId, op.colId, op.rowId, newCol.id);
+			break;
+		}
 
 		// ── Styles ────────────────────────────────────────────────────────────
 		case 'set-cell-style': {
@@ -312,6 +384,103 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Splits a merge anchor/end string ("rowId.colId") into its two ID parts. */
+function splitAnchor(target: string): [string, string] {
+	const dot = target.indexOf('.');
+	return dot < 0 ? [target, ''] : [target.slice(0, dot), target.slice(dot + 1)];
+}
+
+/**
+ * Resolves a merge anchor/end row-ID string to a 0-based row index, treating the
+ * literal sentinel `'header'` (a header-only merge's row ID, see `renderer.ts`'s
+ * header drag-to-select and `renderGridHelpers.ts`'s identical helper) as index
+ * -1 — one position before the first data row. Real row IDs are never literally
+ * `'header'` (they're generated as `r_xxxxxx`), so there's no collision.
+ */
+function resolveMergeRowIndex(model: TableModelV2, id: string): number | undefined {
+	if (id === 'header') return -1;
+	const idx = model.rows.findIndex(r => r.id === id);
+	return idx >= 0 ? idx : undefined;
+}
+
+/** Finds the merge (if any) whose rectangle currently contains (rowId, colId). */
+function findMergeCoveringCell(model: TableModelV2, rowId: string, colId: string): MergeRangeV2 | undefined {
+	const rIdx = resolveMergeRowIndex(model, rowId);
+	const cIdx = model.columns.findIndex(c => c.id === colId);
+	if (rIdx === undefined || cIdx < 0) return undefined;
+	for (const m of model.merges) {
+		const [anchorRowId, anchorColId] = splitAnchor(m.anchor);
+		const [endRowId, endColId]       = splitAnchor(m.end);
+		const r1 = resolveMergeRowIndex(model, anchorRowId);
+		const c1 = model.columns.findIndex(c => c.id === anchorColId);
+		const r2 = resolveMergeRowIndex(model, endRowId);
+		const c2 = model.columns.findIndex(c => c.id === endColId);
+		if (r1 === undefined || c1 < 0 || r2 === undefined || c2 < 0) continue;
+		if (rIdx >= Math.min(r1, r2) && rIdx <= Math.max(r1, r2)
+			&& cIdx >= Math.min(c1, c2) && cIdx <= Math.max(c1, c2)) return m;
+	}
+	return undefined;
+}
+
+/**
+ * When a row is split (`split-cell-row`), carry over whatever whole-row style
+ * `oldRowId` had so the new row doesn't default to unstyled and visually break
+ * the row it was split from. Mirrors the exact three-way branch already used
+ * for merges: duplicate a rule scoped exactly to `oldRowId` (row-range/rect
+ * targets extend in place instead, since duplicating would incorrectly stop
+ * covering the original row); a range/rect ending exactly at `oldRowId` gets
+ * its end pushed to `newRowId`; a range/rect that already extends past
+ * `oldRowId` needs no change — `newRowId` sits physically inside it and is
+ * already covered once rendered (same ID-based resolution as merges).
+ * Column-scoped/cell-scoped/header targets aren't row-axis-scoped and are left
+ * alone — see the "other columns" merge loop above for why they don't need it.
+ */
+function extendStylesPastSplitRow(model: TableModelV2, oldRowId: string, newRowId: string): void {
+	const additions: StyleRuleV2[] = [];
+	for (const rule of model.styles) {
+		const t = parseStyleTarget(rule.target);
+		if (!t) continue;
+		if (t.kind === 'row' && t.rowId === oldRowId) {
+			additions.push({ ...rule, target: serializeStyleTarget({ kind: 'row', rowId: newRowId }) });
+		} else if ((t.kind === 'row-range' || t.kind === 'rect') && t.endRowId === oldRowId) {
+			rule.target = serializeStyleTarget({ ...t, endRowId: newRowId });
+		}
+	}
+	model.styles.push(...additions);
+}
+
+/** Column-axis mirror of {@link extendStylesPastSplitRow}, for `split-cell-col`. */
+function extendStylesPastSplitCol(model: TableModelV2, oldColId: string, newColId: string): void {
+	const additions: StyleRuleV2[] = [];
+	for (const rule of model.styles) {
+		const t = parseStyleTarget(rule.target);
+		if (!t) continue;
+		if (t.kind === 'col' && t.colId === oldColId) {
+			additions.push({ ...rule, target: serializeStyleTarget({ kind: 'col', colId: newColId }) });
+		} else if ((t.kind === 'col-range' || t.kind === 'rect') && t.endColId === oldColId) {
+			rule.target = serializeStyleTarget({ ...t, endColId: newColId });
+		}
+	}
+	model.styles.push(...additions);
+}
+
+/**
+ * Copies a single-cell style rule (`{ target: "rowId.colId" }`) from the split
+ * target cell onto its new "twin" cell in the freshly-inserted row/column, if
+ * one exists. The original cell keeps its own rule untouched — this only adds
+ * a duplicate for the new cell, same duplicate-not-retarget reasoning as the
+ * whole-row/whole-column case in {@link extendStylesPastSplitRow}.
+ */
+function duplicateCellStyle(
+	model: TableModelV2,
+	oldRowId: string, oldColId: string,
+	newRowId: string, newColId: string,
+): void {
+	const rule = model.styles.find(s => s.target === `${oldRowId}.${oldColId}`);
+	if (!rule) return;
+	model.styles.push({ ...rule, target: `${newRowId}.${newColId}` });
+}
 
 function applyStylePropsV2(
 	model: TableModelV2, target: string,

@@ -20,6 +20,7 @@ import { setupColResize, bindResizeHandle } from './renderResize';
 import { type CellOpEntry, openCellPanel } from './renderPanel';
 import { renderRow } from './renderCell';
 import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
+import { isHoverPinned, onHoverUnpinned, showMenuPinned } from './renderHoverPin';
 
 export async function renderTable(
 	model: TableModelV2,
@@ -716,7 +717,7 @@ export async function renderTable(
 						item.onClick(() => void onStructuralOp({ type: 'set-theme', theme: id }));
 					});
 				}
-				menu.showAtMouseEvent(evt);
+				showMenuPinned(menu, evt);
 			});
 		}
 
@@ -741,7 +742,7 @@ export async function renderTable(
 						item.onClick(() => void onStructuralOp({ type: 'toggle-aggregate', agg }));
 					});
 				}
-				menu.showAtMouseEvent(evt);
+				showMenuPinned(menu, evt);
 			});
 		}
 
@@ -944,7 +945,7 @@ export async function renderTable(
 							item.setTitle(t('clearAggregate')).setIcon('trash');
 							item.onClick(() => void onStructuralOp({ type: 'clear-aggregate', agg }));
 						});
-						m.showAtMouseEvent(e);
+						showMenuPinned(m, e);
 					});
 					const grip = rowSel.createDiv({
 						cls: 'bt-sel-row-drag bt-sel-agg-drag',
@@ -1202,7 +1203,7 @@ export async function renderTable(
 								item.onClick(() => toggle(agg));
 							});
 						});
-						moreMenu.showAtMouseEvent(evt);
+						showMenuPinned(moreMenu, evt);
 					} },
 				];
 			})() : [];
@@ -1392,7 +1393,19 @@ export async function renderTable(
 			showEdgeStrips();
 			showSelectors();
 		});
-		root.addEventListener('mouseleave', () => { hideEdgeStrips(); hideSelectors(); });
+		// A menu/panel we opened (Menu, cell/filter panel) always renders outside
+		// root's own DOM subtree (appended to document.body), so moving the mouse
+		// onto it fires a real mouseleave here. While one is open, defer hiding
+		// until it actually closes (onHoverUnpinned below) instead of collapsing
+		// the strips out from under the user's cursor and re-showing them the
+		// moment the mouse comes back — that jump was the reported bad UX.
+		root.addEventListener('mouseleave', () => {
+			if (isHoverPinned()) return;
+			hideEdgeStrips(); hideSelectors();
+		});
+		component?.register(onHoverUnpinned(() => {
+			if (!root.matches(':hover')) { hideEdgeStrips(); hideSelectors(); }
+		}));
 	}
 
 	// ── Cursor-position CSS variables (base layer, usable by any theme) ────────

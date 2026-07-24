@@ -11,6 +11,7 @@ import {
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { enterDateEditMode, enterEditMode } from './renderEditMode';
 import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel } from './renderPanel';
+import { showMenuPinned } from './renderHoverPin';
 
 export interface RenderRowOptions {
 	tr:              HTMLTableRowElement;
@@ -40,8 +41,9 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		const col = model.columns[c];
 		if (!col) { c++; continue; }
 
-		// Check occupied set using v2 IDs
-		const currentRowId = currentRow?.id ?? '';
+		// Check occupied set using v2 IDs — the header row uses the 'header' sentinel
+		// (see resolveMergeRowIndex in renderGridHelpers.ts) since it has no row ID of its own.
+		const currentRowId = isHeader ? 'header' : (currentRow?.id ?? '');
 		const currentColId = col.id;
 		if (occupied.has(`${currentRowId}.${currentColId}`)) { c++; continue; }
 
@@ -152,6 +154,14 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		if (!onStructuralOp && !onColTypeChange) return;
 		const ops: CellOpEntry[] = [];
 		if (onStructuralOp) {
+			// A header cell can itself be a merge anchor (header-only column-range merges,
+			// e.g. from split-cell-col preserving the header's shape) — offer the same
+			// unmerge action dataCellOps gives data cells, or a merge could never be undone.
+			const merge = getMergeOrigin(0, colIdx, model);
+			if (merge && merge.endCol > merge.startCol) {
+				ops.push({ icon: 'table-2', label: t('unmergeCells'),
+					action: () => void onStructuralOp({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
+			}
 			ops.push(
 				// Insert first data row: afterRowId = null (insert before all data rows)
 				{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: null }) },
@@ -296,7 +306,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 				item.setTitle(t('clearLiveSort')).setIcon('x');
 				item.onClick(() => void onStructuralOp({ type: 'set-sort', sort: null }));
 			});
-			menu.showAtMouseEvent(e);
+			showMenuPinned(menu, e);
 		});
 	}
 	// Column resize is handled by the selector-strip handles (works with merges too)
@@ -370,7 +380,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 						});
 					});
 				}
-				menu.showAtMouseEvent(evt);
+				showMenuPinned(menu, evt);
 			};
 
 			// Single click → value menu (100 ms delay to allow double-click detection).
@@ -449,6 +459,19 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 			});
 			list.parentNode?.replaceChild(wrapper, list);
 		});
+	} else {
+		// An empty cell renders nothing at all (MarkdownRenderer is only called
+		// above when trimmed is non-empty), so it has no line box and collapses
+		// to just its padding — visibly shorter than a same-font-size cell with
+		// one real line of text. A non-breaking space in a real <p> gives it the
+		// exact same line-box height the browser would compute for actual text,
+		// rather than approximating it via a CSS min-height guess — this is what
+		// makes a brand-new row's cells (insert-row / split-cell's new row) not
+		// look thinner than every other row. Trimmed to '' by every existing
+		// "is this cell empty" check (JS trim() treats U+00A0 as whitespace),
+		// so it's invisible to auto-fit/filter/aggregate and copy/paste reads
+		// from the model's raw value, not this DOM placeholder.
+		el.createEl('p', { text: ' ' });
 	}
 
 	if (onCellChange) {

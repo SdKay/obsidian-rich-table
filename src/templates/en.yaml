@@ -83,6 +83,7 @@ rows:
       c_000000: Tips
       c_000001: |-
         - Click to edit · double-click for cell menu (merge / style / insert / delete)
+        - Double-click a plain (unmerged) cell → Split into 2 rows/columns; other cells in that row/col keep their shape
         - Shift+Enter for newline; `- ` prefix for list; `<br>` for inline break
         - Right-click column header: set type / filter / hide column
         - Column-selector popup (select a column, top strip): sort, or add Sum/Average/… summary rows

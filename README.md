@@ -106,29 +106,39 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 <!-- TODO: record demo-09-rich-content.gif -->
 > 🎬 *Demo GIF coming soon*
 
-**9 · Row sorting** — column selector popup: one-time sort or live auto-sort with a header indicator
+**9 · Copy/paste interop with Excel & Markdown** — paste values pasted from Excel/Sheets straight into a cell (detected via clipboard HTML); copy a selection out as an Excel-compatible table or as a Markdown table, from the selection/cell/header menus
+
+<!-- TODO: record demo-16-copypaste.gif -->
+> 🎬 *Demo GIF coming soon*
+
+**10 · Row sorting** — column selector popup: one-time sort or live auto-sort with a header indicator
 
 ![行排序](docs/demo-10-sort.gif)
 
-**10 · Summary/aggregate rows** — Sum/Average/Min/Max/Count via the Σ icon or column selector popup; per-row remove and reorder
+**11 · Summary/aggregate rows** — Sum/Average/Min/Max/Count via the Σ icon or column selector popup; per-row remove and reorder
 
 ![汇总行](docs/demo-11-aggregate.gif)
 
-**11 · Collapse/expand table** — fold-icon button hides/shows the body while keeping the title and header row visible
+**12 · Collapse/expand table** — fold-icon button hides/shows the body while keeping the title and header row visible
 
 ![表格折叠/展开](docs/demo-12-collapse.gif)
 
-**12 · Table lock** — 🔒 icon disables all graphical editing for that table
+**13 · Table lock** — 🔒 icon disables all graphical editing for that table
 
 ![表格锁定](docs/demo-13-lock.gif)
 
-**13 · Auto-fit all** — ⊞ icon fits every column width and row height to its content in one click
+**14 · Auto-fit all** — ⊞ icon fits every column width and row height to its content in one click
 
 ![一键自适应](docs/demo-14-autofit.gif)
 
-**14 · Theme picker** — 🎨 icon switches between built-in themes (`academic`, `plain`)
+**15 · Theme picker** — 🎨 icon switches between built-in themes (`academic`, `plain`)
 
 ![主题切换](docs/demo-15-theme.gif)
+
+**16 · Split cell** — double-click a plain cell → split into 2 rows/columns; other cells in that row/column keep their current shape
+
+<!-- TODO: record demo-17-split.gif -->
+> 🎬 *Demo GIF coming soon*
 
 ---
 
@@ -278,6 +288,7 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | Progress bar column type | 🔜 |
 | **Merges** | |
 | Cell merging — drag-select → Merge in popup, or declare in YAML | ✅ |
+| Split a plain cell into 2 rows or 2 columns — double-click menu; other cells in that row/column keep their current shape (merged or not) | ✅ |
 | Copy selection to Excel / Sheets or as a Markdown table — selection/cell/header menus | ✅ |
 | Merge / style state preserved when copying to Excel | 🔜 |
 | **Table structure** | |

@@ -490,6 +490,17 @@
 	vertical-align: middle;
 	min-width: 40px;
 	text-align: center;
+	/* A cell with no content renders no <p> at all, so it has no line box and
+	 * collapses to just its padding — visibly shorter than a same-font-size cell
+	 * that DOES have one line of text (padding + line-height). min-height here
+	 * reserves that line's worth of space regardless of content, so a brand-new
+	 * empty row (insert-row / split-cell's new row) isn't visibly thinner than
+	 * every other row. 1em is relative to the cell's OWN font-size, so this
+	 * still tracks a per-cell/-row font-size override (--bt-cell-font-size),
+	 * not just the theme default. 1.4 matches the line-height already used for
+	 * this plugin's own title/footer text (see .bt-table-title above).
+	 */
+	min-height: 1.4em;
 }
 
 .bt-table .bt-td {

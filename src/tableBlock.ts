@@ -194,13 +194,24 @@ export class TableBlock extends MarkdownRenderChild {
 		void this.containerEl.getBoundingClientRect();
 		this.isRendering = false;
 
+		const rootEl = this.containerEl.querySelector<HTMLElement>('.bt-render-root');
+		// If the write-back that triggered this re-render happened while the mouse
+		// never left the table (e.g. delete-row from a popup menu, cursor still
+		// over the table the whole time), the brand-new root has no way to know
+		// it's currently hovered — mouseenter/mouseleave only fire in response to
+		// actual pointer movement, never just because a DOM swap happened under a
+		// stationary cursor. Left alone, the hover-only strips stay hidden until
+		// the next real mousemove, which reads as a jarring flicker even though
+		// the mouse genuinely never left. Dispatching a synthetic mouseenter here
+		// re-triggers renderer.ts's real listener immediately instead of waiting.
+		if (rootEl?.matches(':hover')) rootEl.dispatchEvent(new MouseEvent('mouseenter'));
+
 		// Bridge --bt-title-mb-pull from root to sibling titleEl.
 		// CSS custom properties only inherit to descendants; a theme sets the variable
 		// on root to express its intent (e.g. 0px = no pull-close with visible border),
 		// and the renderer propagates it to the title after the atomic swap so that
 		// getComputedStyle() can read the live stylesheet value (detached elements
 		// don't resolve stylesheet-declared custom properties).
-		const rootEl = this.containerEl.querySelector<HTMLElement>('.bt-render-root');
 		const titleEl = this.containerEl.querySelector<HTMLElement>('.bt-table-title');
 		if (rootEl && titleEl) {
 			const pull = getComputedStyle(rootEl).getPropertyValue('--bt-title-mb-pull').trim();
