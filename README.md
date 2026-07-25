@@ -19,6 +19,9 @@
   <a href="https://obsidian.md/plugins?id=rich-table">
     <img src="https://img.shields.io/badge/Obsidian-Community_Plugin-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian community plugin" />
   </a>
+  <a href="https://paypal.me/ssdking">
+    <img src="https://img.shields.io/badge/Donate-PayPal-003087?style=flat-square&logo=paypal&logoColor=white" alt="Donate via PayPal" />
+  </a>
 </p>
 
 <p>
@@ -343,6 +346,20 @@ Then ask Claude: *"Create a project tracker table in my note using rich-table"*.
 [AGPL-3.0](LICENSE) — derivatives must be open-sourced under the same license.
 
 For **commercial licensing**: sdkxyx@gmail.com
+
+## Support the Project
+Rich Table is free and open-source under the AGPL-3.0 license. If this plugin has improved your workflow, you can support its ongoing development with a voluntary donation. Every contribution helps fix bugs, add new features, and maintain compatibility with future Obsidian updates.
+
+### 💳 PayPal
+[![Donate via PayPal](https://img.shields.io/badge/Donate-PayPal-003087?style=flat-square&logo=paypal&logoColor=white)](https://paypal.me/ssdking)
+
+### 🧧 WeChat Pay / Alipay
+
+| WeChat Pay | Alipay |
+|:---:|:---:|
+| <img src="docs/wechat-donate.jpg" width="120" alt="WeChat Pay donation QR code" /> | <img src="docs/alipay-donate.jpg" width="120" alt="Alipay donation QR code" /> |
+
+Thank you for your support! 🙏
 
 ## Feedback
 

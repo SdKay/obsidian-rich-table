@@ -19,6 +19,9 @@
   <a href="https://obsidian.md/plugins?id=rich-table">
     <img src="https://img.shields.io/badge/Obsidian-社区插件-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian 社区插件" />
   </a>
+  <a href="https://paypal.me/ssdking">
+    <img src="https://img.shields.io/badge/赞助-PayPal-003087?style=flat-square&logo=paypal&logoColor=white" alt="通过 PayPal 赞助" />
+  </a>
 </p>
 
 <p>
@@ -345,6 +348,19 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 [AGPL-3.0](LICENSE)——衍生作品须以相同协议开源。
 
 **商业授权**请联系：sdkxyx@gmail.com
+
+## 赞助支持
+Rich Table 是完全免费开源的插件，采用 AGPL-3.0 协议开源。如果这个插件提升了你的笔记效率，欢迎通过自愿捐赠支持后续开发，你的支持是持续修复问题、新增功能、适配 Obsidian 新版本的最大动力。
+
+### 🌍 PayPal
+[![通过 PayPal 赞助](https://img.shields.io/badge/赞助-PayPal-003087?style=flat-square&logo=paypal&logoColor=white)](https://paypal.me/ssdking)
+
+### 🧧 微信 / 支付宝
+| 微信支付 | 支付宝 |
+|:---:|:---:|
+| <img src="docs/wechat-donate.jpg" width="120" alt="微信赞助收款码" /> | <img src="docs/alipay-donate.jpg" width="120" alt="支付宝赞助收款码" /> |
+
+感谢支持！🙏
 
 ## 支持与反馈
 
