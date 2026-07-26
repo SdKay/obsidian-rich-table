@@ -82,6 +82,18 @@ function buildYaml(m: TableModelV2): string {
 	if (m.collapsed) obj.collapsed = true;
 	if (m.sort) obj.sort = { colId: m.sort.colId, dir: m.sort.dir };
 	if (m.aggregate && m.aggregate.length > 0) obj.aggregate = m.aggregate;
+	if (m.views && m.views.length > 0) {
+		obj.views = m.views.map(v => {
+			const e: Record<string, unknown> = { id: v.id, type: v.type };
+			// Absent = derive the display name from the column header at render
+			// time — only written once the user explicitly renames the view.
+			if (v.name) e.name = v.name;
+			if (v.kanban) e.kanban = { groupByColId: v.kanban.groupByColId };
+			return e;
+		});
+		// Only meaningful alongside the views[] entries above.
+		if (m.activeViewId) obj.activeViewId = m.activeViewId;
+	}
 
 	return stringifyYaml(obj);
 }

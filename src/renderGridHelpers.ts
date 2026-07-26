@@ -19,6 +19,45 @@ export function isRowFiltered(displayIdx: number, model: TableModelV2): boolean 
 	return false;
 }
 
+/**
+ * Effective value of a cell, resolving through a merge to its anchor when
+ * this cell is a COVERED (non-anchor) member — a merge's value lives only on
+ * the anchor cell; every other row/col it visually spans has a genuinely
+ * empty cell in the model, because the plain table never needs to "resolve"
+ * this itself (it just skips rendering covered cells outright, via rowspan/
+ * colspan on the anchor — see buildOccupied). A non-tabular view like Kanban,
+ * where every row becomes an independent card with no shared visual span,
+ * needs the actual resolved value instead — reported as: a table with a
+ * vertically-merged column only showed that value on the first of the
+ * merged rows' cards, the rest showed nothing.
+ */
+export function resolveCellValue(model: TableModelV2, rowId: string, colId: string): string {
+	const own = model.rows.find(r => r.id === rowId)?.cells[colId] ?? '';
+	if (own) return own; // has its own content — either unmerged or the anchor itself
+	const rowIdx = resolveMergeRowIndex(model, rowId);
+	const colIdx = model.columns.findIndex(c => c.id === colId);
+	if (rowIdx === undefined || colIdx < 0) return '';
+	for (const m of model.merges) {
+		const dotA = m.anchor.indexOf('.');
+		const dotE = m.end.indexOf('.');
+		if (dotA < 0 || dotE < 0) continue;
+		const anchorRowId = m.anchor.slice(0, dotA);
+		const anchorColId = m.anchor.slice(dotA + 1);
+		const endRowId = m.end.slice(0, dotE);
+		const endColId = m.end.slice(dotE + 1);
+		const r1 = resolveMergeRowIndex(model, anchorRowId);
+		const c1 = model.columns.findIndex(c => c.id === anchorColId);
+		const r2 = resolveMergeRowIndex(model, endRowId);
+		const c2 = model.columns.findIndex(c => c.id === endColId);
+		if (r1 === undefined || c1 < 0 || r2 === undefined || c2 < 0) continue;
+		if (rowIdx >= Math.min(r1, r2) && rowIdx <= Math.max(r1, r2)
+			&& colIdx >= Math.min(c1, c2) && colIdx <= Math.max(c1, c2)) {
+			return model.rows.find(r => r.id === anchorRowId)?.cells[anchorColId] ?? '';
+		}
+	}
+	return '';
+}
+
 export interface ResolvedMerge {
 	anchorRowId: string; anchorColId: string;
 	endRowId:    string; endColId:    string;

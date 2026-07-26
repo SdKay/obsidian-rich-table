@@ -11,6 +11,7 @@ import type {
 	RowDefV2,
 	StyleRuleV2,
 	TableModelV2,
+	ViewDefV2,
 } from './model';
 
 const AGG_TYPES: AggType[] = ['sum', 'avg', 'min', 'max', 'count'];
@@ -22,6 +23,7 @@ export function parseTable(source: string): TableModelV2 {
 	const rows    = parseRows(yaml?.rows);
 	const sort    = parseSort(yaml?.sort);
 	const aggregate = parseAggregate(yaml?.aggregate);
+	const views   = parseViews(yaml?.views);
 
 	return {
 		version:  2,
@@ -36,6 +38,11 @@ export function parseTable(source: string): TableModelV2 {
 		...(yaml?.collapsed === true ? { collapsed: true } : {}),
 		...(sort ? { sort } : {}),
 		...(aggregate.length > 0 ? { aggregate } : {}),
+		...(views.length > 0 ? { views } : {}),
+		// Only meaningful alongside a matching views[] entry — an activeViewId
+		// pointing nowhere behaves exactly like it being absent (default table).
+		...(typeof yaml?.activeViewId === 'string' && views.some(v => v.id === yaml.activeViewId)
+			? { activeViewId: yaml.activeViewId } : {}),
 	};
 }
 
@@ -128,4 +135,23 @@ function parseSort(raw: unknown): { colId: string; dir: 'asc' | 'desc' } | null 
 function parseAggregate(raw: unknown): AggType[] {
 	if (!Array.isArray(raw)) return [];
 	return raw.filter((v): v is AggType => AGG_TYPES.includes(v as AggType));
+}
+
+function parseViews(raw: unknown): ViewDefV2[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.map(item => {
+		if (typeof item !== 'object' || item === null) return null;
+		const v = item as Record<string, unknown>;
+		if (typeof v.id !== 'string') return null;
+		if (v.type !== 'table' && v.type !== 'kanban') return null;
+		const view: ViewDefV2 = { id: v.id, type: v.type };
+		// Absent = derive the display name from the group-by column's current
+		// header at render time (see ViewDefV2's doc comment, model.ts).
+		if (typeof v.name === 'string') view.name = v.name;
+		if (v.type === 'kanban' && typeof v.kanban === 'object' && v.kanban !== null) {
+			const groupByColId = (v.kanban as Record<string, unknown>).groupByColId;
+			if (typeof groupByColId === 'string') view.kanban = { groupByColId };
+		}
+		return view;
+	}).filter((v): v is ViewDefV2 => v !== null);
 }

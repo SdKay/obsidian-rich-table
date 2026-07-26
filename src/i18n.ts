@@ -98,6 +98,15 @@ const EN = {
 	aggMore:  'More statistics',
 	clearAggregate:  'Remove this summary row',
 	dragReorderAgg:  'Drag to reorder summary rows',
+
+	// Views (table / kanban switcher)
+	views:            'Views',
+	defaultTableView: 'Table',
+	newKanbanView:    'New kanban view: group by',
+	deleteView:       'Delete this view',
+	kanbanNoGroupCol: 'This view\'s group-by column no longer exists. Switch it from the views menu.',
+	kanbanNoValue:    'No value',
+	untitledView:     'Untitled view',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -178,6 +187,14 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	aggMore:  '更多统计',
 	clearAggregate:  '删除这一行统计',
 	dragReorderAgg:  '拖拽调整统计行顺序',
+
+	views:            '视图',
+	defaultTableView: '表格',
+	newKanbanView:    '新建看板视图：按此列分组',
+	deleteView:       '删除此视图',
+	kanbanNoGroupCol: '这个视图的分组列已经不存在了，请在视图菜单里重新选择。',
+	kanbanNoValue:    '未分组',
+	untitledView:     '未命名视图',
 };
 
 export function t(key: keyof typeof EN): string {

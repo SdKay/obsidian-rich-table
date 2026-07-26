@@ -21,6 +21,7 @@ import { type CellOpEntry, openCellPanel } from './renderPanel';
 import { renderRow } from './renderCell';
 import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
 import { isHoverPinned, onHoverUnpinned, showMenuPinned } from './renderHoverPin';
+import { renderKanbanBoard, renderKanbanToolbar, buildViewSwitcherMenu } from './renderKanban';
 
 export async function renderTable(
 	model: TableModelV2,
@@ -92,6 +93,40 @@ export async function renderTable(
 		}
 	}
 
+	// Footer — hidden while collapsed, along with the table body. Extracted so
+	// both the plain-table path and the Kanban-view early-return (which skips
+	// virtually everything else table-specific below) can share it.
+	function renderFooter(): void {
+		if (!model.footer || model.collapsed) return;
+		// Flatten array and split strings on \n so YAML arrays and \n-strings both work
+		const rawLines = Array.isArray(model.footer) ? model.footer : [model.footer];
+		const lines = rawLines.flatMap(l => l.split('\n'));
+		const footerEl = container.createDiv({ cls: 'bt-table-footer' });
+		for (const line of lines) {
+			footerEl.createDiv({ cls: 'bt-table-footer-line', text: line });
+		}
+		if (onStructuralOp) {
+			footerEl.addClass('bt-text-editable');
+			footerEl.setAttribute('aria-label', t('clickToEditFooter'));
+			footerEl.setAttribute('data-tooltip-position', 'top');
+			footerEl.addEventListener('click', () => {
+				if (footerEl.hasClass('bt-editing')) return;
+				const currentText = lines.join('\n');
+				enterLineEdit(footerEl, currentText, newVal => {
+					if (!newVal) {
+						void onStructuralOp({ type: 'set-footer', footer: undefined });
+						return;
+					}
+					const parts = newVal.split('\n').filter(l => l.length > 0);
+					void onStructuralOp({
+						type: 'set-footer',
+						footer: parts.length === 1 ? (parts[0] ?? newVal) : parts,
+					});
+				}, true /* multiLine */);
+			});
+		}
+	}
+
 	const occupied = buildOccupied(model);
 	// Root container with position:relative so all overlay elements (selectors,
 	// edge-add strips) can use position:absolute and stay naturally inside
@@ -100,7 +135,37 @@ export async function renderTable(
 	const root = container.createDiv({ cls: themeClass + (model.collapsed ? ' bt-collapsed' : '') });
 	onRootReady?.(root);
 
+	// ── Kanban view: an alternate render mode for the SAME rows/columns — see
+	// ViewDefV2 in model.ts. Deliberately bails out of the entire plain-table
+	// path below (colgroup, selector strips, edge-add strips, resize handles —
+	// none of that applies to a lane/card layout); only the always-visible
+	// mini toolbar (lock + view switcher) and the footer are shared. Checked
+	// BEFORE creating `wrapper` so the toolbar can be root's FIRST child (a
+	// wrapper created first, then a toolbar appended after, would put the
+	// toolbar's title below the board instead of above it). ──
+	const activeView = model.views?.find(v => v.id === model.activeViewId);
+	if (activeView?.type === 'kanban') {
+		// kanbanMain is the region to the RIGHT of the icon column — the wrapper
+		// (and its centered title, above it) live inside that, not directly
+		// under root, so the title centers over the board's own width rather
+		// than the full row including the icon column.
+		const kanbanMain = renderKanbanToolbar({ root, model, registry, onStructuralOp, onToggleLock, activeView });
+		const kanbanWrapper = kanbanMain.createDiv({ cls: 'bt-table-wrapper' });
+		// The wrapper's base width (--bt-wrapper-width, styles.css) defaults to
+		// max-content — sized to hug the TABLE's own natural width, so a compact
+		// table centers nicely instead of stretching edge-to-edge. A Kanban board
+		// wants the opposite: fill the available page width first, and only fall
+		// back to the board's own horizontal scroll once the lanes genuinely
+		// don't fit — so override it to 100% here rather than inheriting the
+		// table's hug-content default.
+		kanbanWrapper.setCssProps({ '--bt-wrapper-width': '100%' });
+		renderKanbanBoard({ model, wrapper: kanbanWrapper, view: activeView, registry, onStructuralOp });
+		renderFooter();
+		return;
+	}
+
 	const wrapper = root.createDiv({ cls: 'bt-table-wrapper' });
+
 	const table = wrapper.createEl('table', { cls: 'bt-table' });
 
 	// Visible-viewport geometry, all in root-relative px. The wrapper (overflow-x:auto)
@@ -512,36 +577,7 @@ export async function renderTable(
 	// TODO: filter status bar ("Showing X of Y rows · Clear filter") — deferred until
 	// a unified table status bar is designed that can also host sort info.
 
-	// Footer — hidden while collapsed, along with the table body.
-	if (model.footer && !model.collapsed) {
-		// Flatten array and split strings on \n so YAML arrays and \n-strings both work
-		const rawLines = Array.isArray(model.footer) ? model.footer : [model.footer];
-		const lines = rawLines.flatMap(l => l.split('\n'));
-		const footerEl = container.createDiv({ cls: 'bt-table-footer' });
-		for (const line of lines) {
-			footerEl.createDiv({ cls: 'bt-table-footer-line', text: line });
-		}
-		if (onStructuralOp) {
-			footerEl.addClass('bt-text-editable');
-			footerEl.setAttribute('aria-label', t('clickToEditFooter'));
-			footerEl.setAttribute('data-tooltip-position', 'top');
-			footerEl.addEventListener('click', () => {
-				if (footerEl.hasClass('bt-editing')) return;
-				const currentText = lines.join('\n');
-				enterLineEdit(footerEl, currentText, newVal => {
-					if (!newVal) {
-						void onStructuralOp({ type: 'set-footer', footer: undefined });
-						return;
-					}
-					const parts = newVal.split('\n').filter(l => l.length > 0);
-					void onStructuralOp({
-						type: 'set-footer',
-						footer: parts.length === 1 ? (parts[0] ?? newVal) : parts,
-					});
-				}, true /* multiLine */);
-			});
-		}
-	}
+	renderFooter();
 
 	// Shared show/hide hooks for the two hover overlays (edge-add strips + selector
 	// strips). Assigned inside their blocks; driven by one proximity handler below.
@@ -814,6 +850,19 @@ export async function renderTable(
 			});
 			setIcon(collapseBtn, model.collapsed ? 'unfold-vertical' : 'fold-vertical');
 			collapseBtn.addEventListener('click', () => void onStructuralOp({ type: 'toggle-collapse' }));
+		}
+
+		// Views switcher — last in column. Shares buildViewSwitcherMenu with the
+		// Kanban toolbar's own views button (renderKanban.ts) so both surfaces
+		// offer the exact same set of views/actions.
+		if (onStructuralOp) {
+			const viewsBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('views'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(viewsBtn, 'layout-grid');
+			viewsBtn.addEventListener('click', (evt: MouseEvent) =>
+				showMenuPinned(buildViewSwitcherMenu(model, registry, onStructuralOp), evt));
 		}
 
 

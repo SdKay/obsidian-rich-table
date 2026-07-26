@@ -1,4 +1,4 @@
-import type { TableModelV2, ColumnDefV2, RowDefV2, StyleRuleV2, MergeRangeV2, AggType } from './model';
+import type { TableModelV2, ColumnDefV2, RowDefV2, StyleRuleV2, MergeRangeV2, AggType, ViewDefV2 } from './model';
 import { genId } from './idGen';
 import { parseStyleTarget, serializeStyleTarget } from './styleTarget';
 
@@ -56,7 +56,18 @@ export type StructuralOpV2 =
 	/** One-time sort: physically commits the given row order to storage — the
 	 *  caller (renderer.ts) computes `rowIds` since it owns the type-aware
 	 *  comparators; the reducer just applies the already-decided order. */
-	| { type: 'reorder-rows';   rowIds: string[] };
+	| { type: 'reorder-rows';   rowIds: string[] }
+	/** Creates a new view and switches to it immediately (matches how a new
+	 *  row/column is both created and left as the natural next target). */
+	/** name omitted = derive the display name from groupByColId's current
+	 *  column header (see ViewDefV2's doc comment in model.ts). */
+	| { type: 'create-view';    name?: string; viewType: 'table' | 'kanban'; groupByColId?: string }
+	| { type: 'delete-view';    viewId: string }
+	| { type: 'rename-view';    viewId: string; name: string }
+	/** Changes a kanban view's group-by column — a no-op for a table view. */
+	| { type: 'set-view-group'; viewId: string; groupByColId: string }
+	/** null/absent-matching id = switch back to the default Table view. */
+	| { type: 'set-active-view'; viewId: string | null };
 
 export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): void {
 	switch (op.type) {
@@ -126,6 +137,13 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			model.styles = model.styles.filter(s =>
 				!s.target.endsWith(`.${op.colId}`) && s.target !== op.colId);
 			if (model.sort?.colId === op.colId) delete model.sort;
+			// A kanban view grouped by the deleted column has nothing left to group
+			// by — fall back to a plain table rendering rather than deleting the
+			// view outright (same "clear the invalid reference, don't destroy the
+			// entity" precedent as model.sort above).
+			for (const view of model.views ?? []) {
+				if (view.kanban?.groupByColId === op.colId) { view.type = 'table'; delete view.kanban; }
+			}
 			break;
 		}
 		case 'move-col': {
@@ -348,6 +366,49 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			// (e.g. a row was deleted in the same batch before this op applied).
 			if (reordered.length !== model.rows.length) break;
 			model.rows = reordered;
+			break;
+		}
+
+		// ── Views ────────────────────────────────────────────────────────────────
+		case 'create-view': {
+			// A second kanban view grouped by the SAME column would look and behave
+			// identically to the first one — views don't have their own independent
+			// filter/sort yet (see ViewDefV2's doc comment in model.ts), so there's
+			// nothing to actually differentiate them by. Switch to the existing one
+			// instead of creating a confusing, functionally-duplicate view.
+			if (op.viewType === 'kanban' && op.groupByColId) {
+				const dupe = model.views?.find(v => v.type === 'kanban' && v.kanban?.groupByColId === op.groupByColId);
+				if (dupe) { model.activeViewId = dupe.id; break; }
+			}
+			const existing = new Set((model.views ?? []).map(v => v.id));
+			const id = genId('v', existing);
+			const view: ViewDefV2 = { id, type: op.viewType };
+			if (op.name) view.name = op.name;
+			if (op.viewType === 'kanban' && op.groupByColId) view.kanban = { groupByColId: op.groupByColId };
+			model.views ??= [];
+			model.views.push(view);
+			model.activeViewId = id;
+			break;
+		}
+		case 'delete-view': {
+			if (!model.views) break;
+			model.views = model.views.filter(v => v.id !== op.viewId);
+			if (model.activeViewId === op.viewId) delete model.activeViewId;
+			break;
+		}
+		case 'rename-view': {
+			const view = model.views?.find(v => v.id === op.viewId);
+			if (view) view.name = op.name;
+			break;
+		}
+		case 'set-view-group': {
+			const view = model.views?.find(v => v.id === op.viewId);
+			if (view && view.type === 'kanban') view.kanban = { groupByColId: op.groupByColId };
+			break;
+		}
+		case 'set-active-view': {
+			const view = op.viewId ? model.views?.find(v => v.id === op.viewId) : undefined;
+			if (view) model.activeViewId = view.id; else delete model.activeViewId;
 			break;
 		}
 

@@ -1484,6 +1484,151 @@
 	background: var(--background-modifier-error);
 }
 
+/* ── Kanban view ────────────────────────────────────────────────────────── */
+/* Icon column (lock/back/views) on the left, title+board region on the
+ * right — same left-column placement as the table's own .bt-ctrl-col, but
+ * always-visible/in-flow rather than hover-reveal-and-absolutely-positioned:
+ * that column's math is anchored to the <table> element's own rect (see
+ * positionCtrlCol, renderer.ts), which doesn't exist in Kanban mode. */
+.bt-kanban-layout {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-4-2);
+}
+
+.bt-kanban-toolbar-icons {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex-shrink: 0;
+	padding-top: 2px; /* nudge to align with the title's own line-height */
+}
+
+.bt-kanban-main {
+	flex: 1;
+	min-width: 0; /* let the board's own overflow-x:auto do the clipping, not flex shrink-to-fit */
+}
+
+/* Same visual role as .bt-table-title (a heading for what's being shown) —
+ * centered over .bt-kanban-main's width, which is exactly the board's own
+ * width below it (the icon column is a sibling, not a width-eating ancestor). */
+.bt-kanban-toolbar-title {
+	text-align: center;
+	font-size: var(--h4-size, 1.1em);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+	line-height: 1.4;
+	margin-bottom: var(--size-4-2);
+}
+
+.bt-kanban-empty {
+	padding: var(--size-4-6) var(--size-4-3);
+	text-align: center;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--radius-s);
+}
+
+.bt-kanban-board {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-4-3);
+	overflow-x: auto;
+	padding-bottom: var(--size-4-2); /* room for the horizontal scrollbar */
+}
+
+.bt-kanban-lane {
+	flex: 0 0 240px;
+	display: flex;
+	flex-direction: column;
+	background: var(--background-secondary);
+	border-radius: var(--radius-m);
+	max-height: 70vh;
+}
+
+.bt-kanban-lane-header {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	padding: var(--size-4-2) var(--size-4-3);
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-small);
+	flex-shrink: 0;
+}
+
+.bt-kanban-lane-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--bt-lane-dot, var(--text-faint));
+	flex-shrink: 0;
+}
+
+.bt-kanban-lane-title {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bt-kanban-lane-count {
+	color: var(--text-faint);
+	font-weight: var(--font-normal);
+}
+
+.bt-kanban-lane-body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 0 var(--size-4-2) var(--size-4-2);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-height: 40px; /* stay a droppable target even with zero cards */
+}
+
+.bt-kanban-lane-dragover {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+.bt-kanban-card {
+	/* --bt-kanban-card-bg (JS) mirrors --bt-choice-bg (renderCell.ts) — the same
+	 * color the choice pill uses for this card's lane value in table mode. */
+	background: var(--bt-kanban-card-bg, var(--background-primary));
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	padding: var(--size-4-2);
+	cursor: grab;
+	box-shadow: var(--shadow-s);
+}
+
+.bt-kanban-card.bt-dragging {
+	opacity: 0.4;
+}
+
+.bt-kanban-card-empty {
+	color: var(--text-faint);
+}
+
+.bt-kanban-card-field {
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+}
+
+.bt-kanban-card-field + .bt-kanban-card-field {
+	margin-top: var(--size-4-1);
+}
+
+.bt-kanban-card-field-label {
+	color: var(--text-faint);
+	margin-right: 4px;
+}
+
+.bt-kanban-card-field-value {
+	color: var(--text-normal);
+}
+
 
 /* ── Built-in themes (auto-generated — do not edit below) ──── */
 /* @theme-label-en: Academic 📐 */

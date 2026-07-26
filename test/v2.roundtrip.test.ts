@@ -134,6 +134,58 @@ describe('v2 round-trip stability', () => {
 	}
 });
 
+describe('views round-trip (serializeTable → parseTable)', () => {
+	// Built directly (not as a hand-written YAML fixture, unlike FIXTURES above)
+	// since matching stringifyYaml's exact key order/quoting byte-for-byte by
+	// hand would be fragile — this instead checks the semantic round-trip a
+	// real write-back/reload cycle depends on.
+	it('preserves a kanban view and which one is active', () => {
+		const model = {
+			version: 2 as const,
+			columns: [{ id: 'c_0', name: 'Status', type: 'task-status' }],
+			rows: [{ id: 'r_0', cells: { c_0: 'done' } }],
+			merges: [],
+			styles: [],
+			views: [{ id: 'v_0', name: 'Kanban (Status)', type: 'kanban' as const, kanban: { groupByColId: 'c_0' } }],
+			activeViewId: 'v_0',
+		};
+
+		const reparsed = parseTable(serializeTable(model));
+		expect(reparsed.views).toEqual(model.views);
+		expect(reparsed.activeViewId).toBe('v_0');
+
+		// Second round trip must be stable (Principle 3).
+		expect(serializeTable(reparsed)).toBe(serializeTable(parseTable(serializeTable(reparsed))));
+	});
+
+	it('a table with no views field parses/serializes exactly as before this feature existed', () => {
+		const model = {
+			version: 2 as const,
+			columns: [{ id: 'c_0', name: 'A' }],
+			rows: [{ id: 'r_0', cells: { c_0: 'x' } }],
+			merges: [],
+			styles: [],
+		};
+		const out = serializeTable(model);
+		expect(out).not.toContain('views:');
+		expect(out).not.toContain('activeViewId:');
+	});
+
+	it('drops an activeViewId that does not match any views[] entry, rather than persisting a dangling reference', () => {
+		const model = {
+			version: 2 as const,
+			columns: [{ id: 'c_0', name: 'A' }],
+			rows: [{ id: 'r_0', cells: { c_0: 'x' } }],
+			merges: [],
+			styles: [],
+			views: [{ id: 'v_0', name: 'K', type: 'kanban' as const, kanban: { groupByColId: 'c_0' } }],
+			activeViewId: 'v_does_not_exist',
+		};
+		const reparsed = parseTable(serializeTable(model));
+		expect(reparsed.activeViewId).toBeUndefined();
+	});
+});
+
 import { convertTargetV1toV2 } from '../src/migrations/v1_to_v2';
 
 describe('convertTargetV1toV2', () => {

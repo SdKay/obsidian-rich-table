@@ -108,6 +108,37 @@ export interface StyleRuleV2 {
 	size?: number;
 }
 
+/**
+ * An additional named view over the same rows/columns — currently just an
+ * alternate RENDER MODE (table vs kanban), not an independent filter/sort/
+ * hidden-column scope. Deliberately scoped-down v1: filter/sort/aggregate/
+ * hidden stay the single table-wide fields they already are (ColumnDefV2.filter,
+ * TableModelV2.sort/aggregate, .hidden), shared by every view — a kanban view
+ * respects whatever filter is currently active, it just can't have a DIFFERENT
+ * one from the table view. Per-view-independent filter/sort is real, wanted
+ * follow-up work, deliberately deferred: it would require every render-time
+ * reader of those fields (isRowFiltered, applySortForDisplay, activeAggTypes,
+ * every `.hidden` check) to resolve through "current view, else table-wide
+ * default" instead of reading the table-wide field directly — a much larger,
+ * separate change than standing up view *switching* itself.
+ */
+export interface ViewDefV2 {
+	id: string;
+	/** Absent = derive the display name from the current column header (see
+	 *  viewDisplayName, renderKanban.ts) — e.g. a kanban view stays labeled
+	 *  after its group-by column even if that column is later renamed, with
+	 *  no separate bookkeeping needed. Only set once the user explicitly
+	 *  renames the view (rename-view), at which point it "detaches" from the
+	 *  column and stays whatever they typed regardless of future renames. */
+	name?: string;
+	type: 'table' | 'kanban';
+	/** Present when type === 'kanban': which column's value groups rows into
+	 *  lanes. Must be a choice-type column (see choiceRegistry.ts) — an "no
+	 *  value" lane covers rows whose cell is empty or not one of the type's
+	 *  defined options. */
+	kanban?: { groupByColId: string };
+}
+
 /** Full table model for v2. */
 export interface TableModelV2 {
 	version: 2;
@@ -129,6 +160,15 @@ export interface TableModelV2 {
 	 *  (numeric cells for sum/avg/min/max, any non-empty cell for count) and
 	 *  leaves the rest blank — see `computeAggregateValue` in renderAggregate.ts. */
 	aggregate?: AggType[];
+	/** Additional views beyond the implicit default "Table" view (absent/no
+	 *  activeViewId match = render the default table, exactly like a table with
+	 *  no `views` field at all — this is what makes `views` purely additive:
+	 *  a table written before this feature existed has no `views` field and
+	 *  renders identically to today, no migration needed). */
+	views?: ViewDefV2[];
+	/** Which entry in `views` is currently shown; absent or unmatched = the
+	 *  default Table view (today's plain rendering). */
+	activeViewId?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
