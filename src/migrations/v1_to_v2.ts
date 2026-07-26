@@ -61,10 +61,22 @@ export function migrateV1toV2(source: string): string {
 	// ── Merges ───────────────────────────────────────────────────────────────
 	const merges: MergeRangeV2[] = v1.merges
 		.map(m => {
-			// v1 uses 0-indexed rows where row 0 = header
-			// data row di = v1 startRow - 1
-			const anchorRowId = rowIdByDataIdx(m.startRow - 1);
-			const endRowId    = rowIdByDataIdx(m.endRow   - 1);
+			// v1 uses 0-indexed rows where row 0 = header (data row di = v1 row - 1).
+			// A merge entirely within the header row (startRow === endRow === 0)
+			// needs the 'header' sentinel (see resolveMergeRowIndex, operations.ts /
+			// renderGridHelpers.ts) — falling through to rowIdByDataIdx(-1)'s
+			// seqId('r', -1) fallback used to silently produce an unresolvable
+			// garbage row id (literally "r_0000-1") for any v1 table that had a
+			// merged header cell: the merge then resolved to nothing at render
+			// time and just sat as dead weight in the saved file.
+			// A merge spanning BOTH the header row and data rows (only one of
+			// startRow/endRow is 0) isn't representable in v2 — a single cell
+			// can't rowspan across the <thead>/<tbody> boundary — so it's
+			// dropped rather than guessed at.
+			if ((m.startRow === 0) !== (m.endRow === 0)) return null;
+			const isHeaderOnly = m.startRow === 0 && m.endRow === 0;
+			const anchorRowId = isHeaderOnly ? 'header' : rowIdByDataIdx(m.startRow - 1);
+			const endRowId    = isHeaderOnly ? 'header' : rowIdByDataIdx(m.endRow   - 1);
 			const anchorColId = colIdByIdx(m.startCol);
 			const endColId    = colIdByIdx(m.endCol);
 			if (!anchorRowId || !anchorColId || !endRowId || !endColId) return null;

@@ -87,8 +87,10 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			const fromIdx = model.rows.findIndex(r => r.id === op.fromRowId);
 			const toIdx   = model.rows.findIndex(r => r.id === op.toRowId);
 			if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) break;
+			const snapshots = snapshotRowMergesContaining(model, fromIdx);
 			const [row] = model.rows.splice(fromIdx, 1);
 			if (row) model.rows.splice(toIdx, 0, row);
+			reanchorRowMerges(model, snapshots);
 			break;
 		}
 		case 'hide-row': {
@@ -130,8 +132,10 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			const fromIdx = model.columns.findIndex(c => c.id === op.fromColId);
 			const toIdx   = model.columns.findIndex(c => c.id === op.toColId);
 			if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) break;
+			const snapshots = snapshotColMergesContaining(model, fromIdx);
 			const [col] = model.columns.splice(fromIdx, 1);
 			if (col) model.columns.splice(toIdx, 0, col);
+			reanchorColMerges(model, snapshots);
 			break;
 		}
 		case 'hide-col': {
@@ -421,6 +425,98 @@ function findMergeCoveringCell(model: TableModelV2, rowId: string, colId: string
 			&& cIdx >= Math.min(c1, c2) && cIdx <= Math.max(c1, c2)) return m;
 	}
 	return undefined;
+}
+
+interface RowMergeSnapshot { merge: MergeRangeV2; memberIds: string[] }
+interface ColMergeSnapshot { merge: MergeRangeV2; memberIds: string[] }
+
+/** Row-spanning merges (anchor/end resolve to different row indices) whose
+ *  CURRENT row range includes `rowIdx`, snapshotted by member row ID (stable
+ *  identity) rather than position — see reanchorRowMerges for why. */
+function snapshotRowMergesContaining(model: TableModelV2, rowIdx: number): RowMergeSnapshot[] {
+	const snapshots: RowMergeSnapshot[] = [];
+	for (const merge of model.merges) {
+		const [anchorRowId] = splitAnchor(merge.anchor);
+		const [endRowId]    = splitAnchor(merge.end);
+		const r1 = resolveMergeRowIndex(model, anchorRowId);
+		const r2 = resolveMergeRowIndex(model, endRowId);
+		if (r1 === undefined || r2 === undefined || r1 === r2) continue;
+		const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+		if (rowIdx < lo || rowIdx > hi) continue;
+		snapshots.push({ merge, memberIds: model.rows.slice(lo, hi + 1).map(r => r.id) });
+	}
+	return snapshots;
+}
+
+/**
+ * Merges resolve by CURRENT INDEX RANGE between anchor/end (buildOccupied /
+ * getMergeOrigin, renderGridHelpers.ts), not by an explicit member list — that
+ * is what lets a plain insert-row landing mid-span get silently absorbed into
+ * an existing merge for free. But it also means `move-row`, which just
+ * relocates ONE row to a new index, can silently SHRINK a merge whenever the
+ * moved row was a member (not the literal anchor/end row): its new position
+ * can fall outside the anchor/end's now-current range even though the row
+ * never left the group. Reported case: dragging one row past another inside
+ * a 3-row merged block left the third, unmoved member behind.
+ *
+ * Fix: re-anchor each affected merge (snapshotted by snapshotRowMergesContaining
+ * BEFORE the move) to its new topmost/bottommost member — but only if that
+ * same set of member IDs is still exactly contiguous after the move, i.e. the
+ * move stayed within the group rather than genuinely detaching from it. If
+ * some other, non-member row now sits between two members (the moved row
+ * landed far outside the old group), leave the merge as-is: blindly
+ * re-anchoring then would swallow every row physically in between into the
+ * merge, which would be a worse bug than the one being fixed here.
+ */
+function reanchorRowMerges(model: TableModelV2, snapshots: RowMergeSnapshot[]): void {
+	for (const { merge, memberIds } of snapshots) {
+		const indices = memberIds.map(id => model.rows.findIndex(r => r.id === id));
+		if (indices.some(i => i < 0)) continue;
+		const lo = Math.min(...indices), hi = Math.max(...indices);
+		if (hi - lo + 1 !== memberIds.length) continue; // no longer contiguous — left the group
+		const topId = model.rows[lo]?.id;
+		const bottomId = model.rows[hi]?.id;
+		if (!topId || !bottomId) continue;
+		const [, anchorColId] = splitAnchor(merge.anchor);
+		const [, endColId]    = splitAnchor(merge.end);
+		merge.anchor = `${topId}.${anchorColId}`;
+		merge.end    = `${bottomId}.${endColId}`;
+	}
+}
+
+/** Column-axis mirror of snapshotRowMergesContaining. */
+function snapshotColMergesContaining(model: TableModelV2, colIdx: number): ColMergeSnapshot[] {
+	const snapshots: ColMergeSnapshot[] = [];
+	for (const merge of model.merges) {
+		const [, anchorColId] = splitAnchor(merge.anchor);
+		const [, endColId]    = splitAnchor(merge.end);
+		const c1 = model.columns.findIndex(c => c.id === anchorColId);
+		const c2 = model.columns.findIndex(c => c.id === endColId);
+		if (c1 < 0 || c2 < 0 || c1 === c2) continue;
+		const lo = Math.min(c1, c2), hi = Math.max(c1, c2);
+		if (colIdx < lo || colIdx > hi) continue;
+		snapshots.push({ merge, memberIds: model.columns.slice(lo, hi + 1).map(c => c.id) });
+	}
+	return snapshots;
+}
+
+/** Column-axis mirror of reanchorRowMerges — see its doc comment. Works
+ *  unchanged for a header column-range merge too (anchor/end row part is the
+ *  literal `'header'` sentinel): this only ever rewrites the column-id half. */
+function reanchorColMerges(model: TableModelV2, snapshots: ColMergeSnapshot[]): void {
+	for (const { merge, memberIds } of snapshots) {
+		const indices = memberIds.map(id => model.columns.findIndex(c => c.id === id));
+		if (indices.some(i => i < 0)) continue;
+		const lo = Math.min(...indices), hi = Math.max(...indices);
+		if (hi - lo + 1 !== memberIds.length) continue; // no longer contiguous — left the group
+		const leftId  = model.columns[lo]?.id;
+		const rightId = model.columns[hi]?.id;
+		if (!leftId || !rightId) continue;
+		const [anchorRowId] = splitAnchor(merge.anchor);
+		const [endRowId]    = splitAnchor(merge.end);
+		merge.anchor = `${anchorRowId}.${leftId}`;
+		merge.end    = `${endRowId}.${rightId}`;
+	}
 }
 
 /**

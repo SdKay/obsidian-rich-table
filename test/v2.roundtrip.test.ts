@@ -158,6 +158,67 @@ describe('convertTargetV1toV2', () => {
 		expect(conv('A1:C3')).toBe('r_000000.c_000000:r_000001.c_000002'));
 });
 
+describe('v1→v2 merge migration', () => {
+	it('a header-only merge (A1:B1) migrates to the header sentinel, not a garbage row id', async () => {
+		const { migrateV1toV2 } = await import('../src/migrations/v1_to_v2');
+		const v1Source = `---
+columns:
+  - { name: 任务 }
+  - { name: 子任务 }
+merges:
+  - "A1:B1"
+---
+| 任务 | 子任务 |
+| ---- | ------ |
+| a    | b      |`;
+
+		const v2Source = migrateV1toV2(v1Source);
+		expect(v2Source).toContain('anchor: header.c_000000');
+		expect(v2Source).toContain('end: header.c_000001');
+		// The bug this guards against: rowIdByDataIdx(-1) used to fall through to
+		// seqId('r', -1), which is literally the string "r_0000-1".
+		expect(v2Source).not.toContain('r_0000-1');
+
+		// The migrated merge must actually resolve — round-tripping it through
+		// parse/serialize should keep it intact rather than silently dropping it.
+		const model = parseTable(v2Source);
+		expect(model.merges).toEqual([{ anchor: 'header.c_000000', end: 'header.c_000001' }]);
+	});
+
+	it('a merge entirely within data rows is unaffected', async () => {
+		const { migrateV1toV2 } = await import('../src/migrations/v1_to_v2');
+		const v1Source = `---
+columns:
+  - { name: 任务 }
+merges:
+  - "A2:A3"
+---
+| 任务 |
+| ---- |
+| a    |
+| b    |`;
+
+		const model = parseTable(migrateV1toV2(v1Source));
+		expect(model.merges).toEqual([{ anchor: 'r_000000.c_000000', end: 'r_000001.c_000000' }]);
+	});
+
+	it('a merge spanning both the header row and data rows is dropped, not guessed at', async () => {
+		const { migrateV1toV2 } = await import('../src/migrations/v1_to_v2');
+		const v1Source = `---
+columns:
+  - { name: 任务 }
+merges:
+  - "A1:A2"
+---
+| 任务 |
+| ---- |
+| a    |`;
+
+		const model = parseTable(migrateV1toV2(v1Source));
+		expect(model.merges).toEqual([]);
+	});
+});
+
 describe('v2 migration round-trip', () => {
 	it('v1 source migrates to stable v2 YAML', async () => {
 		const { migrateSource } = await import('../src/tableVersion');
