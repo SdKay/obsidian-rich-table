@@ -129,6 +129,7 @@ export async function renderTable(
 		};
 	};
 
+
 	// <colgroup> for precise column widths (used when table-layout:fixed).
 	// If no column has an explicit width we leave widths unset and let the
 	// browser size columns via table-layout:auto (natural content width).
@@ -606,18 +607,26 @@ export async function renderTable(
 				window.requestAnimationFrame(() => positionEdgeStrips());
 				return false;
 			}
-			// Double-content guard: root height should never exceed table height by more
-			// than the maximum padding (sel-pad=32 + add-pad=24 = 56px, so 60px is safe).
-			// rr.height >> tr.height means the DOM contains two stacked roots (cache clone
-			// injection window), producing the anomalous rr.height≈1113 observed in logs.
-			if (rr.height > tr.height + 60) return false;
+			// Double-content guard: root height should never exceed the WRAPPER height by
+			// more than the maximum padding (sel-pad=32 + add-pad=24 = 56px, so 60px is
+			// safe). rr.height >> wrapper height means the DOM contains two stacked roots
+			// (cache clone injection window), producing the anomalous rr.height≈1113 in logs.
+			// Referencing the WRAPPER (not the table) is deliberate: a wide table adds a
+			// horizontal scrollbar (~12-15px) that inflates the wrapper AND root heights
+			// equally — comparing against the table height instead used to trip this guard
+			// on every scrollable table, silently killing BOTH edge-add buttons.
+			if (rr.height > g.wr.height + 60) return false;
 			if (g.tt < -5 || g.tt > rr.height + 5) return false;
 			if (g.vw <= 0) return false; // table fully scrolled out of the visible viewport
 			// Add-row strip along the bottom, add-col button at the right — both anchored
 			// to the VISIBLE table region so they stay reachable when a wide table is
 			// horizontally scrolled (previously pinned to the off-screen full-table edges).
+			// Anchor the add-row strip below the WRAPPER's bottom (not the table's) so it
+			// clears the horizontal scrollbar a wide table draws there; for a narrow table
+			// with no scrollbar the wrapper bottom == table bottom, so this is unchanged.
+			const wrBottom = g.wr.bottom - rr.top;
 			addRowBtn.setCssProps({
-				'--strip-top':   `${g.tt + g.th + 2}px`,
+				'--strip-top':   `${wrBottom + 2}px`,
 				'--strip-left':  `${g.vl}px`,
 				'--strip-width': `${g.vw}px`,
 			});
@@ -1136,7 +1145,17 @@ export async function renderTable(
 			const leftNeed = SEL_TOTAL + AUTOFIT_OFFSET + 4;
 			const leftRoom = wr0.left - rr0.left;
 			const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
-			root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px`, '--bt-add-pad': '24px', '--bt-sel-pad-left': `${leftPad}px` });
+			// Symmetric reservation on the RIGHT for the add-col (+) button (18px wide + a
+			// 2px gap + slack): a wide table's right edge is flush against root, so without
+			// this the button would sit just past root's right edge, off-screen. Narrow
+			// tables have margin room → 0. Measured pre-padding, same as leftRoom.
+			const rightNeed = 24;
+			const rightRoom = rr0.right - wr0.right;
+			const rightPad = rightRoom < rightNeed ? Math.ceil(rightNeed - rightRoom) : 0;
+			root.setCssProps({
+				'--bt-sel-pad': `${SEL_TOTAL}px`, '--bt-add-pad': '24px',
+				'--bt-sel-pad-left': `${leftPad}px`, '--bt-sel-pad-right': `${rightPad}px`,
+			});
 			// Cancel whatever --bt-title-mb-pull the active theme set (bridged onto titleEl in
 			// tableBlock.ts) so the title sits flush above the col-selector strip on hover
 			// instead of stacking a second gap on top of the theme's own pull-closer value.
@@ -1144,7 +1163,7 @@ export async function renderTable(
 			titleEl?.setCssProps({ '--bt-title-mb-adj': `${-pull}px` });
 		};
 		restoreLayout = () => {
-			root.setCssProps({ '--bt-sel-pad': '0px', '--bt-add-pad': '0px', '--bt-sel-pad-left': '0px' });
+			root.setCssProps({ '--bt-sel-pad': '0px', '--bt-add-pad': '0px', '--bt-sel-pad-left': '0px', '--bt-sel-pad-right': '0px' });
 			titleEl?.setCssProps({ '--bt-title-mb-adj': '0px' });
 			repositionLockBtn();
 			repositionAutoFitBtn();

@@ -47,6 +47,24 @@
 	 * so centered/narrow tables don't shift). Shifts the table right just enough to
 	 * expose the left strips instead of leaving them clipped off-screen. */
 	padding-left: var(--bt-sel-pad-left, 0px);
+	/* --bt-sel-pad-right: symmetric reservation for the right add-col (+) button on a
+	 * wide table whose right edge is flush against root (otherwise 0). */
+	padding-right: var(--bt-sel-pad-right, 0px);
+	/* Every strip (ctrl column, row/col selectors, edge-add buttons) is position:absolute
+	 * with an offset computed to land INSIDE root's own box once the padding above is
+	 * applied — but at rest (not hovered, padding = 0) those same offsets are negative /
+	 * past root's edges (e.g. --cc-left defaults to -54px). They're invisible then
+	 * (opacity: 0), but an invisible box still occupies layout space, and root itself
+	 * has never clipped its own overflow — so that protrusion escaped into Obsidian's
+	 * own scrollable code-block embed wrapper one level up, which then grew a second,
+	 * spurious horizontal scrollbar with no relation to the table's actual content
+	 * width (reported: a wide table shows two scrollbars before hover, one of which
+	 * disappears on hover — hovering adds the compensating padding above, pulling the
+	 * strips back inside root's bounds). Clipping HERE, at the source, is contained:
+	 * the compensating padding is applied synchronously before the strips' opacity
+	 * transitions them visible, so nothing actually shown is ever cut off — this only
+	 * clips the resting-state, invisible overflow before it can leak upward. */
+	overflow: hidden;
 }
 .bt-render-root.bt-has-strips .bt-col-selector {
 	position: absolute;
