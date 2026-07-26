@@ -73,7 +73,9 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 > **⬆️ Upgrading from v0.x?** — v1 → v2 migration: the upgrade banner on old-format tables, converting in one click or keeping the old format read-only.
 >
 > ![Upgrade](docs/demo-00-migration.gif)
-**1 · Quick start from template**
+**1 · Quick start from template — or a blank table**
+
+An empty `rich-table` code block shows two buttons: **Insert template** (a full-featured demo table showcasing every capability) or **Insert blank table**, which opens a Word/Sheets-style size picker — hover an 8×6 grid to preview and click to confirm a row/column count, or type exact numbers for anything past the visible grid.
 
 ![Quick start demo](docs/demo-01-template.gif)
 
@@ -333,6 +335,7 @@ Open **Settings → Rich Table** to configure the plugin.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Allow editing in reading view | Off | When off, all interactive behaviour (hover strips, click-to-edit, panels, dropdowns) is disabled in Obsidian's reading view. Live preview / source mode is always interactive. |
+| Single-click to edit | Off | When on, a single click on a cell enters edit mode immediately (no delay), and the style panel opens with Ctrl/Cmd+click instead of double-click. When off (default), single click enters edit after a short delay and double click opens the style panel. |
 | Custom types | — | Define custom choice-column types with labels and colors. |
 
 ---
