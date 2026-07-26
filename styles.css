@@ -219,6 +219,100 @@
 	background: var(--interactive-accent-hover);
 }
 
+.bt-template-btns {
+	display: flex;
+	gap: var(--size-4-2);
+	flex-shrink: 0;
+}
+
+/* A blank-table alternative sits alongside the demo template — visually
+ * secondary (outline, not filled) so the pre-existing button stays the
+ * default first choice. */
+.bt-template-btn-secondary {
+	background: transparent;
+	color: var(--interactive-accent);
+	border: 1px solid var(--interactive-accent);
+}
+
+.bt-template-btn-secondary:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+/* ── Grid size picker (Word/Sheets-style "insert table" hover grid) ───────── */
+.bt-grid-picker {
+	position: fixed;
+	top: var(--bt-gp-top, 0px);
+	left: var(--bt-gp-left, 0px);
+	z-index: var(--layer-popover);
+	max-height: var(--bt-gp-maxh, none);
+	padding: var(--size-4-3);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-m);
+	overflow-y: auto;
+}
+
+.bt-gp-caption {
+	text-align: center;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	margin-bottom: var(--size-4-2);
+}
+
+.bt-gp-grid {
+	display: grid;
+	grid-template-columns: repeat(var(--bt-gp-cols, 8), 18px);
+	gap: 2px;
+}
+
+.bt-gp-cell {
+	width: 18px;
+	height: 18px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 2px;
+	background: var(--background-secondary);
+}
+
+.bt-gp-cell.is-active {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+.bt-gp-custom {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-4-1);
+	margin-top: var(--size-4-3);
+	padding-top: var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.bt-gp-input {
+	width: 42px;
+	text-align: center;
+}
+
+.bt-gp-x {
+	color: var(--text-muted);
+}
+
+.bt-gp-insert-btn {
+	padding: 3px var(--size-4-3);
+	border-radius: var(--radius-s);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+	border: none;
+	white-space: nowrap;
+}
+
+.bt-gp-insert-btn:hover {
+	background: var(--interactive-accent-hover);
+}
+
 /* ── Control column: autofit · lock · theme ─────────────────────────────── */
 /* Vertical flex column to the left of the row-drag strip.
  * Hidden by default, revealed on root hover; stays visible when table is locked. */

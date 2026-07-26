@@ -41,6 +41,10 @@ const EN = {
 	// Template banner
 	templatePreview: 'Template preview — click Insert to start editing',
 	insertTemplate:  'Insert template',
+	insertBlankTable: 'Insert blank table',
+	gridPickerRows:   'Rows',
+	gridPickerCols:   'Columns',
+	gridPickerInsert: 'Insert',
 
 	// Editable title / footer
 	clickToEditTitle:  'Click to edit title',
@@ -129,6 +133,10 @@ const ZH: { [K in keyof typeof EN]: string } = {
 
 	templatePreview: '模板预览 — 点击"插入"开始编辑',
 	insertTemplate:  '插入模板',
+	insertBlankTable: '插入空白表格',
+	gridPickerRows:   '行数',
+	gridPickerCols:   '列数',
+	gridPickerInsert: '插入',
 
 	clickToEditTitle:  '点击编辑标题',
 	clickToEditFooter: '点击编辑备注',
@@ -182,6 +190,10 @@ export function tableVersionTooHighMsg(tableV: number, curV: number): string {
 	return isZh()
 		? `该表格由更高版本的 Rich Table（格式 v${tableV}）保存，当前插件最高支持 v${curV}，请升级插件后查看。`
 		: `This table was saved with Rich Table format v${tableV}, but the installed plugin only supports up to v${curV}. Please upgrade the plugin.`;
+}
+
+export function gridSizeCaption(rows: number, cols: number): string {
+	return isZh() ? `${rows} × ${cols} 表格` : `${rows} × ${cols} table`;
 }
 
 export function rowRangeLabel(r1: number, r2: number): string {

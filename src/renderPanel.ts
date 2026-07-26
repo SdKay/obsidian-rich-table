@@ -111,7 +111,7 @@ let closeActivePanel: (() => void) | null = null;
  * overflows, and finally pins to the viewport edge (with a max-height so an
  * over-tall panel scrolls internally rather than clipping its footer).
  */
-function clampPanelToViewport(
+export function clampPanelToViewport(
 	panel: HTMLElement, anchor: DOMRect,
 	vars: { top: string; left: string; maxHeight: string },
 ): void {

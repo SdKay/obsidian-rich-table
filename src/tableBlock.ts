@@ -8,6 +8,8 @@ import { serializeTable } from './serializer';
 import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
 import { registerHoverState, takeHoverState } from './renderHoverHandoff';
+import { buildBlankTable } from './blankTable';
+import { openGridSizePicker } from './gridSizePicker';
 import zhTemplate from './templates/zh.yaml';
 import enTemplate from './templates/en.yaml';
 
@@ -209,11 +211,23 @@ export class TableBlock extends MarkdownRenderChild {
 			if (isEmpty) {
 				const banner = createDiv({ cls: 'bt-template-banner' });
 				banner.createSpan({ text: t('templatePreview') });
-				const insertBtn = banner.createEl('button', {
+				const btns = banner.createDiv({ cls: 'bt-template-btns' });
+				const insertBtn = btns.createEl('button', {
 					cls: 'bt-template-btn',
 					text: t('insertTemplate'),
 				});
 				insertBtn.addEventListener('click', () => void this.insertTemplate());
+				const blankBtn = btns.createEl('button', {
+					cls: 'bt-template-btn bt-template-btn-secondary',
+					text: t('insertBlankTable'),
+				});
+				blankBtn.addEventListener('click', () => {
+					openGridSizePicker({
+						component: this,
+						anchor: blankBtn,
+						onConfirm: (rows, cols) => void this.insertBlank(rows, cols),
+					});
+				});
 				tmp.prepend(banner);
 			}
 		} catch (err) {
@@ -435,20 +449,29 @@ export class TableBlock extends MarkdownRenderChild {
 	}
 
 	private async insertTemplate(): Promise<void> {
-		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
-		if (!(file instanceof TFile)) return;
-		const info = this.ctx.getSectionInfo(this.containerEl);
-		if (!info) return;
 		// The template file's own pipe-table mirror is source-controlled by hand and
 		// easy to forget to update after editing the YAML — regenerate it here via
 		// the same parse→serialize round trip a real write-back uses, instead of
 		// trusting the template file's mirror to already be correct.
-		const v2Template = serializeTable(parseTable(getEmptyTemplate()));
+		await this.insertBlock(serializeTable(parseTable(getEmptyTemplate())));
+	}
+
+	private async insertBlank(rows: number, cols: number): Promise<void> {
+		await this.insertBlock(serializeTable(buildBlankTable(rows, cols)));
+	}
+
+	/** Shared by insertTemplate/insertBlank — both just splice fresh v2 content
+	 *  into the (empty) code block's line range, same pattern as applyMigration. */
+	private async insertBlock(v2Content: string): Promise<void> {
+		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
+		if (!(file instanceof TFile)) return;
+		const info = this.ctx.getSectionInfo(this.containerEl);
+		if (!info) return;
 		await this.plugin.app.vault.process(file, content => {
 			const lines = content.split('\n');
 			return [
 				...lines.slice(0, info.lineStart + 1),
-				...v2Template.trimEnd().split('\n'),
+				...v2Content.trimEnd().split('\n'),
 				...lines.slice(info.lineEnd),
 			].join('\n');
 		});

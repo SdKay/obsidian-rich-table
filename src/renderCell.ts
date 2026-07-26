@@ -204,7 +204,12 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
 		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
 	} = options;
-	el.createSpan({ cls: 'bt-th-text', text: value });
+	// An empty header name renders an empty <span>, which — same as an empty data
+	// cell's missing <p> — has no line box and collapses to just its padding,
+	// making the header row visibly shorter than data rows. Most tables never hit
+	// this (some column has a name), but a freshly-inserted blank table has EVERY
+	// header empty at once, making it obvious. Same U+00A0 fix as renderDataCell.
+	el.createSpan({ cls: 'bt-th-text', text: value || ' ' });
 	if (col.type) el.addClass('bt-th-typed');
 
 	const openPanel = (evt: MouseEvent, isDblClick = false) => {
