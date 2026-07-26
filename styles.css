@@ -1401,10 +1401,14 @@
  * §15 compliant: only CSS variable assignments and non-layout visual properties.
  */
 
-/* Suppress cell backgrounds; --bt-cell-border defaults to none so no grid lines. */
+/* Suppress cell backgrounds; --bt-cell-border defaults to none so no grid lines.
+ * No !important needed: this selector (3 classes) already outweighs the base
+ * .bt-table .bt-td/.bt-th background-color rule (2 classes) it overrides — a
+ * user's own per-cell background still wins regardless, since applyResolvedStyle
+ * always applies that inline with 'important' priority (see "Theme system"). */
 .bt-theme-academic .bt-table .bt-th,
 .bt-theme-academic .bt-table .bt-td {
-    background: none !important;
+    background: none;
 }
 
 /* Toprule + midrule: thick line above header, medium line below header.
@@ -1515,20 +1519,32 @@
 }
 
 /* ── Wrapper: outline + Flash comet ─────────────────────────────────── */
+/* overflow-y:hidden (paired with border-radius) rounds the table's own corners
+ * to match the outline above — same visual result as a clip-path on .bt-table,
+ * but clip-path's inset()+round shape is only partially supported across the
+ * range of Chromium builds Obsidian ships, while overflow+border-radius
+ * clipping is universally supported. overflow-x stays the base stylesheet's
+ * auto (unset here) so horizontal scrolling for a wide table is unaffected —
+ * per the CSS overflow spec neither axis computes to 'visible' once the other
+ * is non-visible, so both clip independently as intended. */
 .bt-theme-plain .bt-table-wrapper {
     border-radius: 12px;
+    overflow-y: hidden;
     outline: 1.5px solid hsl(var(--bt-p-hue, 260), 60%, 58%, 0.7);
     animation: bt-plain-flash 2s linear infinite;
     will-change: box-shadow;
 }
 
-/* ── Table ───────────────────────────────────────────────────────────── */
-.bt-theme-plain .bt-table {
-    clip-path: inset(0 round 11px);
-}
-
 /* ── Header: background-attachment:fixed = all cells share viewport coords
- * Every <th> sees a different slice of the same gradient → seamless band. */
+ * Every <th> sees a different slice of the same gradient → seamless band.
+ * No !important on any of these: this selector (3 classes) already outweighs
+ * the base .bt-table .bt-th rule (2 classes) for background/color, and nothing
+ * else in this file competes for background-attachment/animation. Dropping
+ * !important from `animation` also fixes a latent bug — the write-pending
+ * pause rule (styles.css) sets animation-play-state:paused with !important,
+ * which needs to win outright; it couldn't when this rule's own !important
+ * animation shorthand (which implicitly resets animation-play-state too) had
+ * higher selector specificity and tied on importance. */
 .bt-theme-plain .bt-table .bt-th {
     background: linear-gradient(
         to right,
@@ -1537,10 +1553,10 @@
         hsl(calc(var(--bt-p-hue, 260) + 95), 80%, 54%),
         hsl(calc(var(--bt-p-hue, 260) + 55), 75%, 42%),
         hsl(var(--bt-p-hue, 260), 68%, 20%)
-    ) !important;
-    background-attachment: fixed !important;
-    animation: bt-plain-breathe 3s ease-in-out infinite !important;
-    color: #fff !important;
+    );
+    background-attachment: fixed;
+    animation: bt-plain-breathe 3s ease-in-out infinite;
+    color: #fff;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-shadow: 0 1px 4px rgba(0,0,0,0.55), 0 0 8px rgba(0,0,0,0.3);
@@ -1553,7 +1569,13 @@
 }
 
 /* Row hover with cursor-local glow.
- * --bt-tbl-l/t (from positionEdgeStrips) converts cursor to table-local coords. */
+ * --bt-tbl-l/t (from positionEdgeStrips) converts cursor to table-local coords.
+ * !important IS required here (unlike the header rule above): this selector
+ * and the even-row-stripe selector below have IDENTICAL specificity (4
+ * classes/pseudo-classes + 2 elements each), so without !important the plain
+ * cascade would let source order decide — the even-row rule appears later in
+ * this same file and would silently win on every even row, breaking the hover
+ * glow specifically there. */
 .bt-theme-plain .bt-table tbody tr:hover .bt-td {
     background:
         radial-gradient(
@@ -1571,11 +1593,15 @@
 }
 
 /* ── Selection ──────────────────────────────────────────────────────── */
+/* No !important: this selector (4 classes) already outweighs the base
+ * .bt-table .bt-td.bt-selected rule (3 classes, styles.css) it overrides for
+ * outline-color/background, and .bt-selected is an internal plugin class no
+ * unrelated theme/snippet would independently target. */
 .bt-theme-plain .bt-table .bt-td.bt-selected,
 .bt-theme-plain .bt-table .bt-th.bt-selected {
-    outline-color: hsl(var(--bt-p-hue), 88%, 68%) !important;
+    outline-color: hsl(var(--bt-p-hue), 88%, 68%);
     background: color-mix(in srgb, hsl(var(--bt-p-hue), 85%, 65%) 22%,
-                          transparent) !important;
+                          transparent);
     box-shadow: inset 0 0 12px hsl(var(--bt-p-hue), 70%, 65%, 0.22);
 }
 

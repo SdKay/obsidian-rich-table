@@ -103,12 +103,10 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 
 **8 · Rich cell content** — math · bold/italic · links · images · lists · multi-line
 
-<!-- TODO: record demo-09-rich-content.gif -->
 > 🎬 *Demo GIF coming soon*
 
 **9 · Copy/paste interop with Excel & Markdown** — paste values pasted from Excel/Sheets straight into a cell (detected via clipboard HTML); copy a selection out as an Excel-compatible table or as a Markdown table, from the selection/cell/header menus
 
-<!-- TODO: record demo-16-copypaste.gif -->
 > 🎬 *Demo GIF coming soon*
 
 **10 · Row sorting** — column selector popup: one-time sort or live auto-sort with a header indicator
@@ -137,7 +135,6 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 
 **16 · Split cell** — double-click a plain cell → split into 2 rows/columns; other cells in that row/column keep their current shape
 
-<!-- TODO: record demo-17-split.gif -->
 > 🎬 *Demo GIF coming soon*
 
 ---
