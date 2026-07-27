@@ -89,6 +89,7 @@ function buildYaml(m: TableModelV2): string {
 			// time — only written once the user explicitly renames the view.
 			if (v.name) e.name = v.name;
 			if (v.kanban) e.kanban = { groupByColId: v.kanban.groupByColId };
+			if (v.calendar) e.calendar = { dateColId: v.calendar.dateColId };
 			return e;
 		});
 		// Only meaningful alongside the views[] entries above.

@@ -59,13 +59,16 @@ export type StructuralOpV2 =
 	| { type: 'reorder-rows';   rowIds: string[] }
 	/** Creates a new view and switches to it immediately (matches how a new
 	 *  row/column is both created and left as the natural next target). */
-	/** name omitted = derive the display name from groupByColId's current
-	 *  column header (see ViewDefV2's doc comment in model.ts). */
-	| { type: 'create-view';    name?: string; viewType: 'table' | 'kanban'; groupByColId?: string }
+	/** name omitted = derive the display name from groupByColId/dateColId's
+	 *  current column header (see ViewDefV2's doc comment in model.ts).
+	 *  groupByColId applies to viewType 'kanban', dateColId to 'calendar'. */
+	| { type: 'create-view';    name?: string; viewType: 'table' | 'kanban' | 'calendar'; groupByColId?: string; dateColId?: string }
 	| { type: 'delete-view';    viewId: string }
 	| { type: 'rename-view';    viewId: string; name: string }
-	/** Changes a kanban view's group-by column — a no-op for a table view. */
+	/** Changes a kanban view's group-by column — a no-op for a non-kanban view. */
 	| { type: 'set-view-group'; viewId: string; groupByColId: string }
+	/** Changes a calendar view's date column — a no-op for a non-calendar view. */
+	| { type: 'set-view-date-col'; viewId: string; dateColId: string }
 	/** null/absent-matching id = switch back to the default Table view. */
 	| { type: 'set-active-view'; viewId: string | null };
 
@@ -137,12 +140,13 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			model.styles = model.styles.filter(s =>
 				!s.target.endsWith(`.${op.colId}`) && s.target !== op.colId);
 			if (model.sort?.colId === op.colId) delete model.sort;
-			// A kanban view grouped by the deleted column has nothing left to group
-			// by — fall back to a plain table rendering rather than deleting the
-			// view outright (same "clear the invalid reference, don't destroy the
-			// entity" precedent as model.sort above).
+			// A kanban/calendar view driven by the deleted column has nothing left to
+			// group/place by — fall back to a plain table rendering rather than
+			// deleting the view outright (same "clear the invalid reference, don't
+			// destroy the entity" precedent as model.sort above).
 			for (const view of model.views ?? []) {
 				if (view.kanban?.groupByColId === op.colId) { view.type = 'table'; delete view.kanban; }
+				if (view.calendar?.dateColId === op.colId) { view.type = 'table'; delete view.calendar; }
 			}
 			break;
 		}
@@ -371,13 +375,17 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 
 		// ── Views ────────────────────────────────────────────────────────────────
 		case 'create-view': {
-			// A second kanban view grouped by the SAME column would look and behave
-			// identically to the first one — views don't have their own independent
-			// filter/sort yet (see ViewDefV2's doc comment in model.ts), so there's
-			// nothing to actually differentiate them by. Switch to the existing one
-			// instead of creating a confusing, functionally-duplicate view.
+			// A second kanban/calendar view driven by the SAME column would look and
+			// behave identically to the first one — views don't have their own
+			// independent filter/sort yet (see ViewDefV2's doc comment in model.ts),
+			// so there's nothing to actually differentiate them by. Switch to the
+			// existing one instead of creating a confusing, functionally-duplicate view.
 			if (op.viewType === 'kanban' && op.groupByColId) {
 				const dupe = model.views?.find(v => v.type === 'kanban' && v.kanban?.groupByColId === op.groupByColId);
+				if (dupe) { model.activeViewId = dupe.id; break; }
+			}
+			if (op.viewType === 'calendar' && op.dateColId) {
+				const dupe = model.views?.find(v => v.type === 'calendar' && v.calendar?.dateColId === op.dateColId);
 				if (dupe) { model.activeViewId = dupe.id; break; }
 			}
 			const existing = new Set((model.views ?? []).map(v => v.id));
@@ -385,6 +393,7 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			const view: ViewDefV2 = { id, type: op.viewType };
 			if (op.name) view.name = op.name;
 			if (op.viewType === 'kanban' && op.groupByColId) view.kanban = { groupByColId: op.groupByColId };
+			if (op.viewType === 'calendar' && op.dateColId) view.calendar = { dateColId: op.dateColId };
 			model.views ??= [];
 			model.views.push(view);
 			model.activeViewId = id;
@@ -404,6 +413,11 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'set-view-group': {
 			const view = model.views?.find(v => v.id === op.viewId);
 			if (view && view.type === 'kanban') view.kanban = { groupByColId: op.groupByColId };
+			break;
+		}
+		case 'set-view-date-col': {
+			const view = model.views?.find(v => v.id === op.viewId);
+			if (view && view.type === 'calendar') view.calendar = { dateColId: op.dateColId };
 			break;
 		}
 		case 'set-active-view': {

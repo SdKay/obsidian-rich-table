@@ -21,7 +21,9 @@ import { type CellOpEntry, openCellPanel } from './renderPanel';
 import { renderRow } from './renderCell';
 import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
 import { isHoverPinned, onHoverUnpinned, showMenuPinned } from './renderHoverPin';
-import { renderKanbanBoard, renderKanbanToolbar, buildViewSwitcherMenu } from './renderKanban';
+import { renderKanbanBoard } from './renderKanban';
+import { renderCalendarBoard } from './renderCalendar';
+import { renderViewToolbar, buildViewSwitcherMenu } from './renderViews';
 
 export async function renderTable(
 	model: TableModelV2,
@@ -135,31 +137,36 @@ export async function renderTable(
 	const root = container.createDiv({ cls: themeClass + (model.collapsed ? ' bt-collapsed' : '') });
 	onRootReady?.(root);
 
-	// ── Kanban view: an alternate render mode for the SAME rows/columns — see
-	// ViewDefV2 in model.ts. Deliberately bails out of the entire plain-table
-	// path below (colgroup, selector strips, edge-add strips, resize handles —
-	// none of that applies to a lane/card layout); only the always-visible
-	// mini toolbar (lock + view switcher) and the footer are shared. Checked
-	// BEFORE creating `wrapper` so the toolbar can be root's FIRST child (a
-	// wrapper created first, then a toolbar appended after, would put the
-	// toolbar's title below the board instead of above it). ──
+	// ── Kanban/Calendar view: an alternate render mode for the SAME rows/
+	// columns — see ViewDefV2 in model.ts. Deliberately bails out of the
+	// entire plain-table path below (colgroup, selector strips, edge-add
+	// strips, resize handles — none of that applies to a lane/card or month-
+	// grid layout); only the always-visible mini toolbar (lock + view
+	// switcher) and the footer are shared. Checked BEFORE creating `wrapper`
+	// so the toolbar can be root's FIRST child (a wrapper created first, then
+	// a toolbar appended after, would put the toolbar's title below the
+	// board instead of above it). ──
 	const activeView = model.views?.find(v => v.id === model.activeViewId);
-	if (activeView?.type === 'kanban') {
-		// kanbanMain is the region to the RIGHT of the icon column — the wrapper
+	if (activeView?.type === 'kanban' || activeView?.type === 'calendar') {
+		// viewMain is the region to the RIGHT of the icon column — the wrapper
 		// (and its centered title, above it) live inside that, not directly
 		// under root, so the title centers over the board's own width rather
 		// than the full row including the icon column.
-		const kanbanMain = renderKanbanToolbar({ root, model, registry, onStructuralOp, onToggleLock, activeView });
-		const kanbanWrapper = kanbanMain.createDiv({ cls: 'bt-table-wrapper' });
+		const viewMain = renderViewToolbar({ root, model, registry, onStructuralOp, onToggleLock, activeView });
+		const viewWrapper = viewMain.createDiv({ cls: 'bt-table-wrapper' });
 		// The wrapper's base width (--bt-wrapper-width, styles.css) defaults to
 		// max-content — sized to hug the TABLE's own natural width, so a compact
-		// table centers nicely instead of stretching edge-to-edge. A Kanban board
-		// wants the opposite: fill the available page width first, and only fall
-		// back to the board's own horizontal scroll once the lanes genuinely
-		// don't fit — so override it to 100% here rather than inheriting the
-		// table's hug-content default.
-		kanbanWrapper.setCssProps({ '--bt-wrapper-width': '100%' });
-		renderKanbanBoard({ model, wrapper: kanbanWrapper, view: activeView, registry, onStructuralOp });
+		// table centers nicely instead of stretching edge-to-edge. A Kanban/
+		// Calendar board wants the opposite: fill the available page width
+		// first, and only fall back to the board's own horizontal scroll once
+		// the lanes/grid genuinely don't fit — so override it to 100% here
+		// rather than inheriting the table's hug-content default.
+		viewWrapper.setCssProps({ '--bt-wrapper-width': '100%' });
+		if (activeView.type === 'kanban') {
+			renderKanbanBoard({ model, wrapper: viewWrapper, view: activeView, registry, onStructuralOp });
+		} else {
+			renderCalendarBoard({ model, wrapper: viewWrapper, root, view: activeView, registry, onStructuralOp, cacheKey: cacheKey ?? '' });
+		}
 		renderFooter();
 		return;
 	}

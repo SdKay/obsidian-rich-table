@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { applyStructuralOpV2 } from '../src/operations';
-import { viewDisplayName } from '../src/renderKanban';
+import { viewDisplayName } from '../src/renderViews';
 import type { TableModelV2 } from '../src/model';
 
 function baseModel(): TableModelV2 {

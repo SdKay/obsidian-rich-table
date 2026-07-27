@@ -143,14 +143,18 @@ function parseViews(raw: unknown): ViewDefV2[] {
 		if (typeof item !== 'object' || item === null) return null;
 		const v = item as Record<string, unknown>;
 		if (typeof v.id !== 'string') return null;
-		if (v.type !== 'table' && v.type !== 'kanban') return null;
+		if (v.type !== 'table' && v.type !== 'kanban' && v.type !== 'calendar') return null;
 		const view: ViewDefV2 = { id: v.id, type: v.type };
-		// Absent = derive the display name from the group-by column's current
+		// Absent = derive the display name from the group-by/date column's current
 		// header at render time (see ViewDefV2's doc comment, model.ts).
 		if (typeof v.name === 'string') view.name = v.name;
 		if (v.type === 'kanban' && typeof v.kanban === 'object' && v.kanban !== null) {
 			const groupByColId = (v.kanban as Record<string, unknown>).groupByColId;
 			if (typeof groupByColId === 'string') view.kanban = { groupByColId };
+		}
+		if (v.type === 'calendar' && typeof v.calendar === 'object' && v.calendar !== null) {
+			const dateColId = (v.calendar as Record<string, unknown>).dateColId;
+			if (typeof dateColId === 'string') view.calendar = { dateColId };
 		}
 		return view;
 	}).filter((v): v is ViewDefV2 => v !== null);

@@ -99,14 +99,23 @@ const EN = {
 	clearAggregate:  'Remove this summary row',
 	dragReorderAgg:  'Drag to reorder summary rows',
 
-	// Views (table / kanban switcher)
+	// Views (table / kanban / calendar switcher)
 	views:            'Views',
 	defaultTableView: 'Table',
 	newKanbanView:    'New kanban view: group by',
+	newCalendarView:  'New calendar view: dates from',
 	deleteView:       'Delete this view',
 	kanbanNoGroupCol: 'This view\'s group-by column no longer exists. Switch it from the views menu.',
 	kanbanNoValue:    'No value',
+	calendarNoDateCol: 'This view\'s date column no longer exists. Switch it from the views menu.',
 	untitledView:     'Untitled view',
+	untitledEvent:    'Untitled',
+
+	// Calendar view
+	calendarPrevMonth:  'Previous month',
+	calendarNextMonth:  'Next month',
+	calendarToday:      'Jump to today',
+	calendarUnscheduled: 'Unscheduled',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -191,10 +200,18 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	views:            '视图',
 	defaultTableView: '表格',
 	newKanbanView:    '新建看板视图：按此列分组',
+	newCalendarView:  '新建日历视图：按此列的日期',
 	deleteView:       '删除此视图',
 	kanbanNoGroupCol: '这个视图的分组列已经不存在了，请在视图菜单里重新选择。',
 	kanbanNoValue:    '未分组',
+	calendarNoDateCol: '这个视图的日期列已经不存在了，请在视图菜单里重新选择。',
 	untitledView:     '未命名视图',
+	untitledEvent:    '未命名',
+
+	calendarPrevMonth:  '上个月',
+	calendarNextMonth:  '下个月',
+	calendarToday:      '回到今天',
+	calendarUnscheduled: '未排期',
 };
 
 export function t(key: keyof typeof EN): string {
@@ -290,4 +307,8 @@ export function sortActiveLabel(colName: string, dir: 'asc' | 'desc'): string {
 	return isZh()
 		? `按"${colName}"排序（${dir === 'asc' ? '升序' : '降序'}）· 点击取消`
 		: `Sorted by "${colName}" (${dir === 'asc' ? 'ascending' : 'descending'}) · click to clear`;
+}
+
+export function calendarMoreEventsLabel(n: number): string {
+	return isZh() ? `还有 ${n} 条` : `+${n} more`;
 }

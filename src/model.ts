@@ -110,33 +110,39 @@ export interface StyleRuleV2 {
 
 /**
  * An additional named view over the same rows/columns — currently just an
- * alternate RENDER MODE (table vs kanban), not an independent filter/sort/
- * hidden-column scope. Deliberately scoped-down v1: filter/sort/aggregate/
- * hidden stay the single table-wide fields they already are (ColumnDefV2.filter,
- * TableModelV2.sort/aggregate, .hidden), shared by every view — a kanban view
- * respects whatever filter is currently active, it just can't have a DIFFERENT
- * one from the table view. Per-view-independent filter/sort is real, wanted
- * follow-up work, deliberately deferred: it would require every render-time
- * reader of those fields (isRowFiltered, applySortForDisplay, activeAggTypes,
- * every `.hidden` check) to resolve through "current view, else table-wide
- * default" instead of reading the table-wide field directly — a much larger,
- * separate change than standing up view *switching* itself.
+ * alternate RENDER MODE (table vs kanban vs calendar), not an independent
+ * filter/sort/hidden-column scope. Deliberately scoped-down v1: filter/sort/
+ * aggregate/hidden stay the single table-wide fields they already are
+ * (ColumnDefV2.filter, TableModelV2.sort/aggregate, .hidden), shared by every
+ * view — a kanban or calendar view respects whatever filter is currently
+ * active, it just can't have a DIFFERENT one from the table view. Per-view-
+ * independent filter/sort is real, wanted follow-up work, deliberately
+ * deferred: it would require every render-time reader of those fields
+ * (isRowFiltered, applySortForDisplay, activeAggTypes, every `.hidden` check)
+ * to resolve through "current view, else table-wide default" instead of
+ * reading the table-wide field directly — a much larger, separate change
+ * than standing up view *switching* itself.
  */
 export interface ViewDefV2 {
 	id: string;
 	/** Absent = derive the display name from the current column header (see
-	 *  viewDisplayName, renderKanban.ts) — e.g. a kanban view stays labeled
+	 *  viewDisplayName, renderViews.ts) — e.g. a kanban view stays labeled
 	 *  after its group-by column even if that column is later renamed, with
 	 *  no separate bookkeeping needed. Only set once the user explicitly
 	 *  renames the view (rename-view), at which point it "detaches" from the
 	 *  column and stays whatever they typed regardless of future renames. */
 	name?: string;
-	type: 'table' | 'kanban';
+	type: 'table' | 'kanban' | 'calendar';
 	/** Present when type === 'kanban': which column's value groups rows into
 	 *  lanes. Must be a choice-type column (see choiceRegistry.ts) — an "no
 	 *  value" lane covers rows whose cell is empty or not one of the type's
 	 *  defined options. */
 	kanban?: { groupByColId: string };
+	/** Present when type === 'calendar': which `type: date` column places a
+	 *  row on the grid. A row whose cell is empty (or fails to parse as
+	 *  YYYY-MM-DD — see renderDateCell.ts) has no day to sit on and is listed
+	 *  in an "Unscheduled" tray below the grid instead. */
+	calendar?: { dateColId: string };
 }
 
 /** Full table model for v2. */

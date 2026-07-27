@@ -1,5 +1,6 @@
 /**
  * Cross-rebuild hover-state handoff — the hover twin of renderEditHandoff.ts.
+ * Built on the generic createHandoff() factory (renderStateHandoff.ts).
  *
  * The hover-only selector strips (row/col selectors, edge-add buttons) live
  * inside a table's `.bt-render-root` and show/hide on that root's native
@@ -30,19 +31,19 @@
  * backstop.
  */
 
-const hoverStates = new Map<string, boolean>();
+import { createHandoff } from './renderStateHandoff';
+
+const handoff = createHandoff<true>();
 
 /** Called at write-back trigger time (old DOM still live) to record whether
  *  this table's hover strips were showing. */
 export function registerHoverState(cacheKey: string, wasHovered: boolean): void {
-	if (wasHovered) hoverStates.set(cacheKey, true);
-	else hoverStates.delete(cacheKey);
+	if (wasHovered) handoff.register(cacheKey, true);
+	else handoff.clear(cacheKey);
 }
 
 /** Consumes and returns whether this table was hovered before its last
  *  write-back rebuild. Returns false if nothing was recorded. */
 export function takeHoverState(cacheKey: string): boolean {
-	const was = hoverStates.get(cacheKey) ?? false;
-	hoverStates.delete(cacheKey);
-	return was;
+	return handoff.take(cacheKey) ?? false;
 }

@@ -298,6 +298,9 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | Hide and show rows / columns | ✅ |
 | Freeze header row / first N columns | 🔜 |
 | Row grouping — collapsible groups | 🔜 |
+| **Views** — alternate ways to browse the same rows/columns, switched via the layout-grid icon (or a Kanban/Calendar board's own icon column) | |
+| Kanban board — group rows into lanes by any choice-typed column; drag a card to another lane to change its value | ✅ |
+| Calendar — place rows on a month grid by any `date`-typed column; drag an event to reschedule it, undated rows list in an Unscheduled tray below | ✅ |
 | **Title & annotations** | |
 | Table title above, footer notes below — click to edit inline | ✅ |
 | Cell comments — floating notes shown on hover | 🔜 |

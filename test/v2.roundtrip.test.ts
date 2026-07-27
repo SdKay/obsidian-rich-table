@@ -158,6 +158,25 @@ describe('views round-trip (serializeTable → parseTable)', () => {
 		expect(serializeTable(reparsed)).toBe(serializeTable(parseTable(serializeTable(reparsed))));
 	});
 
+	it('preserves a calendar view and which one is active', () => {
+		const model = {
+			version: 2 as const,
+			columns: [{ id: 'c_0', name: 'Due', type: 'date' }],
+			rows: [{ id: 'r_0', cells: { c_0: '2026-07-01' } }],
+			merges: [],
+			styles: [],
+			views: [{ id: 'v_0', name: 'Calendar (Due)', type: 'calendar' as const, calendar: { dateColId: 'c_0' } }],
+			activeViewId: 'v_0',
+		};
+
+		const reparsed = parseTable(serializeTable(model));
+		expect(reparsed.views).toEqual(model.views);
+		expect(reparsed.activeViewId).toBe('v_0');
+
+		// Second round trip must be stable (Principle 3).
+		expect(serializeTable(reparsed)).toBe(serializeTable(parseTable(serializeTable(reparsed))));
+	});
+
 	it('a table with no views field parses/serializes exactly as before this feature existed', () => {
 		const model = {
 			version: 2 as const,

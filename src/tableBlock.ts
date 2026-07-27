@@ -8,6 +8,7 @@ import { serializeTable } from './serializer';
 import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
 import { registerHoverState, takeHoverState } from './renderHoverHandoff';
+import { registerCalendarMonth } from './renderCalendar';
 import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
 import zhTemplate from './templates/zh.yaml';
@@ -355,6 +356,16 @@ export class TableBlock extends MarkdownRenderChild {
 		// "strips pinned open because a menu is up" case (renderHoverPin.ts).
 		registerHoverState(this.cacheKey,
 			!!this.renderedRoot?.querySelector('.bt-strip-visible'));
+		// Same idea for a Calendar view's displayed month (renderCalendar.ts):
+		// navigating months is a purely local DOM change, so the ONLY place that
+		// knows what's currently shown is the render root's own dataset, stamped
+		// by renderCalendarBoard on every navigation. Read it now, before this
+		// root is torn down by the rebuild this op triggers.
+		const calYear = this.renderedRoot?.dataset.btCalYear;
+		const calMonth = this.renderedRoot?.dataset.btCalMonth;
+		if (calYear !== undefined && calMonth !== undefined) {
+			registerCalendarMonth(this.cacheKey, Number(calYear), Number(calMonth));
+		}
 		// Snapshot the CURRENT live DOM (content + hover strips + editing look, exactly
 		// what the user is seeing) so the rebuilt instance can inject it synchronously in
 		// onload() and stay visually continuous through the ~200ms tear-down/re-render —
