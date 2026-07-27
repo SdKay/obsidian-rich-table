@@ -88,6 +88,13 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'delete-row': {
 			const idx = model.rows.findIndex(r => r.id === op.rowId);
 			if (idx < 0) break;
+			// Shrink (not remove) a merge that spans MORE than this one row and
+			// happens to have this row as its literal top/bottom boundary — see
+			// reanchorMergesForRowDeletion's doc comment. Must run BEFORE the
+			// splice below, and before the endsWith-based filter, which still
+			// correctly drops any merge that's left with nothing to anchor to
+			// (a single-row span whose only row is the one being deleted).
+			reanchorMergesForRowDeletion(model, op.rowId);
 			model.rows.splice(idx, 1);
 			// Remove merges that reference this row
 			model.merges = model.merges.filter(m =>
@@ -133,6 +140,9 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'delete-col': {
 			const idx = model.columns.findIndex(c => c.id === op.colId);
 			if (idx < 0) break;
+			// Column-axis mirror of the delete-row fix above — see
+			// reanchorMergesForColumnDeletion's doc comment.
+			reanchorMergesForColumnDeletion(model, op.colId);
 			model.columns.splice(idx, 1); // takes col.filter with it — no separate cleanup needed
 			for (const row of model.rows) delete row.cells[op.colId];
 			model.merges = model.merges.filter(m =>
@@ -591,6 +601,81 @@ function reanchorColMerges(model: TableModelV2, snapshots: ColMergeSnapshot[]): 
 		const [endRowId]    = splitAnchor(merge.end);
 		merge.anchor = `${anchorRowId}.${leftId}`;
 		merge.end    = `${endRowId}.${rightId}`;
+	}
+}
+
+/**
+ * `delete-row`'s own merge cleanup (the `endsWith`-based filter right after
+ * this runs) unconditionally DROPS any merge whose anchor or end is the row
+ * being deleted — correct for a merge that only spans that one row, but
+ * wrong for one that spans MULTIPLE rows and merely happens to have this row
+ * as its literal top or bottom boundary: reported case — a 3-column-wide,
+ * 2-row-tall merge lost its entire merge (not just shrank by one row) when
+ * the bottom row was deleted. The fix shrinks the boundary inward to the
+ * next remaining row first, so the filter afterward no longer matches it at
+ * all (its anchor/end no longer reference the deleted row).
+ *
+ * Deliberately NOT built on the same snapshot-and-recheck-contiguity mechanism
+ * `reanchorRowMerges` (move-row) uses — that machinery exists to answer "did
+ * this group scatter apart after a move", which doesn't apply here: a row
+ * being permanently deleted can't scatter, it's simply gone, so only the two
+ * boundary rows ever need adjusting, and a row in the MIDDLE of the span
+ * needs no change at all (the merge already resolves by ID at render time —
+ * removing a middle member just shrinks its rendered rowspan for free).
+ */
+function reanchorMergesForRowDeletion(model: TableModelV2, removedRowId: string): void {
+	const removedIdx = resolveMergeRowIndex(model, removedRowId);
+	if (removedIdx === undefined) return;
+	for (const merge of model.merges) {
+		const [anchorRowId, anchorColId] = splitAnchor(merge.anchor);
+		const [endRowId, endColId]       = splitAnchor(merge.end);
+		const r1 = resolveMergeRowIndex(model, anchorRowId);
+		const r2 = resolveMergeRowIndex(model, endRowId);
+		if (r1 === undefined || r2 === undefined) continue;
+		const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+		if (hi === lo) continue; // single-row span — the filter below already handles this correctly
+		const anchorIsLeft = r1 <= r2; // which field (anchor vs end) holds the lo-side row
+		if (removedIdx === lo) {
+			const newTopId = model.rows[lo + 1]?.id;
+			if (!newTopId) continue;
+			if (anchorIsLeft) merge.anchor = `${newTopId}.${anchorColId}`;
+			else              merge.end    = `${newTopId}.${endColId}`;
+		} else if (removedIdx === hi) {
+			const newBottomId = model.rows[hi - 1]?.id;
+			if (!newBottomId) continue;
+			if (anchorIsLeft) merge.end    = `${newBottomId}.${endColId}`;
+			else              merge.anchor = `${newBottomId}.${anchorColId}`;
+		}
+		// else: removedIdx is strictly inside (lo, hi) — no boundary change needed.
+	}
+}
+
+/** Column-axis mirror of {@link reanchorMergesForRowDeletion} — same reasoning,
+ *  called from `delete-col` before its own endsWith-based merge filter. */
+function reanchorMergesForColumnDeletion(model: TableModelV2, removedColId: string): void {
+	const removedIdx = model.columns.findIndex(c => c.id === removedColId);
+	if (removedIdx < 0) return;
+	for (const merge of model.merges) {
+		const [anchorRowId, anchorColId] = splitAnchor(merge.anchor);
+		const [endRowId, endColId]       = splitAnchor(merge.end);
+		const c1 = model.columns.findIndex(c => c.id === anchorColId);
+		const c2 = model.columns.findIndex(c => c.id === endColId);
+		if (c1 < 0 || c2 < 0) continue;
+		const lo = Math.min(c1, c2), hi = Math.max(c1, c2);
+		if (hi === lo) continue; // single-column span — the filter below already handles this correctly
+		const anchorIsLeft = c1 <= c2; // which field (anchor vs end) holds the lo-side column
+		if (removedIdx === lo) {
+			const newLeftId = model.columns[lo + 1]?.id;
+			if (!newLeftId) continue;
+			if (anchorIsLeft) merge.anchor = `${anchorRowId}.${newLeftId}`;
+			else              merge.end    = `${endRowId}.${newLeftId}`;
+		} else if (removedIdx === hi) {
+			const newRightId = model.columns[hi - 1]?.id;
+			if (!newRightId) continue;
+			if (anchorIsLeft) merge.end    = `${endRowId}.${newRightId}`;
+			else              merge.anchor = `${anchorRowId}.${newRightId}`;
+		}
+		// else: removedIdx is strictly inside (lo, hi) — no boundary change needed.
 	}
 }
 
