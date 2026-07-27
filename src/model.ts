@@ -178,6 +178,51 @@ export interface TableModelV2 {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// V3 — multi-sheet workbook container
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One sheet inside a multi-sheet workbook. Deliberately shaped as
+ * `TableModelV2` PLUS a few sheet-identity/tab-styling fields, not a
+ * redefinition — a sheet's own data (columns/rows/merges/styles/views/...) is
+ * exactly what a single-sheet v2 table already is, so every existing
+ * consumer (`applyStructuralOpV2`, `renderTable`, `parseModelFields`,
+ * `serializeModelFields`) can take a `SheetDefV2` anywhere it expects a
+ * `TableModelV2` with zero adapter code. `version` is carried along (always
+ * `2`) purely for structural compatibility with `TableModelV2` — it is never
+ * written into a sheet's own YAML entry (only the WORKBOOK's outer `version:
+ * 3` is meaningful on disk); see `serializeWorkbook` in serializer.ts.
+ */
+export interface SheetDefV2 extends TableModelV2 {
+	id: string;
+	/** Absent = "Sheet N" fallback derived from position at render time. */
+	name?: string;
+	/** Right-click "set style" — the tab's own background/text color, distinct
+	 *  from any cell/row/column style inside the sheet's grid. */
+	tabColor?: string;
+	tabTextColor?: string;
+}
+
+/**
+ * Multi-sheet workbook container — the v3 format. A table only ever becomes
+ * this shape once the user explicitly adds a second sheet (see
+ * `workbookOperations.ts`'s `create-sheet`); opening/parsing an existing v2
+ * table never auto-converts it, and deleting back down to zero sheets
+ * collapses the whole code block back to an empty block (same "insert
+ * template / insert blank table" banner a brand-new block shows) rather than
+ * persisting an empty `sheets: []` shell.
+ */
+export interface WorkbookV3 {
+	version: 3;
+	title?: string;
+	/** Absent or unmatched = falls back to `sheets[0]` — unlike
+	 *  `TableModelV2.activeViewId`, a workbook always has SOME active sheet;
+	 *  there's no "default" state to fall back to. */
+	activeSheetId?: string;
+	sheets: SheetDefV2[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface ChoiceOption {
 	value: string;

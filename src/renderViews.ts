@@ -108,6 +108,10 @@ export interface RenderViewToolbarOptions {
 	onStructuralOp?: StructuralOpHandler;
 	onToggleLock?: ToggleLockHandler;
 	activeView: ViewDefV2;
+	/** Left-toolbar "add sheet" button — see the matching param on
+	 *  renderTable() in renderer.ts for why this stays a separate callback
+	 *  rather than a StructuralOpV2. */
+	onCreateSheet?: () => void;
 }
 
 /**
@@ -126,10 +130,10 @@ export interface RenderViewToolbarOptions {
  * append them into `main` before rendering its board.
  */
 export function renderViewToolbar(opts: RenderViewToolbarOptions): HTMLElement {
-	const { root, model, registry, onStructuralOp, onToggleLock, activeView } = opts;
+	const { root, model, registry, onStructuralOp, onToggleLock, activeView, onCreateSheet } = opts;
 	const layout = root.createDiv({ cls: 'bt-view-layout' });
 
-	if (onToggleLock || onStructuralOp) {
+	if (onToggleLock || onStructuralOp || onCreateSheet) {
 		const icons = layout.createDiv({ cls: 'bt-view-toolbar-icons' });
 
 		if (onToggleLock) {
@@ -154,6 +158,12 @@ export function renderViewToolbar(opts: RenderViewToolbarOptions): HTMLElement {
 			setIcon(viewsBtn, 'layout-grid');
 			viewsBtn.addEventListener('click', (evt: MouseEvent) =>
 				showMenuPinned(buildViewSwitcherMenu(model, registry, onStructuralOp), evt));
+		}
+
+		if (onCreateSheet) {
+			const addSheetBtn = icons.createDiv({ cls: 'bt-ctrl-btn', attr: { 'aria-label': t('newSheet') } });
+			setIcon(addSheetBtn, 'copy-plus');
+			addSheetBtn.addEventListener('click', () => onCreateSheet());
 		}
 	}
 

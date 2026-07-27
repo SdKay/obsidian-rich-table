@@ -14,7 +14,7 @@
  */
 
 import { stringifyYaml } from 'obsidian';
-import type { TableModelV2 } from './model';
+import type { SheetDefV2, TableModelV2, WorkbookV3 } from './model';
 
 const MIRROR_LIMIT = 200;
 const MIRROR_COMMENT =
@@ -22,17 +22,51 @@ const MIRROR_COMMENT =
 	'data source is the YAML front-matter above. -->';
 
 export function serializeTable(model: TableModelV2): string {
-	const parts: string[] = ['---', buildYaml(model).trimEnd(), '---', ''];
+	const obj: Record<string, unknown> = { version: 2, ...serializeModelFields(model) };
+	const parts: string[] = ['---', stringifyYaml(obj).trimEnd(), '---', ''];
 	parts.push(MIRROR_COMMENT);
 	parts.push(buildPipeTable(model));
 	return parts.join('\n');
 }
 
+/**
+ * Serializes a multi-sheet workbook. Deliberately has NO pipe-table mirror
+ * (unlike `serializeTable`) — a per-sheet mirror would need the block to
+ * alternate YAML/markdown chunks with no reliable way to tell them apart on
+ * the next parse, and a single combined mirror for just the active sheet
+ * would be a confusing half-measure, so v3 tables simply aren't readable in
+ * raw markdown without the plugin (a deliberate, accepted tradeoff — see the
+ * multi-sheet design discussion). Determinism (parse→serialize→parse→
+ * serialize byte-stable, same Principle-3 guarantee `test/v2.roundtrip.test.ts`
+ * already checks for single-sheet tables) is what keeps re-serializing every
+ * sheet on every write-back safe — editing one sheet never perturbs another
+ * sheet's YAML text, because `serializeModelFields`/`stringifyYaml` produce
+ * the same output for the same data regardless of what else is in the array.
+ */
+export function serializeWorkbook(workbook: WorkbookV3): string {
+	const obj: Record<string, unknown> = { version: 3 };
+	if (workbook.title) obj.title = workbook.title;
+	obj.active_sheet = workbook.activeSheetId;
+	obj.sheets = workbook.sheets.map(serializeSheet);
+	return ['---', stringifyYaml(obj).trimEnd(), '---', ''].join('\n');
+}
+
+function serializeSheet(sheet: SheetDefV2): Record<string, unknown> {
+	const entry: Record<string, unknown> = { id: sheet.id };
+	if (sheet.name) entry.name = sheet.name;
+	if (sheet.tabColor) entry.tabColor = sheet.tabColor;
+	if (sheet.tabTextColor) entry.tabTextColor = sheet.tabTextColor;
+	Object.assign(entry, serializeModelFields(sheet));
+	return entry;
+}
+
 // ── YAML block ────────────────────────────────────────────────────────────────
 
-function buildYaml(m: TableModelV2): string {
-	// Fixed field order for deterministic output.
-	const obj: Record<string, unknown> = { version: 2 };
+/** Builds every field of a single sheet's model EXCEPT `version` — shared by
+ *  `serializeTable` (top-level object) and `serializeSheet` (one `sheets[]`
+ *  entry) since a sheet's own data is exactly a single-sheet v2 table's data. */
+function serializeModelFields(m: TableModelV2): Record<string, unknown> {
+	const obj: Record<string, unknown> = {};
 
 	if (m.title)   obj.title   = m.title;
 
@@ -96,7 +130,7 @@ function buildYaml(m: TableModelV2): string {
 		if (m.activeViewId) obj.activeViewId = m.activeViewId;
 	}
 
-	return stringifyYaml(obj);
+	return obj;
 }
 
 // ── Pipe table mirror ─────────────────────────────────────────────────────────

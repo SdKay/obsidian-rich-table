@@ -9,16 +9,30 @@ import type {
 	ColumnDefV2,
 	MergeRangeV2,
 	RowDefV2,
+	SheetDefV2,
 	StyleRuleV2,
 	TableModelV2,
 	ViewDefV2,
+	WorkbookV3,
 } from './model';
+import { genId } from './idGen';
 
 const AGG_TYPES: AggType[] = ['sum', 'avg', 'min', 'max', 'count'];
 
 export function parseTable(source: string): TableModelV2 {
 	const yaml = extractFrontmatter(source);
+	return { version: 2, ...parseModelFields(yaml) };
+}
 
+/**
+ * Parses the fields a single sheet's model is made of — everything
+ * `TableModelV2` has except `version` itself. Shared by `parseTable` (reads
+ * these fields from the top-level YAML object) and `parseWorkbook` (reads the
+ * exact same fields from each entry of `sheets[]`) — a sheet's own data is
+ * structurally identical to a single-sheet v2 table's, so there is nothing
+ * multi-sheet-specific to special-case here.
+ */
+function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModelV2, 'version'> {
 	const columns = parseColumns(yaml?.columns);
 	const rows    = parseRows(yaml?.rows);
 	const sort    = parseSort(yaml?.sort);
@@ -26,7 +40,6 @@ export function parseTable(source: string): TableModelV2 {
 	const views   = parseViews(yaml?.views);
 
 	return {
-		version:  2,
 		columns,
 		rows,
 		merges:   parseMerges(yaml?.merges),
@@ -44,6 +57,68 @@ export function parseTable(source: string): TableModelV2 {
 		...(typeof yaml?.activeViewId === 'string' && views.some(v => v.id === yaml.activeViewId)
 			? { activeViewId: yaml.activeViewId } : {}),
 	};
+}
+
+/**
+ * Parses the multi-sheet workbook shape (`sheets:` array in the front
+ * matter) — returns `null` when the source isn't in this shape at all (no
+ * `sheets` array, or an empty one), which is exactly the structural signal
+ * `parseSource` uses to fall back to the plain single-sheet `parseTable`
+ * path. A v2 single-sheet table's front matter has `columns`/`rows` directly
+ * and no `sheets` field, so the two shapes never collide.
+ */
+export function parseWorkbook(source: string): WorkbookV3 | null {
+	const yaml = extractFrontmatter(source);
+	if (!yaml || !Array.isArray(yaml.sheets) || yaml.sheets.length === 0) return null;
+
+	const existingIds = new Set<string>();
+	const sheets = yaml.sheets
+		.map(raw => parseSheet(raw, existingIds))
+		.filter((s): s is SheetDefV2 => s !== null);
+	if (sheets.length === 0) return null;
+
+	const activeSheetId = typeof yaml.active_sheet === 'string' && sheets.some(s => s.id === yaml.active_sheet)
+		? yaml.active_sheet
+		: sheets[0]!.id; // a workbook always has SOME active sheet — no "default" to fall back to
+
+	return {
+		version: 3,
+		...(typeof yaml.title === 'string' ? { title: yaml.title } : {}),
+		activeSheetId,
+		sheets,
+	};
+}
+
+/**
+ * Parses one `sheets[]` entry. A malformed entry (not an object, or missing
+ * `id`) is dropped silently rather than failing the whole workbook — same
+ * "one bad entry doesn't take down the rest" leniency `parseColumns`/
+ * `parseRows`/etc. already apply to their own array elements. A DUPLICATE id
+ * (two sheets sharing one id, e.g. from hand-editing) is silently
+ * re-generated rather than rejected outright — consistent with this
+ * codebase's existing "clear/fix the problem, don't refuse to render over a
+ * fixable issue" precedent (dangling activeViewId, dangling kanban/calendar
+ * column refs).
+ */
+function parseSheet(raw: unknown, existingIds: Set<string>): SheetDefV2 | null {
+	if (typeof raw !== 'object' || raw === null) return null;
+	const v = raw as Record<string, unknown>;
+	if (typeof v.id !== 'string') return null;
+	const id = existingIds.has(v.id) ? genId('s', existingIds) : v.id;
+	existingIds.add(id);
+
+	const sheet: SheetDefV2 = { id, version: 2, ...parseModelFields(v) };
+	if (typeof v.name === 'string') sheet.name = v.name;
+	if (typeof v.tabColor === 'string') sheet.tabColor = v.tabColor;
+	if (typeof v.tabTextColor === 'string') sheet.tabTextColor = v.tabTextColor;
+	return sheet;
+}
+
+/** Single entry point for tableBlock.ts: dispatches to the workbook parser or
+ *  the plain single-sheet parser based on which shape the source is actually
+ *  in — see `parseWorkbook`'s doc comment for the structural detection rule. */
+export function parseSource(source: string): TableModelV2 | WorkbookV3 {
+	return parseWorkbook(source) ?? parseTable(source);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

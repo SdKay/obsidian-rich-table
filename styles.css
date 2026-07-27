@@ -326,6 +326,21 @@
 	opacity: 0;
 	transition: opacity 0.08s;
 	z-index: 11;
+	/* Caps the icon stack to the table's own height (positionCtrlCol,
+	 * renderer.ts) — without this, a short table's icon column overflows
+	 * past its own bottom edge and can get silently clipped by Obsidian's
+	 * live-preview widget container. Scrolls internally instead of losing
+	 * buttons off the bottom once there are more icons than a short table
+	 * has room for. A visible scrollbar on a small hover-reveal icon strip
+	 * reads as clutter, so it's hidden — overflow:auto still responds to
+	 * mouse-wheel scrolling with the cursor over the column regardless of
+	 * whether the scrollbar itself is drawn. */
+	max-height: var(--cc-maxh, none);
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+.bt-ctrl-col::-webkit-scrollbar {
+	display: none;
 }
 .bt-render-root:hover .bt-ctrl-col { opacity: 1; }
 .bt-ctrl-col.is-locked             { opacity: 1; }   /* stay visible when locked */
@@ -1779,6 +1794,147 @@
 .bt-cal-unscheduled-body .bt-cal-event {
 	flex: 0 0 auto;
 	max-width: 200px;
+}
+
+/* ── Sheet tabs (multi-sheet workbooks) ─────────────────────────────────── */
+/* Trying to visually "connect" the tab strip to the table above it (matching
+ * borders, zero gap) was attempted and abandoned — the table's own wrapper is
+ * only as wide as its content and can sit anywhere horizontally (centered,
+ * or shifted by scroll), while the tab strip is a separate flex row with no
+ * positional relationship to it, so the two boxes never actually lined up
+ * (confirmed visually: the "connected" outline floated nowhere near the
+ * tabs for anything but a full-width table). Self-contained "recessed track"
+ * look instead — the same depth-via-shadow pattern browser tab strips and
+ * macOS segmented controls use: the whole bar is a visibly recessed groove,
+ * inactive tabs sit flat inside it, the active tab is raised OUT of the
+ * groove via its own shadow + a background matching the table's content
+ * area. Doesn't depend on the table's width/position at all. */
+.bt-sheet-tabbar {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	margin-top: var(--size-4-2);
+	padding: 4px;
+	background: var(--background-secondary);
+	border-radius: var(--radius-m);
+	overflow-x: auto;
+}
+
+.bt-sheet-tab {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+	padding: var(--size-4-1) var(--size-4-3);
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-small);
+	color: var(--bt-sheet-tab-color, var(--text-muted));
+	background: transparent;
+	/* A real border on every tab, not just a background tint — a translucent
+	 * background tint alone (tried first) wasn't reliably visible across
+	 * themes (reported: "still looks like plain status-bar text"). This is
+	 * the same token every other bordered chip/button in Obsidian's own UI
+	 * uses, so it's guaranteed to have real contrast against the track. */
+	border: 1px solid var(--background-modifier-border);
+	cursor: pointer;
+	user-select: none;
+	transition: background 0.08s, box-shadow 0.08s;
+}
+.bt-sheet-tab:hover:not(.bt-sheet-tab-active) {
+	background: var(--background-modifier-hover);
+}
+
+/* Raised out of the track via a real drop shadow (the actual "in front of
+ * the others" depth cue) plus a background matching the table's own content
+ * area, so it reads as the tab that's currently "open" rather than just
+ * bolder text among otherwise-identical siblings. */
+.bt-sheet-tab-active,
+.bt-sheet-tab-active:hover {
+	color: var(--bt-sheet-tab-color, var(--text-normal));
+	background: var(--bt-sheet-tab-bg, var(--background-primary));
+	border-color: var(--bt-sheet-tab-bg, var(--interactive-accent));
+	box-shadow: var(--shadow-s);
+	font-weight: var(--font-semibold);
+}
+
+.bt-sheet-tab.bt-dragging {
+	opacity: 0.4;
+}
+
+.bt-sheet-tab-dragover {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+.bt-sheet-tab-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 160px;
+}
+
+.bt-sheet-tab-input {
+	background: var(--background-primary);
+	border: 1px solid var(--interactive-accent);
+	border-radius: var(--radius-s);
+	color: inherit;
+	font: inherit;
+	padding: 0 2px;
+	width: 120px;
+}
+
+.bt-sheet-tab-add {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+	border-radius: var(--radius-s);
+	color: var(--text-faint);
+	cursor: pointer;
+}
+.bt-sheet-tab-add:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+.bt-sheet-tab-add svg { width: 13px; height: 13px; }
+
+.bt-sheet-style-panel {
+	position: fixed;
+	top: var(--bt-tsp-top, 0px);
+	left: var(--bt-tsp-left, 0px);
+	z-index: var(--layer-popover);
+	padding: var(--size-4-3);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-m);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.bt-sheet-style-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+.bt-sheet-style-row span {
+	flex: 1;
+	font-size: var(--font-ui-small);
+}
+
+.bt-sheet-style-clear {
+	background: transparent;
+	border: none;
+	color: var(--text-faint);
+	cursor: pointer;
+	font-size: var(--font-ui-medium);
+	line-height: 1;
+	padding: 0 4px;
+}
+.bt-sheet-style-clear:hover {
+	color: var(--text-normal);
 }
 
 

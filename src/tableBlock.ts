@@ -1,12 +1,15 @@
 import { MarkdownPostProcessorContext, MarkdownRenderChild, TFile, setIcon } from 'obsidian';
 import { isZh, t, tableVersionTooHighMsg } from './i18n';
-import { CURRENT_TABLE_VERSION, getTableVersion, migrateSource } from './tableVersion';
+import { CURRENT_TABLE_VERSION, MIN_STABLE_VERSION, getTableVersion, migrateSource } from './tableVersion';
 import type BetterTablePlugin from './main';
-import type { TableModelV2 } from './model';
-import { parseTable } from './parser';
-import { serializeTable } from './serializer';
+import type { SheetDefV2, TableModelV2, WorkbookV3 } from './model';
+import { parseTable, parseSource } from './parser';
+import { serializeTable, serializeWorkbook } from './serializer';
 import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
+import { applyWorkbookOp, type WorkbookOpV2 } from './workbookOperations';
+import { renderSheetTabBar } from './renderSheetTabs';
+import { genId } from './idGen';
 import { registerHoverState, takeHoverState } from './renderHoverHandoff';
 import { registerCalendarMonth } from './renderCalendar';
 import { buildBlankTable } from './blankTable';
@@ -62,7 +65,6 @@ function getEmptyTemplate(): string {
 	return isZh() ? zhTemplate : enTemplate;
 }
 
-
 /** True when the table's YAML front-matter contains `noUpgrade: true`. */
 function hasUpgradeSuppressed(source: string): boolean {
 	const lines = source.split('\n');
@@ -74,14 +76,25 @@ function hasUpgradeSuppressed(source: string): boolean {
 	return false;
 }
 
+/** One queued op, tagged by which reducer it belongs to — see `queueOp`. */
+type PendingOp =
+	| { kind: 'cell';     op: StructuralOpV2 }
+	| { kind: 'workbook'; op: WorkbookOpV2 };
+
 export class TableBlock extends MarkdownRenderChild {
+	// Exactly one of these two is non-null at a time (mutually exclusive
+	// render modes) — see `activeModel`. `workbook` holds a genuine multi-
+	// sheet table; `model` holds a plain single-sheet v2 table. A table only
+	// ever moves from `model` to `workbook` via an explicit "add a second
+	// sheet" user action (see `convertToWorkbook`), never automatically.
 	private model: TableModelV2 | null = null;
+	private workbook: WorkbookV3 | null = null;
 	// Reference to the rendered bt-render-root element — used for instant theme updates.
 	private renderedRoot: HTMLElement | null = null;
 	// Serialised write chain — strictly ordered so concurrent writes never interleave.
 	private writeChain: Promise<void> = Promise.resolve();
 	// Batch queue: ops arriving in the same JS tick are applied together in one write.
-	private pendingOps: StructuralOpV2[] = [];
+	private pendingOps: PendingOp[] = [];
 	private writeBackScheduled = false;
 	// True during the atomic DOM swap in render() — strips must not show while
 	// containerEl is being rebuilt (stale or double-root rects are unreliable).
@@ -96,6 +109,17 @@ export class TableBlock extends MarkdownRenderChild {
 		private readonly cacheKey: string,
 	) {
 		super(container);
+	}
+
+	/** The sheet currently being shown — a plain single-sheet model in
+	 *  `model` mode, or whichever sheet `workbook.activeSheetId` names (falling
+	 *  back to the first sheet, since a workbook always has SOME active sheet —
+	 *  unlike ViewDefV2's activeViewId, there's no "default/none" state here). */
+	private get activeModel(): TableModelV2 | null {
+		if (this.workbook) {
+			return this.workbook.sheets.find(s => s.id === this.workbook!.activeSheetId) ?? this.workbook.sheets[0] ?? null;
+		}
+		return this.model;
 	}
 
 	onload(): void {
@@ -140,7 +164,11 @@ export class TableBlock extends MarkdownRenderChild {
 				while (tmp.firstChild) this.containerEl.appendChild(tmp.firstChild);
 				return;
 			}
-			if (tableV < CURRENT_TABLE_VERSION && !hasUpgradeSuppressed(this.source)) {
+			// MIN_STABLE_VERSION, not CURRENT_TABLE_VERSION — a plain v2 table is
+			// NOT "outdated", it just doesn't have sheets (see tableVersion.ts's
+			// doc comment on why these two constants deliberately differ as of
+			// v3). Only a real v1 table needs the upgrade-and-convert banner.
+			if (tableV < MIN_STABLE_VERSION && !hasUpgradeSuppressed(this.source)) {
 				// Table uses an older format — show upgrade banner; user must opt in.
 				const banner = tmp.createDiv({ cls: 'bt-upgrade-banner' });
 				const iconEl = banner.createSpan({ cls: 'bt-upgrade-banner-icon' });
@@ -182,54 +210,95 @@ export class TableBlock extends MarkdownRenderChild {
 		const tableV     = isEmpty ? CURRENT_TABLE_VERSION : getTableVersion(source);
 		// isOldFormat: v1 tables are read-only until the user explicitly upgrades.
 		// Also prevents the lock button from accidentally triggering a v1→v2 write-back.
-		const isOldFormat   = !isEmpty && tableV < CURRENT_TABLE_VERSION;
+		const isOldFormat   = !isEmpty && tableV < MIN_STABLE_VERSION;
 		// lockAvailable: only for current-format tables in live-preview mode.
 		const lockAvailable = !isReadingView && !isEmpty && !isOldFormat;
 
 		try {
-			if (tableV >= CURRENT_TABLE_VERSION) {
-				// Current-format table: parse directly.
-				this.model = parseTable(source);
+			if (tableV >= MIN_STABLE_VERSION) {
+				// Current-format table (v2 single-sheet or v3 workbook): parse
+				// directly. isEmpty always resolves to a fresh single-sheet
+				// template, never a workbook, so parseTable is enough there —
+				// parseSource's structural detection is only needed for real
+				// on-disk content.
+				const parsed = isEmpty ? parseTable(source) : parseSource(source);
+				if (parsed.version === 3) { this.workbook = parsed; this.model = null; }
+				else                      { this.model = parsed; this.workbook = null; }
 			} else {
-				// Older format: migrate in-memory for a read-only preview.
+				// Older format: migrate in-memory for a read-only preview. A v1
+				// table always migrates to a plain v2 single-sheet model —
+				// v1→v3 isn't a real migration path (see tableVersion.ts).
 				this.model = parseTable(migrateSource(source, tableV));
+				this.workbook = null;
 			}
-			const locked = this.model.locked ?? false;
-			await renderTable(
-				this.model,
-				() => this.plugin.choiceRegistry,
-				tmp,
-				this.plugin.app,
-				this.sourcePath,
-				this,
-				(isEmpty || !editAllowed || locked || isOldFormat) ? undefined : (op) => this.handleStructuralOp(op),
-				lockAvailable ? () => this.handleStructuralOp({ type: 'toggle-lock' }) : undefined,
-				(root) => { this.renderedRoot = root; },
-				() => this.isRendering,
-				this.cacheKey,
-				() => this.plugin.settings.singleClickEdit,
-			);
+			const active = this.activeModel;
+			const locked = active?.locked ?? false;
+			const onWorkbookOp = (isEmpty || !editAllowed || locked || isOldFormat) ? undefined : (op: WorkbookOpV2) => void this.handleWorkbookOp(op);
+			// Left-toolbar "add sheet" button — kept visible regardless of
+			// whether the table already has its own bottom sheet-tab-bar (which
+			// has its own "+" too); both dispatch the exact same create-sheet op,
+			// this one just stays reachable without needing the tab bar in view.
+			const onCreateSheet = onWorkbookOp ? () => onWorkbookOp({ type: 'create-sheet' }) : undefined;
+
+			if (active) {
+				await renderTable(
+					active,
+					() => this.plugin.choiceRegistry,
+					tmp,
+					this.plugin.app,
+					this.sourcePath,
+					this,
+					(isEmpty || !editAllowed || locked || isOldFormat) ? undefined : (op) => this.handleStructuralOp(op),
+					lockAvailable ? () => this.handleStructuralOp({ type: 'toggle-lock' }) : undefined,
+					(root) => { this.renderedRoot = root; },
+					() => this.isRendering,
+					this.cacheKey,
+					() => this.plugin.settings.singleClickEdit,
+					onCreateSheet,
+					!!this.workbook && this.workbook.sheets.length > 1,
+				);
+			}
+
 			if (isEmpty) {
-				const banner = createDiv({ cls: 'bt-template-banner' });
-				banner.createSpan({ text: t('templatePreview') });
-				const btns = banner.createDiv({ cls: 'bt-template-btns' });
-				const insertBtn = btns.createEl('button', {
-					cls: 'bt-template-btn',
-					text: t('insertTemplate'),
+				this.renderEmptyBanner(tmp,
+					() => this.insertTemplate(),
+					(rows, cols) => this.insertBlank(rows, cols));
+			} else if (active && active.columns.length === 0) {
+				// A brand-new sheet (create-sheet appends one with zero columns) or
+				// any other sheet a user emptied out completely — same banner as a
+				// brand-new code block. In workbook mode this scopes the insert to
+				// just this sheet's own content (a workbook op, not a raw-text
+				// splice, since the block already holds other sheets); in plain
+				// single-sheet mode (e.g. a table whose last column was manually
+				// deleted, leaving 0 columns outside the normal "add a sheet" path)
+				// there's no workbook to scope into, so it falls back to the exact
+				// same whole-block replace the top-level isEmpty case already uses.
+				this.renderEmptyBanner(tmp,
+					() => this.workbook ? this.insertTemplateIntoActiveSheet() : this.insertTemplate(),
+					(rows, cols) => this.workbook ? this.insertBlankIntoActiveSheet(rows, cols) : this.insertBlank(rows, cols));
+			}
+
+			// Sheet tab bar — workbook-level chrome, rendered OUTSIDE/AFTER
+			// renderTable()'s own output (which only ever renders the ONE active
+			// sheet, whatever render mode — table/kanban/calendar — that sheet
+			// itself is showing) so it stays visible regardless of the active
+			// sheet's own view. Bottom placement matches Excel's own tab strip.
+			// Only shown once there are actually 2+ sheets to switch between —
+			// a workbook that's been pared back down to a single sheet (or one
+			// that never needed the bar in the first place) has nothing to
+			// distinguish via tabs, so the bar would just be a single, pointless
+			// pill; the left-toolbar "add sheet" button stays the entry point
+			// for going from 1 sheet back up to 2.
+			if (this.workbook && this.workbook.sheets.length > 1) {
+				renderSheetTabBar({
+					container: tmp,
+					sheets: this.workbook.sheets,
+					activeSheetId: this.workbook.activeSheetId ?? this.workbook.sheets[0]?.id ?? '',
+					cacheKey: this.cacheKey,
+					component: this,
+					onOp: onWorkbookOp,
+					onCreateSheet: onWorkbookOp ? () => onWorkbookOp({ type: 'create-sheet' }) : undefined,
 				});
-				insertBtn.addEventListener('click', () => void this.insertTemplate());
-				const blankBtn = btns.createEl('button', {
-					cls: 'bt-template-btn bt-template-btn-secondary',
-					text: t('insertBlankTable'),
-				});
-				blankBtn.addEventListener('click', () => {
-					openGridSizePicker({
-						component: this,
-						anchor: blankBtn,
-						onConfirm: (rows, cols) => void this.insertBlank(rows, cols),
-					});
-				});
-				tmp.prepend(banner);
 			}
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
@@ -263,7 +332,7 @@ export class TableBlock extends MarkdownRenderChild {
 		// this closes. Now that the tree is live, retry focusing whichever editor
 		// (if any) still carries `.bt-editing` after the swap.
 		const resumedEditor = this.containerEl.querySelector<HTMLElement>(
-			'.bt-editing .bt-cell-editor, .bt-editing .bt-date-input',
+			'.bt-editing .bt-cell-editor, .bt-editing .bt-date-input, .bt-sheet-tab-renaming .bt-sheet-tab-input',
 		);
 		if (resumedEditor) {
 			resumedEditor.focus();
@@ -316,37 +385,96 @@ export class TableBlock extends MarkdownRenderChild {
 		}
 	}
 
+	/** Shared by the whole-block-empty case and the per-sheet-empty case (a
+	 *  freshly created sheet, or any sheet a user emptied out completely) —
+	 *  same banner/copy, different insert targets (splice raw text into the
+	 *  file vs populate just the active sheet's own content). */
+	private renderEmptyBanner(
+		tmp: HTMLElement,
+		onTemplate: () => Promise<void>,
+		onBlank: (rows: number, cols: number) => Promise<void>,
+	): void {
+		const banner = createDiv({ cls: 'bt-template-banner' });
+		banner.createSpan({ text: t('templatePreview') });
+		const btns = banner.createDiv({ cls: 'bt-template-btns' });
+		const insertBtn = btns.createEl('button', {
+			cls: 'bt-template-btn',
+			text: t('insertTemplate'),
+		});
+		insertBtn.addEventListener('click', () => void onTemplate());
+		const blankBtn = btns.createEl('button', {
+			cls: 'bt-template-btn bt-template-btn-secondary',
+			text: t('insertBlankTable'),
+		});
+		blankBtn.addEventListener('click', () => {
+			openGridSizePicker({
+				component: this,
+				anchor: blankBtn,
+				onConfirm: (rows, cols) => void onBlank(rows, cols),
+			});
+		});
+		tmp.prepend(banner);
+	}
+
 	private async handleStructuralOp(op: StructuralOpV2): Promise<void> {
-		if (!this.model) return;
+		await this.queueOp({ kind: 'cell', op });
+	}
 
-		// Theme changes: apply the CSS class immediately so the switch is instant,
-		// without waiting for write-back → re-render (which would cause a flash).
-		// Also patch the render cache so the cache-inject path in the next onload()
-		// already shows the new theme, preventing the A→B→A→B triple flash.
-		if (op.type === 'set-theme' && this.renderedRoot) {
-			const newClass = op.theme
-				? `bt-render-root bt-theme-${op.theme}`
-				: 'bt-render-root';
-			this.renderedRoot.className = newClass;
-			const cached = renderCache.get(this.cacheKey);
-			if (cached) {
-				const cachedRoot = cached.querySelector<HTMLElement>('.bt-render-root');
-				if (cachedRoot) cachedRoot.className = newClass;
+	private async handleWorkbookOp(op: WorkbookOpV2): Promise<void> {
+		this.convertToWorkbook();
+		await this.queueOp({ kind: 'workbook', op });
+	}
+
+	/** First time a table gains a second sheet, wrap the current single-sheet
+	 *  `model` into a 1-sheet workbook so `applyWorkbookOp`'s own `create-sheet`
+	 *  case (append + activate) has something to append to. A no-op if already
+	 *  a workbook. Never runs automatically on load — only from this explicit
+	 *  user action — per the "v2→v3 is opt-in, not a forced migration" design
+	 *  (tableVersion.ts's MIN_STABLE_VERSION doc comment). */
+	private convertToWorkbook(): void {
+		if (this.workbook || !this.model) return;
+		const existingIds = new Set<string>();
+		const sheet: SheetDefV2 = { ...this.model, id: genId('s', existingIds) };
+		this.workbook = { version: 3, activeSheetId: sheet.id, sheets: [sheet] };
+		this.model = null;
+	}
+
+	private async queueOp(pending: PendingOp): Promise<void> {
+		if (!this.model && !this.workbook) return;
+
+		// Theme/collapse instant-apply — only meaningful for cell-level ops on
+		// the active sheet's own model; a workbook op never touches these fields.
+		if (pending.kind === 'cell') {
+			const op = pending.op;
+			const active = this.activeModel;
+			// Theme changes: apply the CSS class immediately so the switch is instant,
+			// without waiting for write-back → re-render (which would cause a flash).
+			// Also patch the render cache so the cache-inject path in the next onload()
+			// already shows the new theme, preventing the A→B→A→B triple flash.
+			if (op.type === 'set-theme' && this.renderedRoot) {
+				const newClass = op.theme
+					? `bt-render-root bt-theme-${op.theme}`
+					: 'bt-render-root';
+				this.renderedRoot.className = newClass;
+				const cached = renderCache.get(this.cacheKey);
+				if (cached) {
+					const cachedRoot = cached.querySelector<HTMLElement>('.bt-render-root');
+					if (cachedRoot) cachedRoot.className = newClass;
+				}
 			}
-		}
-
-		// Same instant-apply treatment for collapse/expand — toggled onto the existing
-		// class list (not overwritten) since a theme class may already be present.
-		if (op.type === 'toggle-collapse' && this.renderedRoot) {
-			const willCollapse = !this.model.collapsed;
-			this.renderedRoot.toggleClass('bt-collapsed', willCollapse);
-			const cachedRoot = renderCache.get(this.cacheKey)?.querySelector<HTMLElement>('.bt-render-root');
-			cachedRoot?.toggleClass('bt-collapsed', willCollapse);
+			// Same instant-apply treatment for collapse/expand — toggled onto the existing
+			// class list (not overwritten) since a theme class may already be present.
+			if (op.type === 'toggle-collapse' && this.renderedRoot && active) {
+				const willCollapse = !active.collapsed;
+				this.renderedRoot.toggleClass('bt-collapsed', willCollapse);
+				const cachedRoot = renderCache.get(this.cacheKey)?.querySelector<HTMLElement>('.bt-render-root');
+				cachedRoot?.toggleClass('bt-collapsed', willCollapse);
+			}
 		}
 
 		// Queue the op — it will be applied along with any other ops that
 		// arrive in the same JS tick before the single write-back fires.
-		this.pendingOps.push(op);
+		this.pendingOps.push(pending);
 		if (this.writeBackScheduled) return; // already scheduled by an earlier op
 		this.writeBackScheduled = true;
 		// Record — while this instance's DOM is still live and readable — whether the
@@ -370,8 +498,8 @@ export class TableBlock extends MarkdownRenderChild {
 		// what the user is seeing) so the rebuilt instance can inject it synchronously in
 		// onload() and stay visually continuous through the ~200ms tear-down/re-render —
 		// no blank/zero-height window, hence no flicker and no scroll jump. Captured here,
-		// before applyStructuralOpV2 mutates the model, so it reflects the pre-op look
-		// (the rebuild replaces it with the post-op content once render() finishes).
+		// before the reducers mutate anything, so it reflects the pre-op look (the rebuild
+		// replaces it with the post-op content once render() finishes).
 		renderCache.set(this.cacheKey, this.containerEl.cloneNode(true) as HTMLElement);
 		// Freeze any running theme animations now — this root is about to be replaced by
 		// the re-render this write triggers, so there's nothing to lose visually, and the
@@ -382,9 +510,18 @@ export class TableBlock extends MarkdownRenderChild {
 		await new Promise<void>(resolve => { window.setTimeout(resolve, 0); });
 		this.writeBackScheduled = false;
 
-		// Apply all queued ops to the v2 model in order.
-		for (const pending of this.pendingOps) {
-			applyStructuralOpV2(this.model, pending);
+		// Apply all queued ops in order — cell ops mutate the ACTIVE sheet's own
+		// model (whichever sheet is active AT THE TIME each op applies — a batch
+		// never contains a sheet switch followed by cell ops meant for the OLD
+		// sheet, since switching itself is a workbook op that also triggers a
+		// write-back/rebuild), workbook ops mutate the sheet list itself.
+		for (const p of this.pendingOps) {
+			if (p.kind === 'cell') {
+				const target = this.activeModel;
+				if (target) applyStructuralOpV2(target, p.op);
+			} else if (this.workbook) {
+				applyWorkbookOp(this.workbook, p.op);
+			}
 		}
 		this.pendingOps = [];
 
@@ -393,8 +530,19 @@ export class TableBlock extends MarkdownRenderChild {
 		if (!(file instanceof TFile)) return;
 		const info = this.ctx.getSectionInfo(this.containerEl);
 
-		// Serialize the updated v2 model and write it back.
-		const newSource = serializeTable(this.model);
+		// Serialize the updated model/workbook and write it back. Deleting the
+		// last remaining sheet collapses the block to a literal empty string —
+		// the SAME state a brand-new code block is in — rather than persisting
+		// an empty `sheets: []` shell; the next render()'s `isEmpty` branch
+		// picks this up automatically and shows the template/blank-table banner.
+		let newSource: string;
+		if (this.workbook) {
+			newSource = this.workbook.sheets.length === 0 ? '' : serializeWorkbook(this.workbook);
+		} else if (this.model) {
+			newSource = serializeTable(this.model);
+		} else {
+			return;
+		}
 		this.writeChain = this.writeChain.then(
 			() => this.writeRawSource(newSource, this.plugin.app.vault, file, info),
 			() => this.writeRawSource(newSource, this.plugin.app.vault, file, info),
@@ -411,9 +559,10 @@ export class TableBlock extends MarkdownRenderChild {
 		if (!info) return;
 		await vault.process(file, content => {
 			const lines = content.split('\n');
+			const bodyLines = newSource === '' ? [] : newSource.trimEnd().split('\n');
 			return [
 				...lines.slice(0, info.lineStart + 1),
-				...newSource.trimEnd().split('\n'),
+				...bodyLines,
 				...lines.slice(info.lineEnd),
 			].join('\n');
 		});
@@ -487,5 +636,22 @@ export class TableBlock extends MarkdownRenderChild {
 			].join('\n');
 		});
 	}
-}
 
+	/** Per-sheet analogue of insertTemplate — populates just the active (empty)
+	 *  sheet's own content via a workbook op instead of splicing raw text into
+	 *  the file, since the block already holds a real workbook the raw-text
+	 *  path would clobber. */
+	private async insertTemplateIntoActiveSheet(): Promise<void> {
+		const sheet = this.activeModel;
+		if (!sheet || !this.workbook) return;
+		const content: Omit<TableModelV2, 'version'> = parseTable(getEmptyTemplate());
+		await this.handleWorkbookOp({ type: 'set-sheet-content', sheetId: (sheet as SheetDefV2).id, content });
+	}
+
+	private async insertBlankIntoActiveSheet(rows: number, cols: number): Promise<void> {
+		const sheet = this.activeModel;
+		if (!sheet || !this.workbook) return;
+		const content: Omit<TableModelV2, 'version'> = buildBlankTable(rows, cols);
+		await this.handleWorkbookOp({ type: 'set-sheet-content', sheetId: (sheet as SheetDefV2).id, content });
+	}
+}

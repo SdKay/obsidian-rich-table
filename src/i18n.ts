@@ -116,6 +116,12 @@ const EN = {
 	calendarNextMonth:  'Next month',
 	calendarToday:      'Jump to today',
 	calendarUnscheduled: 'Unscheduled',
+
+	// Sheet tabs (multi-sheet workbooks)
+	newSheet:      'New sheet',
+	renameSheet:   'Rename sheet',
+	deleteSheet:   'Delete sheet',
+	sheetTabStyle: 'Set tab style',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -212,6 +218,11 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	calendarNextMonth:  '下个月',
 	calendarToday:      '回到今天',
 	calendarUnscheduled: '未排期',
+
+	newSheet:      '新建 sheet',
+	renameSheet:   '重命名 sheet',
+	deleteSheet:   '删除 sheet',
+	sheetTabStyle: '设置标签样式',
 };
 
 export function t(key: keyof typeof EN): string {
@@ -311,4 +322,11 @@ export function sortActiveLabel(colName: string, dir: 'asc' | 'desc'): string {
 
 export function calendarMoreEventsLabel(n: number): string {
 	return isZh() ? `还有 ${n} 条` : `+${n} more`;
+}
+
+/** A sheet with no explicit `name` is labeled by its 1-based position — same
+ *  "absent = derive from position, only frozen once explicitly renamed" idea
+ *  as ViewDefV2's own name field, model.ts. */
+export function sheetFallbackName(oneBasedIndex: number): string {
+	return isZh() ? `表 ${oneBasedIndex}` : `Sheet ${oneBasedIndex}`;
 }

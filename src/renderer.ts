@@ -44,6 +44,17 @@ export async function renderTable(
 	 *  single click enters edit immediately and Ctrl/Cmd+click opens the style panel
 	 *  (vs the default single-click-delay / double-click-panel). */
 	getSingleClickEdit?: () => boolean,
+	/** Left-toolbar "add sheet" button — kept as its own callback (not folded
+	 *  into onOp/StructuralOpV2) since converting a plain table into a
+	 *  multi-sheet workbook is a WORKBOOK-level action tableBlock.ts handles
+	 *  entirely separately from any single sheet's own model. Absent under
+	 *  the exact same conditions onStructuralOp itself would be (locked,
+	 *  read-only, etc.) — tableBlock.ts derives both from the same guard. */
+	onCreateSheet?: () => void,
+	/** True when tableBlock.ts is about to render a sheet-tab-bar right below
+	 *  this table (a workbook with 2+ sheets) — see the `hasSheetTabBar`
+	 *  branch in restoreLayout() below for why this needs to be known here. */
+	hasSheetTabBar?: boolean,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
@@ -152,7 +163,7 @@ export async function renderTable(
 		// (and its centered title, above it) live inside that, not directly
 		// under root, so the title centers over the board's own width rather
 		// than the full row including the icon column.
-		const viewMain = renderViewToolbar({ root, model, registry, onStructuralOp, onToggleLock, activeView });
+		const viewMain = renderViewToolbar({ root, model, registry, onStructuralOp, onToggleLock, activeView, onCreateSheet });
 		const viewWrapper = viewMain.createDiv({ cls: 'bt-table-wrapper' });
 		// The wrapper's base width (--bt-wrapper-width, styles.css) defaults to
 		// max-content — sized to hug the TABLE's own natural width, so a compact
@@ -872,6 +883,19 @@ export async function renderTable(
 				showMenuPinned(buildViewSwitcherMenu(model, registry, onStructuralOp), evt));
 		}
 
+		// Add sheet — converts this table into a multi-sheet workbook (or, once
+		// it already is one, appends another sheet). Last in the column; absent
+		// once the table already has its own bottom sheet-tab-bar (that bar's
+		// own "+" takes over — see tableBlock.ts).
+		if (onCreateSheet) {
+			const addSheetBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('newSheet'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(addSheetBtn, 'copy-plus');
+			addSheetBtn.addEventListener('click', () => onCreateSheet());
+		}
+
 
 		// Position the column just left of the row selector — anchored to the VISIBLE
 		// left edge (not the table's own left) so it stays on-screen when a wide table
@@ -879,9 +903,18 @@ export async function renderTable(
 		const positionCtrlCol = () => {
 			const g = computeVisibleGeom();
 			if (g.tr.width === 0) return;
+			// ctrlCol stacks a growing number of buttons (lock/auto-fit/theme/
+			// aggregate/collapse/views/add-sheet) with no height cap of its own —
+			// for a short table (few rows) that stack is taller than the table
+			// itself, so it silently overflows past root's bottom edge and gets
+			// clipped by Obsidian's own live-preview widget container (outside
+			// this stylesheet's control) instead of just spilling visibly onto
+			// the page below. Cap it to the table's own height so it scrolls
+			// internally in that case rather than losing buttons off the bottom.
 			ctrlCol.setCssProps({
 				'--cc-top':  `${g.tt + 2}px`,
 				'--cc-left': `${g.vl - SEL_TOTAL - AUTOFIT_OFFSET - 4}px`,
+				'--cc-maxh': `${Math.max(g.th - 4, 0)}px`,
 			});
 		};
 		window.requestAnimationFrame(positionCtrlCol);
@@ -1219,7 +1252,22 @@ export async function renderTable(
 			titleEl?.setCssProps({ '--bt-title-mb-adj': `${-pull}px` });
 		};
 		restoreLayout = () => {
-			root.setCssProps({ '--bt-sel-pad': '0px', '--bt-add-pad': '0px', '--bt-sel-pad-left': '0px', '--bt-sel-pad-right': '0px' });
+			// A workbook's sheet-tab-bar sits as a plain in-flow sibling right
+			// below root, positioned purely by root's own rendered box height
+			// (+ a fixed margin) — collapsing --bt-sel-pad/--bt-add-pad back to
+			// 0 here (the normal behavior) shrinks root's own height by the
+			// same amount, yanking the tab bar upward right as the mouse is on
+			// its way toward it (reported: strips hide and the tab jumps up
+			// just before the cursor reaches it, so it overshoots). Left/right
+			// padding don't affect root's HEIGHT at all (only horizontal
+			// centering), so those still collapse normally either way — only
+			// top/bottom stay permanently reserved once there's a tab bar to
+			// keep stable under (set once up front too — see the
+			// `if (hasSheetTabBar) prepareLayout()` call below).
+			if (!hasSheetTabBar) {
+				root.setCssProps({ '--bt-sel-pad': '0px', '--bt-add-pad': '0px' });
+			}
+			root.setCssProps({ '--bt-sel-pad-left': '0px', '--bt-sel-pad-right': '0px' });
 			titleEl?.setCssProps({ '--bt-title-mb-adj': '0px' });
 			repositionLockBtn();
 			repositionAutoFitBtn();
@@ -1569,6 +1617,12 @@ export async function renderTable(
 		component?.register(onHoverUnpinned(() => {
 			if (!root.matches(':hover')) { hideEdgeStrips(); hideSelectors(); }
 		}));
+		// Reserve the top/bottom strip padding from the very first paint, not
+		// just from the first hover onward — otherwise the sheet-tab-bar below
+		// would still take its FIRST hover as a one-time jump (root growing by
+		// 56px the first time --bt-sel-pad/--bt-add-pad ever get set), just no
+		// longer flickering back and forth on every hover/unhover after that.
+		if (hasSheetTabBar) prepareLayout();
 	}
 
 	// ── Cursor-position CSS variables (base layer, usable by any theme) ────────

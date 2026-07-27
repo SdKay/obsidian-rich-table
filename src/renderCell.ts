@@ -28,7 +28,7 @@ import { takeLiveEdit } from './renderEditHandoff';
  *    immediately; Ctrl/Cmd+click opens the panel (double-click does nothing,
  *    since its first click already fired the primary action).
  */
-function bindCellActivation(el: HTMLElement, opts: {
+export function bindCellActivation(el: HTMLElement, opts: {
 	getSingleClickEdit: () => boolean;
 	delayMs: number;
 	primaryAction: (evt: MouseEvent) => void;

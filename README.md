@@ -276,6 +276,7 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | Filter status bar — "Showing X of Y · Clear" unified with sort / aggregate info | 🔜 |
 | Row sorting — via the column selector's popup menu: one-time (reorders rows once) or live (auto-sorts, shown by an indicator until cleared) | ✅ |
 | Summary rows — Sum / Average / Min / Max / Count, table-wide (toggle via the Σ icon in the left control column, or the column selector's popup menu); one row per active statistic at the table's bottom, computed over currently-visible rows, columns without meaningful data left blank. Each summary row gets its own selector cell (remove) and drag grip (reorder) | ✅ |
+| Custom formulas — type Excel-style syntax (`=SUM(A1:B3)`); cell references get converted to this table's own stable row/column IDs on entry, so they survive inserts/reorders instead of drifting like raw A1 coordinates would. Same-sheet first; cross-sheet references are a separate, later phase | 🔜 |
 | **Styles** | |
 | Per-cell bg color, text color, and font size — via panel or YAML | ✅ |
 | Row / column selector strips — hover to reveal, click or drag to style entire rows/columns | ✅ |
@@ -301,9 +302,14 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | **Views** — alternate ways to browse the same rows/columns, switched via the layout-grid icon (or a Kanban/Calendar board's own icon column) | |
 | Kanban board — group rows into lanes by any choice-typed column; drag a card to another lane to change its value | ✅ |
 | Calendar — place rows on a month grid by any `date`-typed column; drag an event to reschedule it, undated rows list in an Unscheduled tray below | ✅ |
+| **Multi-sheet** — Excel-style tab bar at the bottom once a table has 2+ sheets | |
+| Left-toolbar button converts a single-sheet table into a multi-sheet workbook; each sheet has its own columns/rows/merges/styles/views | ✅ |
+| Tabs: click to switch, click-again/double-click to rename, drag to reorder, right-click for rename / tab color / delete | ✅ |
 | **Title & annotations** | |
 | Table title above, footer notes below — click to edit inline | ✅ |
 | Cell comments — floating notes shown on hover | 🔜 |
+| **Excel interop** | |
+| Open/edit an external `.xlsx` file directly (e.g. `excel: path/to/file.xlsx` in the front matter) — same editing UI as a normal code-block table, backed by the actual spreadsheet file | 🔜 |
 
 ---
 
