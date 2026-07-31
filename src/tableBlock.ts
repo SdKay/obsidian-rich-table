@@ -9,6 +9,7 @@ import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
 import { applyWorkbookOp, type WorkbookOpV2 } from './workbookOperations';
 import { renderSheetTabBar } from './renderSheetTabs';
+import { applyThemeClass } from './renderThemeClass';
 import { genId } from './idGen';
 import { registerHoverState, takeHoverState } from './renderHoverHandoff';
 import { registerCalendarMonth } from './renderCalendar';
@@ -452,15 +453,9 @@ export class TableBlock extends MarkdownRenderChild {
 			// Also patch the render cache so the cache-inject path in the next onload()
 			// already shows the new theme, preventing the A→B→A→B triple flash.
 			if (op.type === 'set-theme' && this.renderedRoot) {
-				const newClass = op.theme
-					? `bt-render-root bt-theme-${op.theme}`
-					: 'bt-render-root';
-				this.renderedRoot.className = newClass;
-				const cached = renderCache.get(this.cacheKey);
-				if (cached) {
-					const cachedRoot = cached.querySelector<HTMLElement>('.bt-render-root');
-					if (cachedRoot) cachedRoot.className = newClass;
-				}
+				applyThemeClass(this.renderedRoot, op.theme);
+				const cachedRoot = renderCache.get(this.cacheKey)?.querySelector<HTMLElement>('.bt-render-root');
+				if (cachedRoot) applyThemeClass(cachedRoot, op.theme);
 			}
 			// Same instant-apply treatment for collapse/expand — toggled onto the existing
 			// class list (not overwritten) since a theme class may already be present.
