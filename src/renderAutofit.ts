@@ -3,6 +3,20 @@ import type { ChoiceRegistry } from './choiceRegistry';
 import { SPECIAL_TYPES } from './renderTypes';
 
 /**
+ * Extra headroom added on top of a choice pill's measured `offsetWidth`. The
+ * browser's final layout pass can round a hair wider than what JS measures
+ * (sub-pixel snapping differs between measurement and the eventual render,
+ * most visible with monospace fonts) — same class of discrepancy as the
+ * letter-spacing buffer used for header text below, but a pill has no single
+ * attributable CSS property to size the buffer from, so a flat margin is used
+ * instead. Without it, a pill can come out 1px narrower than its cell needs,
+ * which — if anything upstream (theme/Obsidian CSS) applies overflow
+ * clipping to table cells — shows up as a stray ellipsis right after an
+ * otherwise fully-visible pill.
+ */
+const PILL_MEASURE_BUFFER = 2;
+
+/**
  * Minimum column width based on content.
  * For typed columns the widest option label determines the minimum so choice
  * pills are never cut off.  Uses ~8px per character + 24px padding/chrome.
@@ -50,7 +64,7 @@ export function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number):
 		//    offsetWidth is the natural pill width regardless of cell clipping.
 		const pill = cell.querySelector<HTMLElement>('.bt-choice');
 		if (pill) {
-			max = Math.max(max, pill.offsetWidth + padH + borderH);
+			max = Math.max(max, pill.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
 			continue;
 		}
 
@@ -163,7 +177,7 @@ export function autoFitAllColWidths(
 	};
 	for (const { colIdx, el } of pills) {
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
-		grow(colIdx, el.offsetWidth + padH + borderH);
+		grow(colIdx, el.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
 	}
 	for (const { colIdx, el } of textSpans) {
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
