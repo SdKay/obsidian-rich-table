@@ -218,7 +218,8 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			break;
 		}
 		case 'split-cell-row': {
-			if (findMergeCoveringCell(model, op.rowId, op.colId)) break; // only unmerged cells can be split
+			const covering0 = findMergeCoveringCell(model, op.rowId, op.colId);
+			if (covering0) { splitMergedCellIntoRows(model, covering0); break; }
 			const rowIdx = model.rows.findIndex(r => r.id === op.rowId);
 			if (rowIdx < 0) break;
 			const existingIds = new Set(model.rows.map(r => r.id));
@@ -250,7 +251,8 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			break;
 		}
 		case 'split-cell-col': {
-			if (findMergeCoveringCell(model, op.rowId, op.colId)) break; // only unmerged cells can be split
+			const covering0 = findMergeCoveringCell(model, op.rowId, op.colId);
+			if (covering0) { splitMergedCellIntoCols(model, covering0); break; }
 			const colIdx = model.columns.findIndex(c => c.id === op.colId);
 			if (colIdx < 0) break;
 			const existingIds = new Set(model.columns.map(c => c.id));
@@ -510,6 +512,106 @@ function findMergeCoveringCell(model: TableModelV2, rowId: string, colId: string
 			&& cIdx >= Math.min(c1, c2) && cIdx <= Math.max(c1, c2)) return m;
 	}
 	return undefined;
+}
+
+/**
+ * `split-cell-row`/`split-cell-col` on an ALREADY-merged cell — only two of
+ * the three possible merge shapes make sense to split at all:
+ *   - vertical-only  (rowSpan > 1, colSpan === 1): splitting into 2 COLUMNS
+ *     is meaningful (each resulting column keeps its own copy of the same
+ *     row-span merge) — splitting into 2 ROWS is not ("it's already a
+ *     multi-row merge", nothing to gain).
+ *   - horizontal-only (colSpan > 1, rowSpan === 1): the mirror image —
+ *     splitting into 2 ROWS is meaningful, 2 COLUMNS is not.
+ *   - both (rowSpan > 1 AND colSpan > 1): a true rectangular merge has no
+ *     single axis left to split along without arbitrarily picking one, so
+ *     neither operation is offered at all.
+ * Deliberately produces TWO SEPARATE same-shaped merges (old column/row keeps
+ * its original merge untouched, new column/row gets its own identical-shape
+ * "twin") rather than growing the original into a rectangle — a rectangle
+ * would immediately become the unsplittable "both" shape above, permanently
+ * closing off further splits; two separate vertical/horizontal merges can
+ * each still be split again later.
+ */
+function splitMergedCellIntoRows(model: TableModelV2, covering: MergeRangeV2): void {
+	const [anchorRowId, anchorColId] = splitAnchor(covering.anchor);
+	const [endRowId, endColId]       = splitAnchor(covering.end);
+	const r1 = resolveMergeRowIndex(model, anchorRowId);
+	const r2 = resolveMergeRowIndex(model, endRowId);
+	const c1 = model.columns.findIndex(c => c.id === anchorColId);
+	const c2 = model.columns.findIndex(c => c.id === endColId);
+	if (r1 === undefined || r2 === undefined || c1 < 0 || c2 < 0) return;
+	if (Math.abs(r2 - r1) + 1 > 1) return; // multi-row (± multi-col) — not eligible, see doc comment
+	if (Math.abs(c2 - c1) + 1 <= 1) return; // not actually a horizontal merge
+	if (anchorRowId === 'header') return; // no second header row to split into
+
+	const rowIdx = model.rows.findIndex(r => r.id === anchorRowId);
+	if (rowIdx < 0) return;
+	const existingRowIds = new Set(model.rows.map(r => r.id));
+	const newRow: RowDefV2 = { id: genId('r', existingRowIds), cells: {} };
+	model.rows.splice(rowIdx + 1, 0, newRow);
+	// The new row's "twin" merge — same column span, its own copy.
+	model.merges.push({ anchor: `${newRow.id}.${anchorColId}`, end: `${newRow.id}.${endColId}` });
+
+	// Every OTHER column (outside this merge's own span) behaves exactly like
+	// the plain single-cell split-cell-row below: create-or-extend-or-absorb.
+	const lo = Math.min(c1, c2), hi = Math.max(c1, c2);
+	for (let ci = 0; ci < model.columns.length; ci++) {
+		if (ci >= lo && ci <= hi) continue; // part of the merge being split — handled above
+		const col = model.columns[ci];
+		if (!col) continue;
+		const other = findMergeCoveringCell(model, anchorRowId, col.id);
+		if (!other) {
+			model.merges.push({ anchor: `${anchorRowId}.${col.id}`, end: `${newRow.id}.${col.id}` });
+		} else {
+			const [otherEndRowId, otherEndColId] = splitAnchor(other.end);
+			if (otherEndRowId === anchorRowId) other.end = `${newRow.id}.${otherEndColId}`;
+			// else: already extends past this row — absorbed automatically.
+		}
+	}
+	extendStylesPastSplitRow(model, anchorRowId, newRow.id);
+	duplicateCellStyle(model, anchorRowId, anchorColId, newRow.id, anchorColId);
+}
+
+/** Column-axis mirror of {@link splitMergedCellIntoRows} — see its doc comment. */
+function splitMergedCellIntoCols(model: TableModelV2, covering: MergeRangeV2): void {
+	const [anchorRowId, anchorColId] = splitAnchor(covering.anchor);
+	const [endRowId, endColId]       = splitAnchor(covering.end);
+	const r1 = resolveMergeRowIndex(model, anchorRowId);
+	const r2 = resolveMergeRowIndex(model, endRowId);
+	const c1 = model.columns.findIndex(c => c.id === anchorColId);
+	const c2 = model.columns.findIndex(c => c.id === endColId);
+	if (r1 === undefined || r2 === undefined || c1 < 0 || c2 < 0) return;
+	if (Math.abs(c2 - c1) + 1 > 1) return; // multi-col (± multi-row) — not eligible, see doc comment
+	if (Math.abs(r2 - r1) + 1 <= 1) return; // not actually a vertical merge
+	// (A vertical-only merge can never be header-anchored — a merge crossing
+	// the header/data boundary is dropped elsewhere, not represented here.)
+
+	const colIdx = model.columns.findIndex(c => c.id === anchorColId);
+	if (colIdx < 0) return;
+	const existingColIds = new Set(model.columns.map(c => c.id));
+	const newCol: ColumnDefV2 = { id: genId('c', existingColIds), name: '' };
+	model.columns.splice(colIdx + 1, 0, newCol);
+	// The new column's "twin" merge — same row span, its own copy.
+	model.merges.push({ anchor: `${anchorRowId}.${newCol.id}`, end: `${endRowId}.${newCol.id}` });
+
+	// Every OTHER row (outside this merge's own span, including the header
+	// sentinel) behaves exactly like the plain single-cell split-cell-col below.
+	const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+	for (const rId of ['header', ...model.rows.map(r => r.id)]) {
+		const ri = resolveMergeRowIndex(model, rId);
+		if (ri === undefined || (ri >= lo && ri <= hi)) continue; // part of the merge being split
+		const other = findMergeCoveringCell(model, rId, anchorColId);
+		if (!other) {
+			model.merges.push({ anchor: `${rId}.${anchorColId}`, end: `${rId}.${newCol.id}` });
+		} else {
+			const [otherEndRowId, otherEndColId] = splitAnchor(other.end);
+			if (otherEndColId === anchorColId) other.end = `${otherEndRowId}.${newCol.id}`;
+			// else: already extends past this column — absorbed automatically.
+		}
+	}
+	extendStylesPastSplitCol(model, anchorColId, newCol.id);
+	duplicateCellStyle(model, anchorRowId, anchorColId, anchorRowId, newCol.id);
 }
 
 interface RowMergeSnapshot { merge: MergeRangeV2; memberIds: string[] }

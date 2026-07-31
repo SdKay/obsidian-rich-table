@@ -1403,7 +1403,20 @@ export async function renderTable(
 				];
 			})() : [];
 
+			// Insert-before/after moved here from the per-data-cell menu (renderPanel.ts's
+			// dataCellOps) — that menu was getting too long, and "insert a row/column
+			// relative to this selection" reads more naturally as a selector-strip action.
+			const afterLeft  = lo > 0 ? (model.columns[lo - 1]?.id ?? null) : null;
+			const afterRight = model.columns[hi]?.id ?? null;
+			const afterAbove = lo > 1 ? (model.rows[lo - 2]?.id ?? null) : null;
+			const afterBelow = model.rows[hi - 1]?.id ?? null;
+
 			const cellOps: CellOpEntry[] = axis === 'col' ? [
+				{ icon: 'arrow-left',  label: t('insertColBefore'),
+					action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterLeft }) },
+				{ icon: 'arrow-right', label: t('insertColAfter'),
+					action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterRight }) },
+				{ divider: true },
 				{ icon: 'eye-off', label: hideColsLabel(lo, hi, colIndexToLetter),
 					action: () => { for (let ci = lo; ci <= hi; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
 				{ icon: 'trash',   label: deleteColsLabel(lo, hi, colIndexToLetter), danger: true,
@@ -1413,6 +1426,11 @@ export async function renderTable(
 				{ divider: true },
 				...copyOps,
 			] : lo === 0 && hi === 0 ? copyOps : [  // no hide/delete for header row
+				{ icon: 'arrow-up',   label: t('insertRowAbove'),
+					action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterAbove }) },
+				{ icon: 'arrow-down', label: t('insertRowBelow'),
+					action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterBelow }) },
+				{ divider: true },
 				{ icon: 'eye-off', label: hideRowsLabel(lo, hi),
 					action: () => { for (let ri = lo; ri <= hi; ri++) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
 				{ icon: 'trash',   label: deleteRowsLabel(lo, hi), danger: true,

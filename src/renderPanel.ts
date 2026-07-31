@@ -62,22 +62,21 @@ export function dataCellOps(
 	const c1 = merge?.startCol ?? colIdx;
 	const c2 = merge?.endCol   ?? colIdx;
 
-	// r1 > 0 always (data cells only). afterRowId null = insert before first row.
-	const afterAbove = r1 > 1 ? (model.rows[r1 - 2]?.id ?? null) : null;
-	const afterBelow = model.rows[r2 - 1]?.id ?? null;
-	const afterLeft  = c1 > 0 ? (model.columns[c1 - 1]?.id ?? null) : null;
-	const afterRight = model.columns[c2]?.id ?? null;
-
+	// Insert-row/insert-col live in the row/column selector strip's own menu
+	// now, not here — see endDrag('row')/endDrag('col') in renderer.ts. Moved
+	// out to shorten this per-cell menu (it was getting too long).
 	ops.push(
-		{ icon: 'arrow-up',    label: t('insertRowAbove'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterAbove }) },
-		{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterBelow }) },
-		{ icon: 'arrow-left',  label: t('insertColBefore'), action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterLeft }) },
-		{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterRight }) },
-		// Splitting only makes sense for a plain (unmerged) cell — an already-merged
-		// cell has no single "shape" to preserve on its neighbors.
-		...(!merge ? [
+		// Splitting a plain (unmerged) cell works either way. A merged cell only
+		// has one axis left to split along — a vertical-only merge (spans rows,
+		// one column) can split into 2 columns (each keeping its own copy of the
+		// row-span); a horizontal-only merge, the mirror; a merge that already
+		// spans both axes has no single shape left to preserve and isn't offered
+		// either action — see splitMergedCellIntoRows/Cols in operations.ts.
+		...((!merge || (merge.endRow === merge.startRow && merge.endCol > merge.startCol)) ? [
 			{ icon: 'rows-2',    label: t('splitCellRow'),
 				action: () => void onStructuralOp({ type: 'split-cell-row', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
+		] as CellOpEntry[] : []),
+		...((!merge || (merge.endCol === merge.startCol && merge.endRow > merge.startRow)) ? [
 			{ icon: 'columns-2', label: t('splitCellCol'),
 				action: () => void onStructuralOp({ type: 'split-cell-col', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
 		] as CellOpEntry[] : []),
