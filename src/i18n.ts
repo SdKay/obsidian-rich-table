@@ -39,7 +39,7 @@ const EN = {
 	setType: 'Set type',
 
 	// Template banner
-	templatePreview: 'Template preview — click Insert to start editing',
+	templatePreview: 'Hover a button to preview, click to insert',
 	insertTemplate:  'Insert template',
 	insertBlankTable: 'Insert blank table',
 	gridPickerRows:   'Rows',
@@ -155,7 +155,7 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	noType:  '无类型',
 	setType: '设置类型',
 
-	templatePreview: '模板预览 — 点击"插入"开始编辑',
+	templatePreview: '悬停按钮预览，点击插入',
 	insertTemplate:  '插入模板',
 	insertBlankTable: '插入空白表格',
 	gridPickerRows:   '行数',

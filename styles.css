@@ -203,48 +203,115 @@
 	color: var(--text-muted);
 }
 
+.bt-template-banner-label {
+	white-space: nowrap;
+}
+
+/* Every button (one per built-in template, plus "insert blank table") is the
+ * same neutral outline at rest — no filled/outlined primary-vs-secondary
+ * distinction anymore now that there can be 3+ equally-valid options. Hover
+ * is the only visual cue, and it's the same thing that drives which preview
+ * is shown below (see bt-template-preview-item) — a button never looks
+ * "selected" while at rest, so it can't be mistaken for an already-active
+ * hover state. */
 .bt-template-btn {
 	padding: 3px var(--size-4-3);
 	border-radius: var(--radius-s);
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
+	background: transparent;
+	color: var(--interactive-accent);
+	border: 1px solid var(--interactive-accent);
 	font-size: var(--font-ui-small);
 	cursor: pointer;
-	border: none;
 	white-space: nowrap;
 	flex-shrink: 0;
 }
 
 .bt-template-btn:hover {
-	background: var(--interactive-accent-hover);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
 }
 
 .bt-template-btns {
 	display: flex;
 	gap: var(--size-4-2);
 	flex-shrink: 0;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 }
 
-/* A blank-table alternative sits alongside the demo template — visually
- * secondary (outline, not filled) so the pre-existing button stays the
- * default first choice. */
-.bt-template-btn-secondary {
-	background: transparent;
-	color: var(--interactive-accent);
-	border: 1px solid var(--interactive-accent);
+/* Set the instant any button triggers an insert — the actual write-back +
+ * Obsidian re-processing this block as non-empty has real latency outside
+ * this plugin's control, so the row is locked (dimmed, inert) rather than
+ * left clickable through that gap, which otherwise reads as unresponsive and
+ * lets a second click fire a second, racing insert. */
+.bt-template-banner.is-inserting {
+	cursor: wait;
 }
 
-.bt-template-btn-secondary:hover {
-	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+.bt-template-banner.is-inserting .bt-template-btns {
+	pointer-events: none;
+	opacity: 0.6;
+}
+
+/* previewHost is a sibling of banner, not a descendant (see tableBlock.ts's
+ * renderEmptyBanner), so it needs the same lock applied directly — otherwise
+ * the rendered preview table underneath stays fully interactive (hover
+ * strips, cell selection) through the whole insert-latency gap. */
+.bt-template-preview-host {
+	position: relative; /* anchors bt-template-preview-lock below */
+}
+
+.bt-template-preview-host.is-inserting {
+	pointer-events: none;
+	opacity: 0.6;
+}
+
+/* See the doc comment above bt-template-preview-lock's creation in
+ * tableBlock.ts — a plain cursor/pointer-events combo on previewHost itself
+ * can't reliably win over a rendered cell's own explicit `cursor: text` edit
+ * hint, nor force a stationary pointer's cursor icon to repaint. This overlay
+ * only exists (and only becomes hit-testable) while is-inserting is set. */
+.bt-template-preview-lock {
+	display: none;
+}
+
+.bt-template-preview-host.is-inserting .bt-template-preview-lock {
+	display: block;
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	cursor: wait;
+	pointer-events: auto;
+}
+
+/* Every candidate (each built-in template + the blank-table default size) is
+ * rendered once up front and toggled via .is-active — hovering a button in
+ * .bt-template-btns swaps which one shows, defaulting to the first template. */
+.bt-template-preview-item {
+	display: none;
+}
+
+.bt-template-preview-item.is-active {
+	display: block;
 }
 
 /* ── Grid size picker (Word/Sheets-style "insert table" hover grid) ───────── */
+/* Mounted on document.body, not as a DOM sibling of the "insert blank table"
+ * button — CONFIRMED necessary via live diagnostics (see gridSizePicker.ts's
+ * doc comment): Obsidian wraps every rendered code block in a `contain:
+ * paint` container, which hijacks the containing block for any
+ * position:fixed/absolute descendant AND clips their paint to its own box —
+ * so nothing short of escaping the DOM subtree entirely avoids both
+ * mispositioning and visual clipping while the block is still a short
+ * empty-state banner. position: fixed with top/left set from the anchor's own
+ * real screen position (gridSizePicker.ts), clamped to the viewport so it
+ * never renders partly off-screen. */
 .bt-grid-picker {
 	position: fixed;
 	top: var(--bt-gp-top, 0px);
 	left: var(--bt-gp-left, 0px);
 	z-index: var(--layer-popover);
-	max-height: var(--bt-gp-maxh, none);
+	max-height: var(--bt-gp-maxh, 70vh);
 	padding: var(--size-4-3);
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);

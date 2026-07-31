@@ -1,0 +1,48 @@
+---
+version: 2
+title: Cornell Notes
+columns:
+  - id: c_cue
+    name: Cues / Questions
+    width: 219
+  - id: c_notes
+    name: Notes
+    width: 708
+rows:
+  - id: r_0
+    cells:
+      c_cue: What is the Cornell Notes method?
+      c_notes: A note-taking system by Walter Pauk (Cornell University) that splits the page into cue, notes, and summary areas
+  - id: r_1
+    cells:
+      c_cue: What goes in each area?
+      c_notes: Notes area — the main content during class/reading; Cue area — key words/questions added afterward, for self-testing; Summary area — a sentence or two written after review
+  - id: r_2
+    cells:
+      c_cue: Why keep cues and notes separate?
+      c_notes: It forces an active "record → distill → summarize" review instead of just filing notes away unread
+  - id: r_3
+    cells:
+      c_cue: How do you review with it?
+      c_notes: Cover the notes area, read only the cue questions, answer them out loud, then check the notes area for anything missed
+  - id: r_4
+    cells:
+      c_cue: When is it useful?
+      c_notes: Lectures, reading, and meeting notes — especially anything you'll revisit for review or exams
+  - id: r_5
+    cells: {}
+  - id: r_summary
+    cells:
+      c_cue: "Summary: the Cornell Notes method's cue–notes–summary layout turns passive recording into active review."
+merges:
+  - anchor: r_summary.c_cue
+    end: r_summary.c_notes
+styles:
+  - target: c_cue
+    bg: "#FFF7D6"
+  - target: r_summary
+    bg: "#E8F0FE"
+    bold: true
+  - target: header
+    bold: true
+---

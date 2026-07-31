@@ -75,7 +75,7 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 > ![Upgrade](docs/demo-00-migration.gif)
 **1 · Quick start from template — or a blank table**
 
-An empty `rich-table` code block shows two buttons: **Insert template** (a full-featured demo table showcasing every capability) or **Insert blank table**, which opens a Word/Sheets-style size picker — hover an 8×6 grid to preview and click to confirm a row/column count, or type exact numbers for anything past the visible grid.
+An empty `rich-table` code block shows one button per built-in template (currently a full-featured **Demo** and a **Cornell Notes** layout) plus **Insert blank table**, which opens a Word/Sheets-style size picker — hover an 8×6 grid to preview and click to confirm a row/column count, or type exact numbers for anything past the visible grid. Hovering any button live-previews that option below; with nothing hovered, the default template previews. Templates are auto-discovered from `src/templates/*.yaml` (same pattern as themes) — no code changes needed to add one.
 
 ![Quick start demo](docs/demo-01-template.gif)
 

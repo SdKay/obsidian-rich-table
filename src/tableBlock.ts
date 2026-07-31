@@ -15,8 +15,7 @@ import { registerHoverState, takeHoverState } from './renderHoverHandoff';
 import { registerCalendarMonth } from './renderCalendar';
 import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
-import zhTemplate from './templates/zh.yaml';
-import enTemplate from './templates/en.yaml';
+import { BUILTIN_TEMPLATES } from './templates/index';
 
 /**
  * Module-level snapshot cache keyed by "sourcePath:lineStart". Each entry is a
@@ -62,8 +61,20 @@ function injectLiveSnapshot(container: HTMLElement, cached: HTMLElement | undefi
 	while (clone.firstChild) container.appendChild(clone.firstChild);
 }
 
+/** Content for a given template id (falls back to the first/default template —
+ *  "demo", always sorted first by generateTemplateMeta — if the id is unknown,
+ *  e.g. a stale id from before a template was renamed/removed). */
+function getTemplateContent(templateId: string): string {
+	const tpl = BUILTIN_TEMPLATES.find(t => t.id === templateId) ?? BUILTIN_TEMPLATES[0];
+	return isZh() ? (tpl?.zh ?? '') : (tpl?.en ?? '');
+}
+
+/** The default template — used for the isEmpty/version-detection plumbing that
+ *  needs *some* concrete content before the user has chosen anything (see the
+ *  `isEmpty` branch in render()); the empty-block banner itself offers every
+ *  template explicitly and doesn't go through this. */
 function getEmptyTemplate(): string {
-	return isZh() ? zhTemplate : enTemplate;
+	return getTemplateContent(BUILTIN_TEMPLATES[0]?.id ?? 'demo');
 }
 
 /** True when the table's YAML front-matter contains `noUpgrade: true`. */
@@ -241,7 +252,12 @@ export class TableBlock extends MarkdownRenderChild {
 			// this one just stays reachable without needing the tab bar in view.
 			const onCreateSheet = onWorkbookOp ? () => onWorkbookOp({ type: 'create-sheet' }) : undefined;
 
-			if (active) {
+			// isEmpty's "active" is a stand-in default-template model purely for
+			// version-detection plumbing (see getEmptyTemplate) — the empty-block
+			// banner below renders its own multi-template preview, so skip this
+			// render entirely rather than showing the default template as if it
+			// were the block's real (about-to-be-overwritten) content.
+			if (active && !isEmpty) {
 				await renderTable(
 					active,
 					() => this.plugin.choiceRegistry,
@@ -261,8 +277,8 @@ export class TableBlock extends MarkdownRenderChild {
 			}
 
 			if (isEmpty) {
-				this.renderEmptyBanner(tmp,
-					() => this.insertTemplate(),
+				await this.renderEmptyBanner(tmp,
+					(templateId) => this.insertTemplate(templateId),
 					(rows, cols) => this.insertBlank(rows, cols));
 			} else if (active && active.columns.length === 0) {
 				// A brand-new sheet (create-sheet appends one with zero columns) or
@@ -274,8 +290,8 @@ export class TableBlock extends MarkdownRenderChild {
 				// deleted, leaving 0 columns outside the normal "add a sheet" path)
 				// there's no workbook to scope into, so it falls back to the exact
 				// same whole-block replace the top-level isEmpty case already uses.
-				this.renderEmptyBanner(tmp,
-					() => this.workbook ? this.insertTemplateIntoActiveSheet() : this.insertTemplate(),
+				await this.renderEmptyBanner(tmp,
+					(templateId) => this.workbook ? this.insertTemplateIntoActiveSheet(templateId) : this.insertTemplate(templateId),
 					(rows, cols) => this.workbook ? this.insertBlankIntoActiveSheet(rows, cols) : this.insertBlank(rows, cols));
 			}
 
@@ -389,32 +405,174 @@ export class TableBlock extends MarkdownRenderChild {
 	/** Shared by the whole-block-empty case and the per-sheet-empty case (a
 	 *  freshly created sheet, or any sheet a user emptied out completely) —
 	 *  same banner/copy, different insert targets (splice raw text into the
-	 *  file vs populate just the active sheet's own content). */
-	private renderEmptyBanner(
+	 *  file vs populate just the active sheet's own content).
+	 *
+	 *  Every built-in template (BUILTIN_TEMPLATES, auto-discovered from
+	 *  src/templates/) gets its own button, plus a fixed "insert blank table"
+	 *  button (the one option that needs a second interaction — the grid size
+	 *  picker — so it can't be a plain one-click insert like the others).
+	 *  Hovering a button live-previews its content below the banner; the
+	 *  default (nothing hovered) preview is always the first template
+	 *  (BUILTIN_TEMPLATES[0], "demo" — see generateTemplateMeta's sort). Every
+	 *  candidate is rendered once up front (all read-only, no onOp/onCellChange)
+	 *  and toggled via a class, rather than re-rendering on each hover — cheap
+	 *  enough for the handful of templates this is expected to have, and avoids
+	 *  a visible per-hover render delay. */
+	private async renderEmptyBanner(
 		tmp: HTMLElement,
-		onTemplate: () => Promise<void>,
+		onTemplate: (templateId: string) => Promise<void>,
 		onBlank: (rows: number, cols: number) => Promise<void>,
-	): void {
+	): Promise<void> {
+		const BLANK_PREVIEW_SIZE = 3;
+		const BLANK_KEY = 'blank';
+
 		const banner = createDiv({ cls: 'bt-template-banner' });
-		banner.createSpan({ text: t('templatePreview') });
+		banner.createSpan({ cls: 'bt-template-banner-label', text: t('templatePreview') });
 		const btns = banner.createDiv({ cls: 'bt-template-btns' });
-		const insertBtn = btns.createEl('button', {
-			cls: 'bt-template-btn',
-			text: t('insertTemplate'),
-		});
-		insertBtn.addEventListener('click', () => void onTemplate());
+
+		// tmp is still off-screen at this point (render() swaps it into the live
+		// containerEl only after this whole method resolves) — every preview's
+		// renderTable() must be AWAITED here, not fired-and-forgotten. renderTable
+		// awaits one MarkdownRenderer.render() per cell, appending each row's <tr>
+		// as it resolves; if that were still in flight at swap time, the rest of
+		// each row would keep appending directly into the now-LIVE DOM, visibly
+		// popping in row by row instead of appearing as one finished table.
+		const previewHost = createDiv({ cls: 'bt-template-preview-host' });
+		const previewEls = new Map<string, HTMLElement>();
+		const pending: Promise<void>[] = [];
+		const addPreview = (key: string, model: TableModelV2) => {
+			const el = previewHost.createDiv({ cls: 'bt-template-preview-item' });
+			previewEls.set(key, el);
+			pending.push(renderTable(model, () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this));
+		};
+		for (const tpl of BUILTIN_TEMPLATES) addPreview(tpl.id, parseTable(isZh() ? tpl.zh : tpl.en));
+		addPreview(BLANK_KEY, buildBlankTable(BLANK_PREVIEW_SIZE, BLANK_PREVIEW_SIZE));
+
+		// A dedicated overlay rather than relying on previewHost.is-inserting's
+		// own cursor/pointer-events: a rendered data cell has its own explicit
+		// `cursor: text` edit hint (bt-td-editable), which an ancestor's cursor
+		// value can't reliably override once the descendant's own rule applies
+		// to it directly — and even where it could, a stationary pointer's
+		// cursor icon doesn't repaint on a pure class/style change without a
+		// real subsequent pointer move (browsers only re-hit-test cursor on
+		// actual movement). Re-enabling pointer-events on just this element
+		// (see styles.css) makes IT the actual hit-tested target the instant
+		// it appears, so it reliably owns the wait cursor regardless of what's
+		// rendered underneath.
+		previewHost.createDiv({ cls: 'bt-template-preview-lock' });
+		await Promise.all(pending);
+
+		const defaultKey = BUILTIN_TEMPLATES[0]?.id ?? BLANK_KEY;
+		const showPreview = (key: string) => {
+			for (const [k, el] of previewEls) el.toggleClass('is-active', k === key);
+		};
+		showPreview(defaultKey);
+
+		// One-way latch: the actual insert (vault.process write → Obsidian's file
+		// watcher detects the change → this block gets reprocessed as non-empty)
+		// has real latency that's entirely Obsidian's own scheduling, not
+		// anything renderTable() does — so the banner stays clickable during
+		// that gap unless something explicitly blocks it. Without this, clicking
+		// a second (different) button before the first insert lands fires a
+		// second independent write, racing the first. Once any insert starts,
+		// lock the whole button row — there's nothing to unlock later since a
+		// successful insert always tears this exact banner down anyway.
+		//
+		// previewHost is locked too, not just banner — it's a sibling, not a
+		// descendant (see the append(banner, previewHost) below), so it needs
+		// its own is-inserting class or the preview table underneath stays
+		// fully interactive (hover strips, cell selection) for the entire
+		// insert-latency gap, which is confusing since that exact table is
+		// about to be replaced by a real one anyway.
+		let inserting = false;
+		const lockAndInsert = (fn: () => Promise<void>) => {
+			if (inserting) return;
+			inserting = true;
+			banner.addClass('is-inserting');
+			previewHost.addClass('is-inserting');
+			void fn();
+		};
+
+		// Rebuilds the "blank" preview to the exact size currently hovered in the
+		// grid picker. Cheap regardless of how often the grid-hover fires: every
+		// cell in buildBlankTable's output is empty, and renderDataCell's empty-
+		// cell branch never awaits MarkdownRenderer — so this whole render
+		// resolves within the same microtask flush, well before the next real
+		// mouseover (a later browser task) could start an overlapping one. No
+		// staleness guard needed as long as that stays true (it would be, e.g.,
+		// if a future change gave blank cells default content to render).
+		const previewBlankSize = (rows: number, cols: number) => {
+			const el = previewEls.get(BLANK_KEY);
+			if (!el) return;
+			el.empty();
+			void renderTable(buildBlankTable(rows, cols), () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this);
+		};
+
+		for (const tpl of BUILTIN_TEMPLATES) {
+			const btn = btns.createEl('button', {
+				cls: 'bt-template-btn',
+				text: isZh() ? tpl.labelZh : tpl.labelEn,
+			});
+			btn.dataset.previewKey = tpl.id;
+			btn.addEventListener('click', () => lockAndInsert(() => onTemplate(tpl.id)));
+		}
+		// The grid size picker renders to document.body (CONFIRMED necessary via
+		// live diagnostics — see openGridSizePicker's doc comment for the
+		// measured root cause: Obsidian wraps every rendered code block in a
+		// `contain: paint` container, which hijacks position:fixed/absolute's
+		// containing block AND clips paint to its own ~127px-tall box while the
+		// block is still just this empty-state banner; no CSS position value
+		// escapes that from inside it). Being outside btns' own DOM subtree
+		// means moving the mouse up into it fires a genuine mouseleave on btns,
+		// which would otherwise revert the preview back to the default template
+		// mid-pick. Locked to the blank-table preview for as long as the picker
+		// is open, regardless of where the mouse actually is; see "Hover state
+		// & floating popups" for the same class of issue with the hover-strip
+		// show/hide machinery.
+		let pickerOpen = false;
+
 		const blankBtn = btns.createEl('button', {
-			cls: 'bt-template-btn bt-template-btn-secondary',
+			cls: 'bt-template-btn',
 			text: t('insertBlankTable'),
 		});
-		blankBtn.addEventListener('click', () => {
+		blankBtn.dataset.previewKey = BLANK_KEY;
+		const openBlankPicker = () => {
+			if (pickerOpen || inserting) return; // already open — mouseenter can re-fire without a leave in between
+			pickerOpen = true;
+			showPreview(BLANK_KEY);
 			openGridSizePicker({
 				component: this,
 				anchor: blankBtn,
-				onConfirm: (rows, cols) => void onBlank(rows, cols),
+				onConfirm: (rows, cols) => lockAndInsert(() => onBlank(rows, cols)),
+				onHover: (rows, cols) => previewBlankSize(rows, cols),
+				onClose: () => { pickerOpen = false; if (!inserting) showPreview(defaultKey); },
 			});
+		};
+		// Hover opens it directly — no click needed, matching the other buttons'
+		// hover-to-preview behavior. Click stays wired too (harmless if already
+		// open) so it's still reachable via keyboard focus + Enter/Space, which
+		// never dispatches a real mouseenter.
+		blankBtn.addEventListener('mouseenter', openBlankPicker);
+		blankBtn.addEventListener('click', openBlankPicker);
+
+		// Delegated (not per-button) so moving directly between two adjacent
+		// buttons doesn't flash back to the default preview in between. Also
+		// guarded by `inserting`: adding is-inserting sets the button row to
+		// pointer-events:none synchronously inside the click handler, and doing
+		// that while the mouse still sits over the just-clicked button makes
+		// the browser re-hit-test and fire a synthetic mouseleave on it right
+		// away — without this guard that flipped the frozen preview back to
+		// the default template (rich-table) instead of staying on whichever one
+		// was actually confirmed and is now being written.
+		btns.addEventListener('mouseover', (evt: MouseEvent) => {
+			if (pickerOpen || inserting) return;
+			const btn = (evt.target as HTMLElement).closest<HTMLElement>('.bt-template-btn');
+			const key = btn?.dataset.previewKey;
+			if (key) showPreview(key);
 		});
-		tmp.prepend(banner);
+		btns.addEventListener('mouseleave', () => { if (!pickerOpen && !inserting) showPreview(defaultKey); });
+
+		tmp.append(banner, previewHost);
 	}
 
 	private async handleStructuralOp(op: StructuralOpV2): Promise<void> {
@@ -603,12 +761,12 @@ export class TableBlock extends MarkdownRenderChild {
 		});
 	}
 
-	private async insertTemplate(): Promise<void> {
+	private async insertTemplate(templateId: string): Promise<void> {
 		// The template file's own pipe-table mirror is source-controlled by hand and
 		// easy to forget to update after editing the YAML — regenerate it here via
 		// the same parse→serialize round trip a real write-back uses, instead of
 		// trusting the template file's mirror to already be correct.
-		await this.insertBlock(serializeTable(parseTable(getEmptyTemplate())));
+		await this.insertBlock(serializeTable(parseTable(getTemplateContent(templateId))));
 	}
 
 	private async insertBlank(rows: number, cols: number): Promise<void> {
@@ -636,10 +794,10 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  sheet's own content via a workbook op instead of splicing raw text into
 	 *  the file, since the block already holds a real workbook the raw-text
 	 *  path would clobber. */
-	private async insertTemplateIntoActiveSheet(): Promise<void> {
+	private async insertTemplateIntoActiveSheet(templateId: string): Promise<void> {
 		const sheet = this.activeModel;
 		if (!sheet || !this.workbook) return;
-		const content: Omit<TableModelV2, 'version'> = parseTable(getEmptyTemplate());
+		const content: Omit<TableModelV2, 'version'> = parseTable(getTemplateContent(templateId));
 		await this.handleWorkbookOp({ type: 'set-sheet-content', sheetId: (sheet as SheetDefV2).id, content });
 	}
 

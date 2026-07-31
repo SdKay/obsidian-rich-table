@@ -1,0 +1,48 @@
+---
+version: 2
+title: 康奈尔笔记
+columns:
+  - id: c_cue
+    name: 线索/问题
+    width: 219
+  - id: c_notes
+    name: 笔记要点
+    width: 708
+rows:
+  - id: r_0
+    cells:
+      c_cue: 什么是康奈尔笔记法？
+      c_notes: 康奈尔大学 Walter Pauk 提出的笔记法，把页面分成线索、笔记、总结三块区域
+  - id: r_1
+    cells:
+      c_cue: 三个区域分别记什么？
+      c_notes: 笔记区记课上/阅读时的主体内容；线索区课后补关键词和问题，用于自测；总结区读完用一两句话概括
+  - id: r_2
+    cells:
+      c_cue: 为什么要把线索和笔记分开？
+      c_notes: 逼着自己做"记录—提炼—总结"的主动回顾，而不是记完就扔在一边
+  - id: r_3
+    cells:
+      c_cue: 复习时怎么用？
+      c_notes: 遮住笔记区，只看线索区的问题，试着口头回答，再对照笔记区检查有没有漏
+  - id: r_4
+    cells:
+      c_cue: 适合什么场景？
+      c_notes: 听课、读书、开会记录都适用，尤其适合之后要复习或考试的内容
+  - id: r_5
+    cells: {}
+  - id: r_summary
+    cells:
+      c_cue: 总结：康奈尔笔记法通过"线索-笔记-总结"三栏结构，把被动记录变成主动复习的工具。
+merges:
+  - anchor: r_summary.c_cue
+    end: r_summary.c_notes
+styles:
+  - target: c_cue
+    bg: "#FFF7D6"
+  - target: r_summary
+    bg: "#E8F0FE"
+    bold: true
+  - target: header
+    bold: true
+---
