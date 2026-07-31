@@ -9,6 +9,7 @@ export interface ThemeMeta {
 
 export const BUILTIN_THEMES: readonly ThemeMeta[] = [
 	{ id: 'academic', labelEn: 'Academic 📐', labelZh: '学术 📐' },
+	{ id: 'grid', labelEn: 'Grid 🔲', labelZh: '网格 🔲' },
 	{ id: 'plain', labelEn: 'Plain 🙂', labelZh: '朴素 🙂' },
 ] as const;
 

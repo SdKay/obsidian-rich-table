@@ -2045,6 +2045,28 @@
     box-shadow: inset 0 -1.5px 0 var(--text-muted);
 }
 
+/* @theme-label-en: Grid 🔲 */
+/* @theme-label-zh: 网格 🔲 */
+/*
+ * Grid theme — every cell boundary visible (Excel "All Borders" style),
+ * with a bolder outer frame and a bolder rule separating the header from
+ * the first data row. Unlike academic (no vertical lines, no backgrounds),
+ * this keeps the default cell backgrounds and adds the full grid on top.
+ */
+
+.bt-render-root.bt-theme-grid {
+	--bt-cell-border:  1px solid var(--text-normal);
+	--bt-border-outer: 2px solid var(--text-normal);
+}
+
+/* Header/data separator — bolder than the regular grid, matching the outer
+ * frame's weight. Its own selector rather than --bt-cell-border-bottom,
+ * which the base rule (styles.css) applies to every cell's bottom edge
+ * uniformly — only this one row boundary should be thicker. */
+.bt-theme-grid .bt-table thead .bt-th {
+	border-bottom: 2px solid var(--text-normal) !important;
+}
+
 /* @theme-label-en: Plain 🙂 */
 /* @theme-label-zh: 朴素 🙂 */
 /*

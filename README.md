@@ -131,7 +131,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![一键自适应](docs/demo-14-autofit.gif)
 
-**15 · Theme picker** — 🎨 icon switches between built-in themes (`academic`, `plain`)
+**15 · Theme picker** — 🎨 icon switches between built-in themes (`academic`, `grid`, `plain`)
 
 ![主题切换](docs/demo-15-theme.gif)
 
@@ -218,6 +218,7 @@ Add `theme:` to the YAML front-matter to apply a built-in visual theme:
 
 ```yaml
 theme: academic   # LaTeX booktabs style — three horizontal rules, no grid lines
+theme: grid       # Excel "All Borders" style — full grid, bold outer frame + header rule
 theme: plain      # Colorful gradient header + animated border
 ```
 
@@ -225,6 +226,7 @@ theme: plain      # Colorful gradient header + animated border
 |-------|-------------|
 | *(none)* | Default — no special styling |
 | `academic 📐` | Inspired by LaTeX's booktabs package: toprule / midrule / bottomrule, no vertical lines, no cell backgrounds |
+| `grid 🔲` | Full grid on every cell, a bolder outer frame, and a bolder rule separating the header from the data |
 | `plain 🙂` | Animated rainbow border, gradient header with breathing effect, cursor-reactive row glow |
 
 Themes are purely visual — they never affect data or layout.
@@ -281,7 +283,7 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | Per-cell bg color, text color, and font size — via panel or YAML | ✅ |
 | Row / column selector strips — hover to reveal, click or drag to style entire rows/columns | ✅ |
 | Per-table lock — click the 🔒 icon at the top-left corner to disable / re-enable all editing | ✅ |
-| **Themes** — set `theme: academic` (booktabs), `theme: plain` (colorful gradient + animated border) | ✅ |
+| **Themes** — set `theme: academic` (booktabs), `theme: grid` (full grid + bold outer/header rules), `theme: plain` (colorful gradient + animated border) | ✅ |
 | Custom cell padding (top / bottom / left / right) | 🔜 |
 | Collapsible table — fold-icon button in the top-left corner shows/hides the table body, keeping the title and header row visible | ✅ |
 | Conditional formatting — auto-apply styles based on cell value rules | 🔜 |
