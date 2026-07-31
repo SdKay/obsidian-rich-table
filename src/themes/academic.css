@@ -7,14 +7,16 @@
  * §15 compliant: only CSS variable assignments and non-layout visual properties.
  */
 
-/* Suppress cell backgrounds; --bt-cell-border defaults to none so no grid lines.
- * No !important needed: this selector (3 classes) already outweighs the base
- * .bt-table .bt-td/.bt-th background-color rule (2 classes) it overrides — a
- * user's own per-cell background still wins regardless, since applyResolvedStyle
- * always applies that inline with 'important' priority (see "Theme system"). */
-.bt-theme-academic .bt-table .bt-th,
-.bt-theme-academic .bt-table .bt-td {
-    background: none;
+/* Suppress cell backgrounds via the shared variable surface (styles.css)
+ * rather than a competing .bt-td/.bt-th selector — a flat, uniform value
+ * like "no background" is exactly what --bt-cell-bg/--bt-header-bg exist
+ * for, so this never has to fight the base rule's own !important at all.
+ * --bt-cell-border defaults to none so no grid lines either. A user's own
+ * per-cell background still wins regardless, since applyResolvedStyle always
+ * applies that inline with 'important' priority (see "Theme system"). */
+.bt-render-root.bt-theme-academic {
+    --bt-cell-bg:   none;
+    --bt-header-bg: none;
 }
 
 /* Toprule + midrule: thick line above header, medium line below header.

@@ -104,14 +104,14 @@
 
 /* ── Header: background-attachment:fixed = all cells share viewport coords
  * Every <th> sees a different slice of the same gradient → seamless band.
- * No !important on any of these: this selector (3 classes) already outweighs
- * the base .bt-table .bt-th rule (2 classes) for background/color, and nothing
- * else in this file competes for background-attachment/animation. Dropping
- * !important from `animation` also fixes a latent bug — the write-pending
- * pause rule (styles.css) sets animation-play-state:paused with !important,
- * which needs to win outright; it couldn't when this rule's own !important
- * animation shorthand (which implicitly resets animation-play-state too) had
- * higher selector specificity and tied on importance. */
+ * No !important on this shorthand: the base .bt-table .bt-th rule (styles.css)
+ * is itself !important on background-COLOR only, never background-image, so
+ * this rule's gradient (background-image) is never actually in competition —
+ * it paints on top of whatever background-color wins underneath regardless,
+ * and every stop here is fully opaque so nothing shows through either way.
+ * Wrapping the whole shorthand in !important would be actively wrong: it
+ * would implicitly reset background-attachment to its initial value with the
+ * same !important priority, beating the very next declaration below. */
 .bt-theme-plain .bt-table .bt-th {
     background: linear-gradient(
         to right,
@@ -155,8 +155,12 @@
                   var(--background-primary)) !important;
 }
 
+/* !important required: this shorthand sets background-color, which the base
+ * .bt-table .bt-td rule (styles.css) also sets with !important — without it
+ * here too, the base rule would win outright regardless of this selector's
+ * higher specificity, and the stripe would silently disappear. */
 .bt-theme-plain .bt-table tbody tr:nth-child(even) .bt-td {
-    background: color-mix(in srgb, hsl(var(--bt-p-hue, 260), 50%, 60%) 5%, transparent);
+    background: color-mix(in srgb, hsl(var(--bt-p-hue, 260), 50%, 60%) 5%, transparent) !important;
 }
 
 /* ── Selection ──────────────────────────────────────────────────────── */

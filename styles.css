@@ -708,13 +708,62 @@
 	min-height: 1.4em;
 }
 
+/* !important: Obsidian's own reading-view table CSS styles bare <tr>/<td>
+ * elements directly (zebra striping, native hover) — without this, that
+ * bleeds through our own (by-default transparent) cell background instead
+ * of staying purely opt-in per rich-table theme. See the <tr> reset below
+ * for the other half of the same fix.
+ *
+ * A theme wanting a flat, uniform cell/header background (no background at
+ * all, or one solid color) should set --bt-cell-bg/--bt-header-bg on its own
+ * .bt-render-root.bt-theme-xxx (see academic.css) rather than writing a
+ * competing .bt-td/.bt-th selector — that flows straight through this one
+ * rule with zero specificity/!important fight, and keeps "add a simple
+ * theme" from needing to know this rule exists at all. Only a theme whose
+ * look genuinely isn't a flat value (plain.css's per-row zebra tint, which
+ * differs by row) has to fall back to its own selector, and MUST mark it
+ * !important to still win here — see plain.css's zebra rule for why. */
 .bt-table .bt-td {
-	background-color: var(--bt-cell-bg, transparent);
+	background-color: var(--bt-cell-bg, transparent) !important;
 }
 
 .bt-table .bt-th {
-	background-color: var(--bt-header-bg, var(--background-secondary));
+	background-color: var(--bt-header-bg, var(--background-secondary)) !important;
 	font-weight: var(--font-semibold);
+}
+
+/* The <tr> itself never gets a background of its own — Obsidian's reading-
+ * view CSS otherwise paints one directly (zebra striping, row hover), which
+ * would show through any cell whose own background resolves to transparent.
+ * bt-row-hover below deliberately targets individual cells, not the <tr>,
+ * specifically so it always paints on top of whatever a theme sets rather
+ * than depending on any cell being transparent. */
+.bt-render-root .bt-table tbody tr,
+.bt-render-root .bt-table thead tr {
+	background: none !important;
+}
+
+/* Row/cell hover highlight — JS-driven (renderer.ts), not native `tr:hover`/
+ * `td:hover`. A rowspanned cell's <td> lives in only the FIRST <tr> it
+ * visually spans, so `tr:hover` can only ever light up that one row; this is
+ * applied per-cell across every row a hovered merge actually spans instead.
+ * Also replaces (rather than layering onto) the three previous single-cell
+ * hover rules this consolidates — .bt-td-editable:hover, .bt-th-editable:hover,
+ * .bt-th-typed:hover all did the exact same "background: var(--background-
+ * modifier-hover) on hover" independently, for three different cell kinds,
+ * and had the same merge-blindness this fixes for none of them. bt-cell-hover
+ * reuses their exact color for the specific hovered cell (proven "reads as
+ * the right amount of dark" already); bt-row-hover is a lighter tint of that
+ * same color, not a different one, so both read as one consistent hover
+ * language regardless of the active Obsidian theme's own hover tint. */
+.bt-render-root .bt-table .bt-td.bt-row-hover,
+.bt-render-root .bt-table .bt-th.bt-row-hover {
+	background: color-mix(in srgb, var(--background-modifier-hover) 50%, transparent) !important;
+}
+
+.bt-render-root .bt-table .bt-td.bt-cell-hover,
+.bt-render-root .bt-table .bt-th.bt-cell-hover {
+	background: var(--background-modifier-hover) !important;
 }
 
 /* Summary/aggregate rows — visually distinct from data rows. border-top on
@@ -722,9 +771,13 @@
  * adjacent rows' borders into one shared line either way, so this reads as a
  * single rule above the summary block and a thin divider between its rows.
  * !important + .bt-render-root prefix: must win over the --bt-cell-border
- * block above, same reasoning as the drag-reorder drop indicator below. */
-.bt-table .bt-agg-td {
-	background-color: var(--background-secondary-alt, var(--background-secondary));
+ * block above, same reasoning as the drag-reorder drop indicator below.
+ * background-color also needs !important + the extra .bt-td.bt-agg-td
+ * compound (agg cells carry both classes) — otherwise it ties with the base
+ * .bt-table .bt-td rule (also 2 classes, also !important) and would only win
+ * by source order, which is fragile. */
+.bt-table .bt-td.bt-agg-td {
+	background-color: var(--background-secondary-alt, var(--background-secondary)) !important;
 	font-weight: var(--font-semibold);
 }
 .bt-render-root .bt-table .bt-agg-td {
@@ -809,22 +862,16 @@
 	position: relative;
 }
 
-/* Editable data cells */
+/* Editable data cells. Hover tint is bt-cell-hover (see above), not a rule
+ * here — this used to set its own background-color on :hover independently
+ * of every other cell kind; consolidated so all cell kinds hover the same way. */
 .bt-table .bt-td-editable {
 	cursor: text;
 }
 
-.bt-table .bt-td-editable:hover {
-	background-color: var(--background-modifier-hover);
-}
-
-/* Editable (untyped) header cells */
+/* Editable (untyped) header cells — same consolidation as bt-td-editable above. */
 .bt-table .bt-th-editable {
 	cursor: text;
-}
-
-.bt-table .bt-th-editable:hover {
-	background-color: var(--background-modifier-hover);
 }
 
 /* Active edit state */
@@ -1075,10 +1122,8 @@
 	opacity: 0.45;
 }
 
-.bt-table .bt-th-typed:hover {
-	background-color: var(--background-modifier-hover);
-}
-
+/* Hover tint is bt-cell-hover (see above) — same consolidation as
+ * bt-td-editable/bt-th-editable. */
 .bt-table .bt-th-typed:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: -2px;
@@ -2015,14 +2060,16 @@
  * §15 compliant: only CSS variable assignments and non-layout visual properties.
  */
 
-/* Suppress cell backgrounds; --bt-cell-border defaults to none so no grid lines.
- * No !important needed: this selector (3 classes) already outweighs the base
- * .bt-table .bt-td/.bt-th background-color rule (2 classes) it overrides — a
- * user's own per-cell background still wins regardless, since applyResolvedStyle
- * always applies that inline with 'important' priority (see "Theme system"). */
-.bt-theme-academic .bt-table .bt-th,
-.bt-theme-academic .bt-table .bt-td {
-    background: none;
+/* Suppress cell backgrounds via the shared variable surface (styles.css)
+ * rather than a competing .bt-td/.bt-th selector — a flat, uniform value
+ * like "no background" is exactly what --bt-cell-bg/--bt-header-bg exist
+ * for, so this never has to fight the base rule's own !important at all.
+ * --bt-cell-border defaults to none so no grid lines either. A user's own
+ * per-cell background still wins regardless, since applyResolvedStyle always
+ * applies that inline with 'important' priority (see "Theme system"). */
+.bt-render-root.bt-theme-academic {
+    --bt-cell-bg:   none;
+    --bt-header-bg: none;
 }
 
 /* Toprule + midrule: thick line above header, medium line below header.
@@ -2173,14 +2220,14 @@
 
 /* ── Header: background-attachment:fixed = all cells share viewport coords
  * Every <th> sees a different slice of the same gradient → seamless band.
- * No !important on any of these: this selector (3 classes) already outweighs
- * the base .bt-table .bt-th rule (2 classes) for background/color, and nothing
- * else in this file competes for background-attachment/animation. Dropping
- * !important from `animation` also fixes a latent bug — the write-pending
- * pause rule (styles.css) sets animation-play-state:paused with !important,
- * which needs to win outright; it couldn't when this rule's own !important
- * animation shorthand (which implicitly resets animation-play-state too) had
- * higher selector specificity and tied on importance. */
+ * No !important on this shorthand: the base .bt-table .bt-th rule (styles.css)
+ * is itself !important on background-COLOR only, never background-image, so
+ * this rule's gradient (background-image) is never actually in competition —
+ * it paints on top of whatever background-color wins underneath regardless,
+ * and every stop here is fully opaque so nothing shows through either way.
+ * Wrapping the whole shorthand in !important would be actively wrong: it
+ * would implicitly reset background-attachment to its initial value with the
+ * same !important priority, beating the very next declaration below. */
 .bt-theme-plain .bt-table .bt-th {
     background: linear-gradient(
         to right,
@@ -2224,8 +2271,12 @@
                   var(--background-primary)) !important;
 }
 
+/* !important required: this shorthand sets background-color, which the base
+ * .bt-table .bt-td rule (styles.css) also sets with !important — without it
+ * here too, the base rule would win outright regardless of this selector's
+ * higher specificity, and the stripe would silently disappear. */
 .bt-theme-plain .bt-table tbody tr:nth-child(even) .bt-td {
-    background: color-mix(in srgb, hsl(var(--bt-p-hue, 260), 50%, 60%) 5%, transparent);
+    background: color-mix(in srgb, hsl(var(--bt-p-hue, 260), 50%, 60%) 5%, transparent) !important;
 }
 
 /* ── Selection ──────────────────────────────────────────────────────── */

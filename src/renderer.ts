@@ -461,6 +461,65 @@ export async function renderTable(
 		}
 	});
 
+	// ── Row/cell hover highlight (merge-aware) ──────────────────────────────
+	// See styles.css's bt-row-hover/bt-cell-hover comment for why this can't
+	// be native CSS :hover: a rowspanned cell's <td> physically lives in only
+	// the FIRST <tr> it visually spans, so `tr:hover` alone can never light up
+	// the rows underneath it.
+	//
+	// Modeled as a horizontal sweep through the hovered cell's own row band
+	// (just its own row if unmerged, or every row a rowspanned hovered cell
+	// itself covers): every cell IN that band gets fully row-highlighted
+	// (including any OTHER column's merge that happens to live there, which
+	// paints its own full height automatically via its rowSpan) — but a merge
+	// anchored OUTSIDE the band that merely reaches INTO it (from an earlier
+	// row, since a covered row never has its own <td> for that column) only
+	// gets itself highlighted, not its entire row. This was tried first as a
+	// transitive "two rows are joined if ANY column's merge covers both, and
+	// that can chain" union-find — reported as lighting up the entire table,
+	// since two independent merges that each touch the hovered row (one from
+	// above, one anchored at it) chained into one another's neighbors too.
+	// The sweep only ever looks at the ORIGINAL band, once, with no chaining.
+	const clearHover = () => {
+		table.querySelectorAll<HTMLElement>('.bt-row-hover').forEach(e => e.removeClass('bt-row-hover'));
+		table.querySelectorAll<HTMLElement>('.bt-cell-hover').forEach(e => e.removeClass('bt-cell-hover'));
+	};
+	let lastHoverCell: HTMLTableCellElement | null = null;
+	table.addEventListener('mouseover', (evt: MouseEvent) => {
+		const cell = (evt.target as HTMLElement).closest<HTMLTableCellElement>('.bt-td, .bt-th');
+		if (cell === lastHoverCell) return; // moving within the same cell's own nested content
+		lastHoverCell = cell;
+		clearHover();
+		if (!cell) return;
+		cell.addClass('bt-cell-hover');
+		const tr = cell.closest<HTMLElement>('tr');
+		const container = tr?.parentElement;
+		if (!tr || !container) return;
+		const trs = Array.from(container.children) as HTMLElement[];
+		const bandStart = trs.indexOf(tr);
+		if (bandStart < 0) return;
+		const bandEnd = bandStart + (cell.rowSpan || 1) - 1;
+
+		trs.forEach((t, i) => {
+			if (i >= bandStart && i <= bandEnd) {
+				// Fully in the sweep's own band — every cell in this row lights up.
+				t.querySelectorAll<HTMLElement>(':scope > .bt-td, :scope > .bt-th')
+					.forEach(c => c.addClass('bt-row-hover'));
+				return;
+			}
+			// Outside the band — only a cell whose OWN span reaches into the band
+			// (an earlier row's merge extending down into it) gets highlighted,
+			// and only that one cell, since the sweep doesn't otherwise touch this row.
+			Array.from(t.children).forEach(c => {
+				const el = c as HTMLTableCellElement;
+				if (!el.matches('.bt-td, .bt-th')) return;
+				const end = i + (el.rowSpan || 1) - 1;
+				if (end >= bandStart && i <= bandEnd) el.addClass('bt-row-hover');
+			});
+		});
+	});
+	table.addEventListener('mouseleave', () => { lastHoverCell = null; clearHover(); });
+
 	// Click outside the table clears selection and panel
 	component.registerDomEvent(activeDocument, 'click', (evt: MouseEvent) => {
 		if (!selectionPanel && !sel.start) return;
