@@ -796,9 +796,16 @@ export async function renderTable(
 		// Also reposition when the table naturally grows/shrinks (e.g. cell editing
 		// adds lines via Shift+Enter) — bt-layout-changed is only fired by explicit
 		// resize ops, not by the browser's natural reflow.
+		//
+		// Called directly, not deferred another frame via requestAnimationFrame —
+		// see the matching selResizeObs comment (below, for the row/column
+		// selector strips) for why: deferring here produced the exact same
+		// visible "table resizes, then the +add strip catches up a beat later"
+		// during zoom, and calling synchronously is equally safe (only sets CSS
+		// custom properties on addRowBtn/addColBtn/root, none of which is the
+		// observed table, so no ResizeObserver-loop risk).
 		const resizeObs = new ResizeObserver(() => {
-			if (addRowBtn.hasClass('bt-strip-visible'))
-				window.requestAnimationFrame(positionEdgeStrips);
+			if (addRowBtn.hasClass('bt-strip-visible')) positionEdgeStrips();
 		});
 		resizeObs.observe(table);
 		component?.register(() => resizeObs.disconnect());
@@ -1057,6 +1064,18 @@ export async function renderTable(
 			// onto the <col> so the existing col.style.width reads further down stay correct.
 			if (!hasExplicitWidths) {
 				const measured = new Map<string, number>();
+				// A column that's colspan-merged in EVERY row it appears in (e.g. a
+				// header merge spanning it plus a different data-row merge also
+				// spanning it) never turns up as an unspanned cell anywhere, so the
+				// loop below would never measure it — reported as the selector
+				// strip's column boundaries drifting off from that column onward,
+				// since its <col> kept whatever stale/empty width it had before,
+				// collapsing that column's contribution to 0 in the cumulative
+				// left-offset sum further down. Colspan cells are still recorded
+				// here (not skipped outright) as a fallback candidate — an equal
+				// share of the merged cell's own rendered width — applied only to
+				// whichever columns never get a precise unspanned measurement.
+				const spanned: { startCol: number; span: number; width: number }[] = [];
 				const rows = [
 					...Array.from(thead.querySelectorAll<HTMLElement>('tr')),
 					...Array.from(tbody.querySelectorAll<HTMLElement>('tr')),
@@ -1064,8 +1083,20 @@ export async function renderTable(
 				for (const tr of rows) {
 					for (const cell of Array.from(tr.querySelectorAll<HTMLTableCellElement>('[data-col]'))) {
 						const ci = cell.dataset.col;
-						if (ci === undefined || cell.colSpan > 1 || measured.has(ci)) continue;
+						if (ci === undefined) continue;
+						if (cell.colSpan > 1) {
+							spanned.push({ startCol: parseInt(ci), span: cell.colSpan, width: cell.getBoundingClientRect().width });
+							continue;
+						}
+						if (measured.has(ci)) continue;
 						measured.set(ci, cell.getBoundingClientRect().width);
+					}
+				}
+				for (const { startCol, span, width } of spanned) {
+					const share = width / span;
+					for (let ci = startCol; ci < startCol + span; ci++) {
+						const key = String(ci);
+						if (!measured.has(key)) measured.set(key, share);
 					}
 				}
 				for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
@@ -1080,9 +1111,19 @@ export async function renderTable(
 			// own left edge, which CSS Grid aligns with the table wrapper automatically.
 			colSel.querySelectorAll('.bt-sel-cell, .bt-sel-col-drag').forEach(e => e.remove());
 
+			// parseFloat, not parseInt: col.style.width holds a fractional px value
+			// (rebuild()'s own measurement above pins e.g. "39.9952px" for an
+			// auto-layout column) — parseInt truncates that to "39", and doing so
+			// on every column in a cumulative running sum compounds the ~1px loss
+			// per column into a growing drift, reported as the selector strip's
+			// column boundaries visibly falling further behind the table's real
+			// columns the further right you go (confirmed via logged real numbers:
+			// the drift grew by almost exactly 1px per column). Same fix applied
+			// to the resize-handle seam positions below, which summed the same
+			// truncated value.
 			let colX = 0;
 			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
-				const w = parseInt(c.style.width) || 0;
+				const w = parseFloat(c.style.width) || 0;
 				if (c.dataset.col !== undefined) {
 					// Visible column — one cell per physical column
 					const ci = parseInt(c.dataset.col);
@@ -1214,9 +1255,10 @@ export async function renderTable(
 			}
 
 			// Reposition persistent resize handles (column seam positions, row bottom edges).
+			// parseFloat, not parseInt — see the matching comment on the colSel loop above.
 			let cx = 0;
 			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
-				cx += parseInt(c.style.width) || 0;
+				cx += parseFloat(c.style.width) || 0;
 				const dc = c.dataset.col;
 				if (dc === undefined) continue;
 				const h = colResizeHandles.get(parseInt(dc));
@@ -1650,6 +1692,46 @@ export async function renderTable(
 				rebuild();
 			}
 		});
+
+		// Also reposition when the table's rendered box changes for a reason that
+		// never fires bt-layout-changed — page zoom (Ctrl+/Ctrl-) chief among them,
+		// same gap already fixed for positionEdgeStrips/positionCtrlCol above.
+		// Without this, the strips stayed at their pre-zoom screen position until
+		// some unrelated click happened to trigger a full rebuild — reported as the
+		// row selector visibly sinking into the table at higher zoom levels.
+		//
+		// positionSelectors() is called directly, not deferred via
+		// requestAnimationFrame: ResizeObserver notifications already run after
+		// layout but before that frame's paint, so calling synchronously lands
+		// the corrected position in the SAME frame the table itself resized —
+		// deferring it was reported as a visible two-step "table resizes, then
+		// the selector visibly catches up a beat later" during continuous
+		// zooming (same fix applied to positionEdgeStrips' own observer above,
+		// for the same symptom on the +add strips). Safe to call synchronously
+		// (no ResizeObserver-loop risk): it only sets CSS custom properties on
+		// colSel/rowSel, which aren't observed and don't feed back into table's
+		// own size — same reasoning as positionCtrlCol's observer, which has
+		// always called its handler directly.
+		//
+		// rebuild(), unlike positionSelectors(), IS deferred via
+		// requestAnimationFrame — it re-measures and re-pins auto-layout column
+		// widths onto <col> elements that are themselves children of the
+		// observed table (see rebuild()'s !hasExplicitWidths branch), and
+		// writing a layout-affecting style from inside this same ResizeObserver
+		// callback risks a "loop completed with undelivered notifications"
+		// warning if that write itself changes table's box. Without calling
+		// rebuild() here at all, a table with no explicit column widths (its
+		// rendered widths depend on the available container width, unlike a
+		// fixed-px table) went stale on any resize that isn't an explicit
+		// column-drag — reported as the selector's per-column boundaries
+		// visibly drifting out of alignment with the table's own columns.
+		const selResizeObs = new ResizeObserver(() => {
+			if (!colSel.hasClass('bt-strip-visible') && !rowSel.hasClass('bt-strip-visible')) return;
+			positionSelectors();
+			window.requestAnimationFrame(rebuild);
+		});
+		selResizeObs.observe(table);
+		component?.register(() => selResizeObs.disconnect());
 
 		// Horizontal scroll: only the containers + the --cs-off shift need updating —
 		// the per-column cells stay table-relative and follow --cs-off via CSS, so no
