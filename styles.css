@@ -422,7 +422,12 @@
 	color: var(--text-faint);
 	transition: background 0.08s, color 0.08s;
 }
-.bt-ctrl-btn svg { width: 13px; height: 13px; }
+/* Sized off Obsidian's own font-size variable, not a fixed px, so the icon
+ * tracks the user's global font-size/zoom setting the same way the strip's
+ * own text (--font-ui-*, see .bt-sel-cell below) already does — a plain
+ * fixed size was reported as visibly out of step with everything around it
+ * once Obsidian's font size differs from the default (issue #3). */
+.bt-ctrl-btn svg { width: var(--font-ui-small); height: var(--font-ui-small); }
 .bt-ctrl-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .bt-ctrl-btn.is-locked { color: var(--text-warning, var(--color-orange)); }
 
@@ -448,7 +453,10 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 10px;
+	/* Tracks Obsidian's own font-size/zoom setting instead of a fixed px —
+	 * a row-number/column-letter label that doesn't scale with anything
+	 * around it was reported as feeling too small (issue #3). */
+	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-semibold);
 	color: var(--text-faint);
 	background: var(--background-secondary);
@@ -482,8 +490,9 @@
 }
 
 /* Summary/aggregate row selector cell — icon instead of a row number (it isn't
- * part of model.rows, so there's no index to show). */
-.bt-sel-agg-cell svg { width: 11px; height: 11px; }
+ * part of model.rows, so there's no index to show). Sized off --font-ui-smaller
+ * (same reasoning as .bt-ctrl-btn svg above) rather than a fixed px. */
+.bt-sel-agg-cell svg { width: var(--font-ui-smaller); height: var(--font-ui-smaller); }
 
 /* Resize handles living in the selector strips — one per column / row.
  * Positioned at each column's right edge / row's bottom edge. Work regardless
@@ -1011,7 +1020,7 @@
 	color: var(--text-muted);
 	transition: opacity 80ms;
 }
-.bt-table .bt-th .bt-filter-btn svg { width: 11px; height: 11px; }
+.bt-table .bt-th .bt-filter-btn svg { width: var(--font-ui-smaller); height: var(--font-ui-smaller); }
 .bt-table .bt-th:hover .bt-filter-btn { opacity: 1; }
 .bt-table .bt-th .bt-filter-btn.bt-filter-active {
 	opacity: 1;
@@ -1038,7 +1047,7 @@
 	border-radius: var(--radius-s);
 	color: var(--interactive-accent);
 }
-.bt-table .bt-th .bt-sort-active-btn svg { width: 11px; height: 11px; }
+.bt-table .bt-th .bt-sort-active-btn svg { width: var(--font-ui-smaller); height: var(--font-ui-smaller); }
 .bt-table .bt-th .bt-sort-active-btn:hover {
 	background: var(--background-modifier-hover);
 }
