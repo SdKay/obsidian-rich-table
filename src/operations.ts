@@ -99,6 +99,7 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			// Remove merges that reference this row
 			model.merges = model.merges.filter(m =>
 				!m.anchor.startsWith(`${op.rowId}.`) && !m.end.startsWith(`${op.rowId}.`));
+			pruneDegenerateMerges(model);
 			// Remove cell-level styles referencing this row
 			model.styles = model.styles.filter(s =>
 				!s.target.startsWith(`${op.rowId}.`) && s.target !== op.rowId);
@@ -147,6 +148,7 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			for (const row of model.rows) delete row.cells[op.colId];
 			model.merges = model.merges.filter(m =>
 				!m.anchor.endsWith(`.${op.colId}`) && !m.end.endsWith(`.${op.colId}`));
+			pruneDegenerateMerges(model);
 			model.styles = model.styles.filter(s =>
 				!s.target.endsWith(`.${op.colId}`) && s.target !== op.colId);
 			if (model.sort?.colId === op.colId) delete model.sort;
@@ -704,6 +706,24 @@ function reanchorColMerges(model: TableModelV2, snapshots: ColMergeSnapshot[]): 
 		merge.anchor = `${anchorRowId}.${leftId}`;
 		merge.end    = `${endRowId}.${rightId}`;
 	}
+}
+
+/** A merge whose anchor and end have settled on the exact same cell merges
+ *  nothing (rowSpan/colSpan both resolve to 1 either way) and is dead data if
+ *  left in place. This happens when `reanchorMergesForRowDeletion`/
+ *  `ColumnDeletion` shrinks a wider merge inward across REPEATED deletions
+ *  until only its last row/column is left — e.g. a merge spanning columns
+ *  D-E-F shrinks to D-E after F is deleted, then to D-D after E is deleted
+ *  too. The `endsWith`/`startsWith` filter that runs right after each
+ *  deletion only drops a merge still referencing the row/col being deleted
+ *  THIS time — a merge that was reanchored AWAY from it (onto the row/col
+ *  that survives) never matches that filter, even once it degenerates to a
+ *  single cell, so it silently accumulates as a no-op merge record instead
+ *  of being removed (reported: an old-format table put through many manual
+ *  row/column splits and deletions ended up with several of these). Called
+ *  right after that filter in both `delete-row` and `delete-col`. */
+function pruneDegenerateMerges(model: TableModelV2): void {
+	model.merges = model.merges.filter(m => m.anchor !== m.end);
 }
 
 /**

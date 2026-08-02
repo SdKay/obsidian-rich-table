@@ -14,6 +14,14 @@
  * tested in moveRowMerge.test.ts), not a reuse of that machinery: a deleted
  * row/col can't "scatter", it's just gone, so only the two boundary members
  * ever need adjusting.
+ *
+ * A follow-up gap in that same fix: shrinking a merge across two SEPARATE
+ * deletions (not caught by either deletion's own endsWith/startsWith filter,
+ * since the merge gets reanchored AWAY from each deleted id before that
+ * filter runs) can leave it at anchor===end — a "merge" spanning exactly one
+ * cell, which merges nothing. pruneDegenerateMerges (operations.ts) removes
+ * these; reported via a real table that had accumulated several after many
+ * manual row/column splits and deletions.
  */
 import { describe, it, expect } from 'vitest';
 import { applyStructuralOpV2 } from '../src/operations';
@@ -94,6 +102,15 @@ describe('delete-col shrinks (not removes) a multi-column merge whose literal en
 		const unrelated = model.merges.find(m => m.anchor === 'r_0.c_b');
 		expect(unrelated).toEqual({ anchor: 'r_0.c_b', end: 'r_0.c_c' });
 	});
+
+	it('shrinking across two SEPARATE deletions down to one remaining column removes the now-degenerate merge instead of leaving an anchor===end record', () => {
+		const model = colModel(); // merge spans c_a, c_b, c_c
+		applyStructuralOpV2(model, { type: 'delete-col', colId: 'c_c' }); // shrinks to c_a:c_b
+		expect(model.merges).toHaveLength(1);
+
+		applyStructuralOpV2(model, { type: 'delete-col', colId: 'c_b' }); // would shrink to c_a:c_a — degenerate
+		expect(model.merges).toHaveLength(0);
+	});
 });
 
 describe('delete-row shrinks (not removes) a multi-row merge whose literal end is the deleted row (column-axis mirror)', () => {
@@ -126,6 +143,15 @@ describe('delete-row shrinks (not removes) a multi-row merge whose literal end i
 		model.merges = [{ anchor: 'r_a.c_0', end: 'r_a.c_1' }]; // horizontal, single-row merge
 		applyStructuralOpV2(model, { type: 'delete-row', rowId: 'r_a' });
 
+		expect(model.merges).toHaveLength(0);
+	});
+
+	it('shrinking across two SEPARATE deletions down to one remaining row removes the now-degenerate merge (column-axis mirror)', () => {
+		const model = rowModel(); // merge spans r_a, r_b, r_c
+		applyStructuralOpV2(model, { type: 'delete-row', rowId: 'r_c' }); // shrinks to r_a:r_b
+		expect(model.merges).toHaveLength(1);
+
+		applyStructuralOpV2(model, { type: 'delete-row', rowId: 'r_b' }); // would shrink to r_a:r_a — degenerate
 		expect(model.merges).toHaveLength(0);
 	});
 });
