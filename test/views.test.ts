@@ -1,9 +1,8 @@
 /**
  * Views infrastructure (create/delete/rename/set-active-view, set-view-group)
- * and its cross-op cleanup: deleting a column a kanban view groups by must
- * fall the view back to a plain table rather than leaving a dangling
- * reference (same "clear the invalid reference, don't destroy the entity"
- * precedent already used for model.sort in delete-col — see operations.ts).
+ * and its cross-op cleanup: deleting or retyping a column a kanban/calendar
+ * view depends on removes that view outright, same as an explicit
+ * delete-view — see removeViewsDependentOnColumn in operations.ts.
  */
 import { describe, it, expect } from 'vitest';
 import { applyStructuralOpV2 } from '../src/operations';
@@ -136,20 +135,26 @@ describe('viewDisplayName follows the group-by column header until explicitly re
 	});
 });
 
-describe('delete-col cleans up a kanban view that grouped by it', () => {
-	it('falls the view back to a plain table instead of leaving a dangling groupByColId', () => {
+describe('delete-col removes a kanban/calendar view that depended on it', () => {
+	it('deletes the view outright, same as an explicit delete-view', () => {
 		const model = baseModel();
 		applyStructuralOpV2(model, { type: 'create-view', name: 'K', viewType: 'kanban', groupByColId: 'c_status' });
 		const viewId = model.activeViewId!;
 
 		applyStructuralOpV2(model, { type: 'delete-col', colId: 'c_status' });
 
-		const view = model.views!.find(v => v.id === viewId)!;
-		expect(view.type).toBe('table');
-		expect(view.kanban).toBeUndefined();
-		// The view itself survives (not deleted) — same "clear the reference,
-		// don't destroy the entity" precedent as model.sort.
-		expect(model.views).toHaveLength(1);
+		expect(model.views).toHaveLength(0);
+		expect(model.views!.find(v => v.id === viewId)).toBeUndefined();
+	});
+
+	it('clears activeViewId if the removed view was active', () => {
+		const model = baseModel();
+		applyStructuralOpV2(model, { type: 'create-view', name: 'K', viewType: 'kanban', groupByColId: 'c_status' });
+		expect(model.activeViewId).toBeDefined();
+
+		applyStructuralOpV2(model, { type: 'delete-col', colId: 'c_status' });
+
+		expect(model.activeViewId).toBeUndefined();
 	});
 
 	it('a kanban view grouped by a DIFFERENT column is unaffected', () => {
@@ -159,7 +164,48 @@ describe('delete-col cleans up a kanban view that grouped by it', () => {
 
 		applyStructuralOpV2(model, { type: 'delete-col', colId: 'c_status' });
 
+		expect(model.views).toHaveLength(1);
 		expect(model.views![0]!.type).toBe('kanban');
 		expect(model.views![0]!.kanban).toEqual({ groupByColId: 'c_prio' });
+	});
+});
+
+describe('set-col-type removes a kanban/calendar view that depended on the retyped column', () => {
+	it('retyping a kanban view\'s group column away deletes the view', () => {
+		const model = baseModel();
+		applyStructuralOpV2(model, { type: 'create-view', name: 'K', viewType: 'kanban', groupByColId: 'c_status' });
+
+		applyStructuralOpV2(model, { type: 'set-col-type', colId: 'c_status', colType: 'priority' });
+
+		expect(model.views).toHaveLength(0);
+		expect(model.activeViewId).toBeUndefined();
+	});
+
+	it('retyping a calendar view\'s date column away deletes the view', () => {
+		const model = baseModel();
+		model.columns.push({ id: 'c_due', name: 'Due', type: 'date' });
+		applyStructuralOpV2(model, { type: 'create-view', name: 'C', viewType: 'calendar', dateColId: 'c_due' });
+
+		applyStructuralOpV2(model, { type: 'set-col-type', colId: 'c_due', colType: undefined });
+
+		expect(model.views).toHaveLength(0);
+	});
+
+	it('setting the SAME type again is a no-op — the view survives', () => {
+		const model = baseModel();
+		applyStructuralOpV2(model, { type: 'create-view', name: 'K', viewType: 'kanban', groupByColId: 'c_status' });
+
+		applyStructuralOpV2(model, { type: 'set-col-type', colId: 'c_status', colType: 'task-status' });
+
+		expect(model.views).toHaveLength(1);
+	});
+
+	it('retyping an unrelated column is unaffected', () => {
+		const model = baseModel();
+		applyStructuralOpV2(model, { type: 'create-view', name: 'K', viewType: 'kanban', groupByColId: 'c_status' });
+
+		applyStructuralOpV2(model, { type: 'set-col-type', colId: 'c_note', colType: 'priority' });
+
+		expect(model.views).toHaveLength(1);
 	});
 });

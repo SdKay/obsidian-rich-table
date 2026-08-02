@@ -150,14 +150,7 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			model.styles = model.styles.filter(s =>
 				!s.target.endsWith(`.${op.colId}`) && s.target !== op.colId);
 			if (model.sort?.colId === op.colId) delete model.sort;
-			// A kanban/calendar view driven by the deleted column has nothing left to
-			// group/place by — fall back to a plain table rendering rather than
-			// deleting the view outright (same "clear the invalid reference, don't
-			// destroy the entity" precedent as model.sort above).
-			for (const view of model.views ?? []) {
-				if (view.kanban?.groupByColId === op.colId) { view.type = 'table'; delete view.kanban; }
-				if (view.calendar?.dateColId === op.colId) { view.type = 'table'; delete view.calendar; }
-			}
+			removeViewsDependentOnColumn(model, op.colId);
 			break;
 		}
 		case 'move-col': {
@@ -199,7 +192,14 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'set-col-type': {
 			const col = model.columns.find(c => c.id === op.colId);
 			if (!col) break;
+			const oldType = col.type;
 			if (op.colType) col.type = op.colType; else delete col.type;
+			// A kanban view needs its group column to stay a choice type, a calendar
+			// view needs its date column to stay 'date' — any change at all (not just
+			// away from a choice/date type specifically) invalidates a view depending
+			// on this column, since operations.ts has no access to the choice registry
+			// to judge whether a new type is "still choice-like".
+			if (col.type !== oldType) removeViewsDependentOnColumn(model, op.colId);
 			break;
 		}
 
@@ -750,6 +750,25 @@ function reanchorMergesForRowDeletion(model: TableModelV2, removedRowId: string)
 		}
 		// else: removedIdx is strictly inside (lo, hi) — no boundary change needed.
 	}
+}
+
+/** A kanban view groups by a column, a calendar view places by one — if that
+ *  column is gone or has changed into something else entirely (`delete-col`,
+ *  `set-col-type`), the view has nothing left to actually show and is
+ *  removed outright, same as an explicit `delete-view`. Also clears
+ *  `activeViewId` if it pointed at a removed view, matching `delete-view`'s
+ *  own fallback (no replacement view is picked — render falls back to the
+ *  plain table). */
+function removeViewsDependentOnColumn(model: TableModelV2, colId: string): void {
+	if (!model.views) return;
+	const removedIds = new Set(
+		model.views
+			.filter(v => v.kanban?.groupByColId === colId || v.calendar?.dateColId === colId)
+			.map(v => v.id),
+	);
+	if (removedIds.size === 0) return;
+	model.views = model.views.filter(v => !removedIds.has(v.id));
+	if (model.activeViewId && removedIds.has(model.activeViewId)) delete model.activeViewId;
 }
 
 /** Column-axis mirror of {@link reanchorMergesForRowDeletion} — same reasoning,

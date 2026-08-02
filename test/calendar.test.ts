@@ -136,20 +136,17 @@ describe('viewDisplayName follows the date column header until explicitly rename
 	});
 });
 
-describe('delete-col cleans up a calendar view that placed rows by it', () => {
-	it('falls the view back to a plain table instead of leaving a dangling dateColId', () => {
+describe('delete-col removes a calendar view that placed rows by it', () => {
+	it('deletes the view outright, same as an explicit delete-view', () => {
 		const model = baseModel();
 		applyStructuralOpV2(model, { type: 'create-view', name: 'Cal', viewType: 'calendar', dateColId: 'c_due' });
 		const viewId = model.activeViewId!;
 
 		applyStructuralOpV2(model, { type: 'delete-col', colId: 'c_due' });
 
-		const view = model.views!.find(v => v.id === viewId)!;
-		expect(view.type).toBe('table');
-		expect(view.calendar).toBeUndefined();
-		// The view itself survives (not deleted) — same "clear the reference,
-		// don't destroy the entity" precedent as model.sort / kanban's groupByColId.
-		expect(model.views).toHaveLength(1);
+		expect(model.views).toHaveLength(0);
+		expect(model.views!.find(v => v.id === viewId)).toBeUndefined();
+		expect(model.activeViewId).toBeUndefined();
 	});
 
 	it('a calendar view placed by a DIFFERENT date column is unaffected', () => {
