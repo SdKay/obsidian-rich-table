@@ -51,6 +51,15 @@ export type StructuralOpV2 =
 	| { type: 'set-theme';       theme: string | null }
 	| { type: 'toggle-lock' }
 	| { type: 'toggle-collapse' }
+	/** null = unfreeze rows entirely. A count that would split a vertical
+	 *  merge across the boundary is rejected (model left unchanged) — see
+	 *  canFreezeRows; callers should check that first to show the user why. */
+	| { type: 'set-freeze-rows'; count: number | null }
+	/** Column-axis mirror of `set-freeze-rows` — see canFreezeCols. */
+	| { type: 'set-freeze-cols'; count: number | null }
+	/** Manual view width/height in px; null resets to auto (see model.ts). */
+	| { type: 'set-view-width';  width: number | null }
+	| { type: 'set-view-height'; height: number | null }
 	| { type: 'paste-values';   anchorRowId: string; anchorColId: string; values: string[][] }
 	| { type: 'set-sort';       sort: { colId: string; dir: 'asc' | 'desc' } | null }
 	/** One-time sort: physically commits the given row order to storage — the
@@ -374,6 +383,24 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'toggle-collapse':
 			model.collapsed = !model.collapsed || undefined;
 			break;
+		case 'set-freeze-rows':
+			if (op.count === null) { delete model.freezeRows; break; }
+			if (!canFreezeRows(model, op.count)) break; // see canFreezeRows' doc comment
+			model.freezeRows = op.count;
+			break;
+		case 'set-freeze-cols':
+			if (op.count === null) { delete model.freezeCols; break; }
+			if (!canFreezeCols(model, op.count)) break;
+			model.freezeCols = op.count;
+			break;
+		case 'set-view-width':
+			if (op.width === null || !(op.width > 0)) delete model.viewWidth;
+			else model.viewWidth = Math.round(op.width);
+			break;
+		case 'set-view-height':
+			if (op.height === null || !(op.height > 0)) delete model.viewHeight;
+			else model.viewHeight = Math.round(op.height);
+			break;
 		case 'set-sort':
 			if (op.sort) model.sort = op.sort; else delete model.sort;
 			break;
@@ -491,10 +518,54 @@ function splitAnchor(target: string): [string, string] {
  * -1 — one position before the first data row. Real row IDs are never literally
  * `'header'` (they're generated as `r_xxxxxx`), so there's no collision.
  */
-function resolveMergeRowIndex(model: TableModelV2, id: string): number | undefined {
+export function resolveMergeRowIndex(model: TableModelV2, id: string): number | undefined {
 	if (id === 'header') return -1;
 	const idx = model.rows.findIndex(r => r.id === id);
 	return idx >= 0 ? idx : undefined;
+}
+
+/**
+ * Whether freezing the header plus the first `count` data rows is valid —
+ * false if it would split a VERTICAL merge (one spanning more than one row)
+ * across the boundary. A merge confined to a single row — even one spanning
+ * many columns — never crosses a row boundary at all and is always fine,
+ * regardless of `count`; only a merge's row-span (not its column-span)
+ * matters here. Callers (the reducer, and the UI before it dispatches so it
+ * can tell the user why) should both go through this rather than
+ * duplicating the check.
+ */
+export function canFreezeRows(model: TableModelV2, count: number): boolean {
+	if (count < 0 || count > model.rows.length) return false;
+	for (const m of model.merges) {
+		const [anchorRowId] = splitAnchor(m.anchor);
+		const [endRowId]    = splitAnchor(m.end);
+		const r1 = resolveMergeRowIndex(model, anchorRowId);
+		const r2 = resolveMergeRowIndex(model, endRowId);
+		if (r1 === undefined || r2 === undefined) continue;
+		const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+		if (lo === hi) continue; // single row — can't cross a row boundary
+		if (lo < count && hi >= count) return false;
+	}
+	return true;
+}
+
+/** Column-axis mirror of {@link canFreezeRows} — invalid if a HORIZONTAL
+ *  merge (spanning more than one column) crosses the `count` boundary. A
+ *  merge confined to a single column, however many rows it spans, is always
+ *  fine. */
+export function canFreezeCols(model: TableModelV2, count: number): boolean {
+	if (count < 0 || count > model.columns.length) return false;
+	for (const m of model.merges) {
+		const [, anchorColId] = splitAnchor(m.anchor);
+		const [, endColId]    = splitAnchor(m.end);
+		const c1 = model.columns.findIndex(c => c.id === anchorColId);
+		const c2 = model.columns.findIndex(c => c.id === endColId);
+		if (c1 < 0 || c2 < 0) continue;
+		const lo = Math.min(c1, c2), hi = Math.max(c1, c2);
+		if (lo === hi) continue; // single column — can't cross a column boundary
+		if (lo < count && hi >= count) return false;
+	}
+	return true;
 }
 
 /** Finds the merge (if any) whose rectangle currently contains (rowId, colId). */

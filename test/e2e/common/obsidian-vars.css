@@ -1,0 +1,81 @@
+/*
+ * Minimal Obsidian CSS custom-property shim shared by every fixture — real
+ * values don't matter for layout/structure tests, only that every var()
+ * styles.css references resolves to something concrete instead of ""
+ * (unset), which would otherwise make computed-style assertions read as
+ * empty/zero instead of the fallback the real Obsidian theme provides.
+ * Extracted from what was previously copy-pasted verbatim into every
+ * fixture's own <style> block.
+ */
+:root {
+	--background-modifier-border: #ccc;
+	--background-modifier-hover: rgba(0, 0, 0, 0.05);
+	--background-primary: #fff;
+	--background-secondary: #f2f2f2;
+	--background-secondary-alt: #eaeaea;
+	--color-orange: orange;
+	--color-yellow: gold;
+	--font-monospace: monospace;
+	--font-medium: 500;
+	--font-normal: 400;
+	--font-semibold: 600;
+	--font-text: 16px;
+	--font-ui-medium: 14px;
+	--font-ui-small: 12px;
+	--font-ui-smaller: 11px;
+	--h4-size: 16px;
+	--interactive-accent: #7c3aed;
+	--interactive-accent-hover: #6d28d9;
+	--layer-popover: 60;
+	--link-color: blue;
+	--link-color-hover: darkblue;
+	--link-decoration: underline;
+	--radius-m: 6px;
+	--radius-s: 4px;
+	--shadow-m: 0 2px 8px rgba(0, 0, 0, .2);
+	--shadow-s: 0 1px 4px rgba(0, 0, 0, .15);
+	--size-4-1: 4px;
+	--size-4-2: 8px;
+	--size-4-3: 12px;
+	--size-4-4: 16px;
+	--size-4-6: 24px;
+	--table-border-color: #ccc;
+	--tag-background: #eee;
+	--tag-color: #333;
+	--text-error: red;
+	--text-faint: #999;
+	--text-muted: #666;
+	--text-normal: #111;
+	--text-on-accent: #fff;
+	--text-warning: #b45309;
+}
+
+body {
+	margin: 20px;
+}
+
+/*
+ * OBSIDIAN'S OWN TABLE DEFAULTS — not variables, actual competing declarations.
+ *
+ * Added after a real bug that this shim's absence hid completely: styles.css set
+ * `border-collapse: separate` on `.bt-table` (specificity 0,1,0), but Obsidian's
+ * own markdown styles set `border-collapse: collapse` via a `.markdown-rendered
+ * table` style selector (0,1,1) — higher, so in the real app OUR declaration
+ * lost and the table stayed collapsed. Every test passed anyway, because the
+ * harness had no competing rule at all, so the fix looked like it worked while
+ * the user still saw the original bug.
+ *
+ * So the shim now reproduces the CASCADE PRESSURE the plugin actually runs
+ * under, not just the variables. Anything here should mirror a declaration
+ * Obsidian really makes on markdown tables; the point is for a rule of ours
+ * that can't win the cascade to fail here rather than in the user's vault.
+ */
+.markdown-rendered table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+.markdown-rendered th,
+.markdown-rendered td {
+	border: 1px solid var(--background-modifier-border);
+	padding: 4px 8px;
+}

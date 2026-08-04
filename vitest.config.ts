@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig, configDefaults } from 'vitest/config';
 import fs from 'node:fs';
 
 export default defineConfig({
@@ -18,6 +18,12 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'node',
+		// test/e2e/*.spec.ts is a separate Playwright suite (playwright.config.ts,
+		// run via `npm run test:e2e`), not a vitest one — vitest's default
+		// include glob matches *.spec.ts too, and running Playwright's test()
+		// under vitest's runner breaks outright (different, incompatible
+		// test-framework globals).
+		exclude: [...configDefaults.exclude, 'test/e2e/**'],
 	},
 	resolve: {
 		alias: {

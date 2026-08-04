@@ -246,6 +246,14 @@ export class TableBlock extends MarkdownRenderChild {
 			const active = this.activeModel;
 			const locked = active?.locked ?? false;
 			const onWorkbookOp = (isEmpty || !editAllowed || locked || isOldFormat) ? undefined : (op: WorkbookOpV2) => void this.handleWorkbookOp(op);
+			// Deliberately NOT gated by editAllowed/locked, unlike onWorkbookOp
+			// above — switching which sheet is active doesn't touch any sheet's
+			// content, so a locked (or read-only-reading-view) table should still
+			// let a user look at its other sheets. Only isEmpty/isOldFormat drop
+			// this too, since neither has a real workbook to switch within.
+			const onSwitchSheet = (isEmpty || isOldFormat)
+				? undefined
+				: (sheetId: string) => void this.handleWorkbookOp({ type: 'set-active-sheet', sheetId });
 			// Left-toolbar "add sheet" button — kept visible regardless of
 			// whether the table already has its own bottom sheet-tab-bar (which
 			// has its own "+" too); both dispatch the exact same create-sheet op,
@@ -272,7 +280,6 @@ export class TableBlock extends MarkdownRenderChild {
 					this.cacheKey,
 					() => this.plugin.settings.singleClickEdit,
 					onCreateSheet,
-					!!this.workbook && this.workbook.sheets.length > 1,
 				);
 			}
 
@@ -314,6 +321,7 @@ export class TableBlock extends MarkdownRenderChild {
 					cacheKey: this.cacheKey,
 					component: this,
 					onOp: onWorkbookOp,
+					onSwitchSheet,
 					onCreateSheet: onWorkbookOp ? () => onWorkbookOp({ type: 'create-sheet' }) : undefined,
 				});
 			}

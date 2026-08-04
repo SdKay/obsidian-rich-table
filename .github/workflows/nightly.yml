@@ -1,0 +1,80 @@
+name: Nightly build
+
+# Runs once a day from master, and can also be triggered manually. Publishes
+# a dated nightly-YYYY-MM-DD pre-release for beta testers (e.g. via BRAT) —
+# skipped entirely if master hasn't moved since the last nightly, so an
+# unchanged day doesn't produce a duplicate/empty pre-release.
+on:
+  schedule:
+    - cron: '0 0 * * *' # 00:00 UTC daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    if: github.repository == 'SdKay/obsidian-rich-table' # scheduled runs don't fire on forks anyway, but workflow_dispatch could
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Skip if master hasn't moved since the last nightly
+        id: check
+        run: |
+          LAST_TAG=$(git tag --list 'nightly-*' --sort=-creatordate | head -1)
+          if [ -n "$LAST_TAG" ] && [ "$(git rev-list -n 1 "$LAST_TAG")" = "$(git rev-parse HEAD)" ]; then
+            echo "No new commits since $LAST_TAG — skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v6
+        if: steps.check.outputs.skip != 'true'
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.check.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Build
+        if: steps.check.outputs.skip != 'true'
+        run: npm run build
+
+      - name: Rewrite manifest.json with a nightly version (working copy only — never committed)
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BASE_VERSION=$(node -p "require('./manifest.json').version")
+          NIGHTLY_VERSION="${BASE_VERSION}-nightly.${DATE}.${SHORT_SHA}"
+          echo "NIGHTLY_VERSION=$NIGHTLY_VERSION" >> "$GITHUB_ENV"
+          echo "TAG_NAME=nightly-$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            m.version = process.env.NIGHTLY_VERSION;
+            fs.writeFileSync('manifest.json', JSON.stringify(m, null, '\t'));
+          "
+
+      - name: Create nightly pre-release
+        if: steps.check.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          target_commitish: ${{ github.sha }}
+          name: 'Nightly ${{ env.TAG_NAME }}'
+          body: |
+            Automated nightly build from ${{ github.sha }}.
+            Not a stable release — see the [full changelog](https://github.com/${{ github.repository }}/commits/master) for what's in it.
+          prerelease: true
+          files: |
+            main.js
+            manifest.json
+            styles.css

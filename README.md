@@ -236,9 +236,10 @@ Themes are purely visual — they never affect data or layout.
 | Variable | Controls | Default |
 |----------|----------|---------|
 | `--bt-border-outer` | Table's outer edge | `none` |
-| `--bt-cell-border` (+ `-top`/`-right`/`-bottom`/`-left`) | Gridlines between cells | `none` |
+| `--bt-cell-border` (+ `-right`/`-bottom`) | Gridlines between cells | `none` |
 | `--bt-cell-bg` | Data cell background | `transparent` |
 | `--bt-header-bg` | Header cell background | theme default |
+> A cell draws only its **right** and **bottom** edge; the table's own `--bt-border-outer` supplies the grid's top and left edge. `--bt-cell-border-top`/`-left` are still accepted but no longer contribute to gridlines — with one border per edge, drawing all four would render every internal line at double thickness. This is what lets frozen rows/columns keep their gridlines while scrolling.
 
 ```css
 .bt-render-root {
@@ -299,7 +300,7 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | Auto-fit-all button (top-left ⊞) — one click to auto-fit every column and row | ✅ |
 | Hover bottom / right edge → **+** strips to append rows / columns | ✅ |
 | Hide and show rows / columns | ✅ |
-| Freeze header row / first N columns | 🔜 |
+| Freeze header + first N rows / first N columns — "Freeze up to here" in the row/column selector's popup menu; rejected (with a message) if a merged cell would straddle the boundary | ✅ |
 | Row grouping — collapsible groups | 🔜 |
 | **Views** — alternate ways to browse the same rows/columns, switched via the layout-grid icon (or a Kanban/Calendar board's own icon column) | |
 | Kanban board — group rows into lanes by any choice-typed column; drag a card to another lane to change its value | ✅ |

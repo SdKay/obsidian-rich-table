@@ -122,6 +122,22 @@ const EN = {
 	renameSheet:   'Rename sheet',
 	deleteSheet:   'Delete sheet',
 	sheetTabStyle: 'Set tab style',
+
+	// Freeze rows/columns
+	freezeHeaderOnly: 'Freeze header row',
+	freezeUpToRow:    'Freeze up to this row',
+	unfreezeRows:     'Unfreeze rows',
+	freezeUpToCol:    'Freeze up to this column',
+	unfreezeCols:     'Unfreeze columns',
+	freezeBlockedByMerge: "Can't freeze here — a merged cell crosses this boundary",
+	// View settings
+	viewSettings:  'View settings',
+	autoWidth:     'Auto width',
+	autoHeight:    'Auto height',
+	addTitle:      'Add title',
+	addFooter:     'Add footer',
+	titlePlaceholder:  'Title',
+	footerPlaceholder: 'Footer',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -223,6 +239,20 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	renameSheet:   '重命名 sheet',
 	deleteSheet:   '删除 sheet',
 	sheetTabStyle: '设置标签样式',
+
+	freezeHeaderOnly: '冻结表头',
+	freezeUpToRow:    '冻结到此行',
+	unfreezeRows:     '取消行冻结',
+	freezeUpToCol:    '冻结到此列',
+	unfreezeCols:     '取消列冻结',
+	freezeBlockedByMerge: '无法冻结——有合并单元格跨越了这条边界',
+	viewSettings:  '视图设置',
+	autoWidth:     '自动宽度',
+	autoHeight:    '自动高度',
+	addTitle:      '添加标题',
+	addFooter:     '添加页脚',
+	titlePlaceholder:  '标题',
+	footerPlaceholder: '页脚',
 };
 
 export function t(key: keyof typeof EN): string {

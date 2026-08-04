@@ -202,9 +202,9 @@ export function autoFitAllColWidths(
 	return results;
 }
 
-/** Viewport x of a column's right edge, summing <col> widths in DOM order. */
+/** A column's right edge, in px offset from the table's own left border edge, summing <col> widths in DOM order. */
 export function colRightX(tbl: HTMLElement, colIdx: number): number {
-	let x = tbl.getBoundingClientRect().left;
+	let x = 0;
 	for (const c of Array.from(tbl.querySelectorAll<HTMLElement>('col'))) {
 		x += parseInt(c.style.width) || 0;
 		if (c.dataset.col !== undefined && parseInt(c.dataset.col) === colIdx) break;

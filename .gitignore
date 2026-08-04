@@ -24,6 +24,20 @@ data.json
 # local scratch / design drafts — not tracked
 tmp/
 
+# Playwright e2e run artifacts (test/e2e/ itself IS tracked)
+/test-results/
+/playwright-report/
+
+# Bundled real source for e2e tests — rebuilt fresh by globalSetup before
+# every run, same treatment as main.js
+/test/e2e/common/real-bundle.generated.js
+
+# Playwright MCP tool session artifacts (screenshots/console logs)
+/.playwright-mcp/
+
+# CodeGraph index (local, machine-specific)
+/.codegraph/
+
 # local Claude config (contains personal vault paths)
 CLAUDE.md
 # Windows Alternate Data Streams

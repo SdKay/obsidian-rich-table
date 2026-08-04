@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<!--
+  Minimal shared shell page for tests that render against the REAL source
+  bundle (real-bundle.generated.js) rather than a hand-ported fixture.
+  test-base.ts's `renderReal` fixture navigates here, then injects the
+  bundle + build-table-dom.js and drives everything via page.evaluate.
+-->
+<html>
+<head>
+<link rel="stylesheet" href="obsidian-vars.css">
+<link rel="stylesheet" href="../../../styles.css">
+</head>
+<!-- .markdown-rendered mirrors the real ancestor chain, so Obsidian's own
+     competing table declarations in obsidian-vars.css actually apply -->
+<body>
+	<div class="markdown-preview-view markdown-rendered">
+	<div class="bt-render-root" id="root">
+		<div class="bt-table-wrapper" id="wrapper">
+			<div class="bt-table-content-row" id="contentRow"></div>
+		</div>
+	</div>
+	</div>
+</body>
+</html>

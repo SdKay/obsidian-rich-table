@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<!--
+  Mirrors renderer.ts's rebuild() !hasExplicitWidths branch — the
+  auto-layout column-width measure-and-pin logic that runs on every
+  hover (showSelectors() -> requestAnimationFrame(rebuild)).
+
+  Reported bug: for a table with no explicit column widths (a fresh,
+  never-manually-resized table), repeatedly hovering made the WHOLE table
+  permanently wider each time — eventually filling the page — and the
+  column selector's right edge fell out of alignment with the table (it's
+  positioned just before rebuild() runs each cycle, so it always lagged one
+  step behind the growth). Confirmed via real console logs from the actual
+  plugin: table width grew by ~18px (== the add-column button's fixed
+  width) on every single hover, with no sign of settling.
+
+  Root cause (best understanding — the exact browser-level trigger could
+  NOT be reproduced in an isolated fixture despite multiple attempts, so
+  this fixture verifies the concrete CODE-LEVEL fix, not the emergent
+  multi-cycle growth itself): the auto-pin logic measured each column's
+  rendered width and wrote it back onto its <col>, but never gave the
+  <table> ELEMENT ITSELF an explicit width — with table-layout left at its
+  default 'auto' and no table width, `.bt-table-content-row`'s own
+  `width: max-content` (which depends on table's own max-content
+  contribution) had no concrete floor to measure against, leaving genuine
+  room for the browser to hand the table a little extra space on each
+  layout pass — which then got measured and pinned right back as the next
+  cycle's floor.
+
+  Fix: after pinning each <col>'s width, also pin the TABLE's own width to
+  the measured total (table-layout stays 'auto', so a column whose content
+  genuinely grows can still expand past this later).
+
+  window.pinColWidths(pinTableWidth) runs the ported logic once; pass
+  `false` to reproduce the pre-fix code path (never sets table.style.width)
+  for comparison.
+-->
+<html>
+<head>
+<link rel="stylesheet" href="../../common/obsidian-vars.css">
+<link rel="stylesheet" href="../../../../styles.css">
+</head>
+<body>
+	<div class="bt-render-root bt-has-strips" id="root" style="--bt-sel-pad: 32px;">
+		<div class="bt-ctrl-col" id="ctrlCol"></div>
+		<div class="bt-col-selector" id="colSel"></div>
+		<div class="bt-row-selector" id="rowSel"></div>
+		<div class="bt-table-wrapper" id="wrapper">
+			<div class="bt-table-content-row" id="contentRow">
+				<table class="bt-table" id="table">
+					<colgroup><col data-col="0"><col data-col="1"><col data-col="2"></colgroup>
+					<thead><tr>
+						<th class="bt-th" data-row="0" data-col="0">Task Name</th>
+						<th class="bt-th" data-row="0" data-col="1">Status</th>
+						<th class="bt-th" data-row="0" data-col="2">Owner</th>
+					</tr></thead>
+					<tbody>
+						<tr><td class="bt-td" data-row="1" data-col="0">Design the architecture for the system</td><td class="bt-td" data-row="1" data-col="1">Done</td><td class="bt-td" data-row="1" data-col="2">Alice</td></tr>
+						<tr><td class="bt-td" data-row="2" data-col="0">Implement</td><td class="bt-td" data-row="2" data-col="1">Pending</td><td class="bt-td" data-row="2" data-col="2">Bob</td></tr>
+					</tbody>
+				</table>
+				<div class="bt-edge-add-col bt-strip-visible" id="addColBtn"><span class="bt-edge-plus">+</span></div>
+			</div>
+			<div class="bt-edge-add-row bt-strip-visible" id="addRowBtn"><span class="bt-edge-plus">+</span></div>
+		</div>
+	</div>
+<script>
+	const table = document.getElementById('table');
+	const thead = table.querySelector('thead');
+	const tbody = table.querySelector('tbody');
+
+	window.pinColWidths = function (pinTableWidth) {
+		const measured = new Map();
+		const spanned = [];
+		const rows = [...thead.querySelectorAll('tr'), ...tbody.querySelectorAll('tr')];
+		for (const tr of rows) {
+			for (const cell of tr.querySelectorAll('[data-col]')) {
+				const ci = cell.dataset.col;
+				if (ci === undefined) continue;
+				if (cell.colSpan > 1) {
+					spanned.push({ startCol: parseInt(ci), span: cell.colSpan, width: cell.getBoundingClientRect().width });
+					continue;
+				}
+				if (measured.has(ci)) continue;
+				measured.set(ci, cell.getBoundingClientRect().width);
+			}
+		}
+		for (const { startCol, span, width } of spanned) {
+			const share = width / span;
+			for (let ci = startCol; ci < startCol + span; ci++) {
+				const key = String(ci);
+				if (!measured.has(key)) measured.set(key, share);
+			}
+		}
+		let pinnedTotal = 0;
+		for (const c of table.querySelectorAll('col')) {
+			const ci = c.dataset.col;
+			if (ci === undefined) continue;
+			const w = measured.get(ci);
+			if (w !== undefined) { c.style.setProperty('width', `${w}px`); pinnedTotal += w; }
+		}
+		if (pinTableWidth && pinnedTotal > 0) table.style.setProperty('width', `${pinnedTotal}px`);
+		return pinnedTotal;
+	};
+</script>
+</body>
+</html>

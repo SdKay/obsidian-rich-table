@@ -86,17 +86,22 @@
 }
 
 /* ── Wrapper: outline + Flash comet ─────────────────────────────────── */
-/* overflow-y:hidden (paired with border-radius) rounds the table's own corners
- * to match the outline above — same visual result as a clip-path on .bt-table,
- * but clip-path's inset()+round shape is only partially supported across the
- * range of Chromium builds Obsidian ships, while overflow+border-radius
- * clipping is universally supported. overflow-x stays the base stylesheet's
- * auto (unset here) so horizontal scrolling for a wide table is unaffected —
- * per the CSS overflow spec neither axis computes to 'visible' once the other
- * is non-visible, so both clip independently as intended. */
+/* border-radius alone rounds the table's own corners to match the outline: the
+ * base stylesheet already gives .bt-table-wrapper overflow:auto, and any
+ * non-visible overflow clips its content to the padding box WITH the radius
+ * applied — so there is nothing to add for the clipping to happen.
+ *
+ * This used to also set overflow-y:hidden, on the belief that the clipping
+ * needed it. It didn't, and it broke the wrapper as a scroll container: 'hidden'
+ * still scrolls programmatically but gives the user no scrollbar and no wheel
+ * scroll, so a plain-themed table with a reduced view height simply could not be
+ * scrolled vertically (reported directly). Overflow is a layout property, which
+ * the theme contract in CLAUDE.md already puts off-limits for a theme file — the
+ * only reason this survived is that nothing enforced the contract mechanically.
+ * Now something does: the baseline appearance suite asserts, for every theme,
+ * that a bounded view stays scrollable on both axes. */
 .bt-theme-plain .bt-table-wrapper {
     border-radius: 12px;
-    overflow-y: hidden;
     outline: 1.5px solid hsl(var(--bt-p-hue, 260), 60%, 58%, 0.7);
     animation: bt-plain-flash 2s linear infinite;
     will-change: box-shadow;

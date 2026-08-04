@@ -1,0 +1,211 @@
+---
+version: 3
+active_sheet: s_j9yj3t
+sheets:
+  - id: s_j9yj3t
+    title: 标题
+    columns:
+      - id: c_lvln84
+        name: A1
+        width: 52
+      - id: c_ebi8n7
+        name: B1
+        width: 40
+      - id: c_ho9vd2
+        name: C1
+        width: 43
+      - id: c_9r5o63
+        name: D1
+        width: 43
+      - id: c_mnxbzd
+        name: E1
+        width: 40
+      - id: c_slniws
+        name: F1
+        width: 40
+      - id: c_0kf34s
+        name: ""
+        width: 40
+      - id: c_w7rioz
+        name: ""
+        width: 40
+      - id: c_hhaxsl
+        name: ""
+        width: 40
+      - id: c_v836yu
+        name: ""
+        width: 40
+      - id: c_09fewq
+        name: ""
+        width: 40
+      - id: c_z6dpc1
+        name: ""
+        width: 40
+      - id: c_v0m5ma
+        name: ""
+        width: 40
+      - id: c_o9xskh
+        name: ""
+        width: 40
+      - id: c_ncoi6m
+        name: ""
+        width: 40
+      - id: c_0tkmx2
+        name: ""
+        width: 40
+      - id: c_sonfxq
+        name: ""
+        width: 40
+      - id: c_3cxdqd
+        name: ""
+        width: 40
+      - id: c_msimgz
+        name: ""
+        width: 40
+      - id: c_ej9x91
+        name: ""
+        width: 40
+      - id: c_8pdmva
+        name: ""
+        width: 40
+      - id: c_hn4v0x
+        name: ""
+        width: 40
+      - id: c_7pf47d
+        name: ""
+        width: 40
+      - id: c_brq1bl
+        name: ""
+        width: 40
+      - id: c_bmw6ej
+        name: ""
+        width: 40
+      - id: c_4pdced
+        name: ""
+        width: 40
+      - id: c_4822yb
+        name: ""
+        width: 40
+      - id: c_gsrds2
+        name: ""
+        width: 40
+      - id: c_2c150g
+        name: ""
+        width: 40
+      - id: c_illiwy
+        name: ""
+        width: 40
+    rows:
+      - id: r_2s04t9
+        cells:
+          c_lvln84: "2"
+          c_ho9vd2: C2
+          c_9r5o63: D2
+      - id: r_qcqtr0
+        cells:
+          c_lvln84: "3"
+          c_ebi8n7: aaa
+      - id: r_7gk8ac
+        cells:
+          c_lvln84: "4"
+      - id: r_7m090h
+        cells: {}
+      - id: r_f15x83
+        cells: {}
+      - id: r_rnjm0a
+        cells:
+          c_lvln84: aaa
+      - id: r_qsuts7
+        cells: {}
+      - id: r_xwteww
+        cells: {}
+      - id: r_tall0
+        cells:
+          c_lvln84: t0
+      - id: r_tall1
+        cells:
+          c_lvln84: t1
+      - id: r_tall2
+        cells:
+          c_lvln84: t2
+      - id: r_tall3
+        cells:
+          c_lvln84: t3
+      - id: r_tall4
+        cells:
+          c_lvln84: t4
+      - id: r_tall5
+        cells:
+          c_lvln84: t5
+      - id: r_tall6
+        cells:
+          c_lvln84: t6
+      - id: r_tall7
+        cells:
+          c_lvln84: t7
+    merges:
+      - anchor: r_qcqtr0.c_ebi8n7
+        end: r_7gk8ac.c_ho9vd2
+    styles:
+      - target: header.c_lvln84:header.c_ho9vd2
+        bg: "#834e4e"
+      - target: header.c_lvln84:header.c_ebi8n7
+        bg: "#5f4545"
+      - target: r_7m090h.c_lvln84:r_7m090h.c_ebi8n7
+        bg: "#c39292"
+      - target: header.c_0kf34s:header.c_w7rioz
+        bg: "#a59c9c"
+    theme: grid
+    freezeRows: 3
+    freezeCols: 3
+    viewWidth: 637
+    viewHeight: 200
+  - id: s_woowmn
+    name: aaa
+    tabColor: "#dc8989"
+    title: 康奈尔笔记
+    columns:
+      - id: c_cue
+        name: 线索/问题
+        width: 219
+      - id: c_notes
+        name: 笔记要点
+        width: 708
+    rows:
+      - id: r_0
+        cells:
+          c_cue: 什么是康奈尔笔记法？
+          c_notes: 康奈尔大学 Walter Pauk 提出的笔记法，把页面分成线索、笔记、总结三块区域
+      - id: r_1
+        cells:
+          c_cue: 三个区域分别记什么？
+          c_notes: 笔记区记课上/阅读时的主体内容；线索区课后补关键词和问题，用于自测；总结区读完用一两句话概括
+      - id: r_2
+        cells:
+          c_cue: 为什么要把线索和笔记分开？
+          c_notes: 逼着自己做"记录—提炼—总结"的主动回顾，而不是记完就扔在一边
+      - id: r_3
+        cells:
+          c_cue: 复习时怎么用？
+          c_notes: 遮住笔记区，只看线索区的问题，试着口头回答，再对照笔记区检查有没有漏
+      - id: r_4
+        cells:
+          c_cue: 适合什么场景？
+          c_notes: 听课、读书、开会记录都适用，尤其适合之后要复习或考试的内容
+      - id: r_5
+        cells: {}
+      - id: r_summary
+        cells:
+          c_cue: 总结：康奈尔笔记法通过"线索-笔记-总结"三栏结构，把被动记录变成主动复习的工具。
+    merges:
+      - anchor: r_summary.c_cue
+        end: r_summary.c_notes
+    styles:
+      - target: c_cue
+        bg: "#FFF7D6"
+      - target: r_summary
+        bg: "#E8F0FE"
+        bold: true
+      - target: header
+        bold: true
+---
