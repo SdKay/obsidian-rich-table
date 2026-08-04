@@ -116,6 +116,10 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 	if (m.collapsed) obj.collapsed = true;
 	if (m.sort) obj.sort = { colId: m.sort.colId, dir: m.sort.dir };
 	if (m.aggregate && m.aggregate.length > 0) obj.aggregate = m.aggregate;
+	if (typeof m.freezeRows === 'number') obj.freezeRows = m.freezeRows;
+	if (typeof m.freezeCols === 'number') obj.freezeCols = m.freezeCols;
+	if (typeof m.viewWidth === 'number') obj.viewWidth = m.viewWidth;
+	if (typeof m.viewHeight === 'number') obj.viewHeight = m.viewHeight;
 	if (m.views && m.views.length > 0) {
 		obj.views = m.views.map(v => {
 			const e: Record<string, unknown> = { id: v.id, type: v.type };

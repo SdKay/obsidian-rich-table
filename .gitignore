@@ -24,6 +24,16 @@ data.json
 # local scratch / design drafts — not tracked
 tmp/
 
+# Playwright e2e run artifacts (test/e2e/ itself IS tracked)
+/test-results/
+/playwright-report/
+
+# Playwright MCP tool session artifacts (screenshots/console logs)
+/.playwright-mcp/
+
+# CodeGraph index (local, machine-specific)
+/.codegraph/
+
 # local Claude config (contains personal vault paths)
 CLAUDE.md
 # Windows Alternate Data Streams

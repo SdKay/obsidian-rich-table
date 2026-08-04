@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!--
+  Mirrors src/renderFreeze.ts's applyFreeze() column-freeze path (the
+  border-color/-width detection block plus the ci===0 outer-frame
+  addBoxShadow call) closely enough to test the actual bug: a themed outer
+  border (e.g. grid.css's --bt-border-outer) getting replaced by a
+  color/width-mismatched synthetic line once a column is frozen.
+
+  window.applyColumnFreeze(themeClass) runs the ported logic against
+  #table, using the REAL styles.css (loaded below) for every computed style
+  read — only the freeze algorithm itself is hand-ported, not the CSS.
+  If applyFreeze()'s border-detection logic changes shape, this needs a
+  matching update — nothing here imports the real source.
+-->
+<html>
+<head>
+<style>
+	/* Minimal Obsidian CSS variable shim — real values don't matter for this
+	 * test, only that every var() the stylesheet references resolves to
+	 * something, so computed styles are real numbers instead of "" (unset). */
+	:root {
+		--background-modifier-border: #ccc; --background-modifier-hover: rgba(0,0,0,0.05);
+		--background-primary: #fff; --background-secondary: #f2f2f2; --background-secondary-alt: #eaeaea;
+		--color-orange: orange; --color-yellow: gold; --font-monospace: monospace;
+		--font-medium: 500; --font-normal: 400; --font-semibold: 600; --font-text: 16px;
+		--font-ui-medium: 14px; --font-ui-small: 12px; --font-ui-smaller: 11px; --h4-size: 16px;
+		--interactive-accent: #7c3aed; --interactive-accent-hover: #6d28d9; --layer-popover: 60;
+		--link-color: blue; --link-color-hover: darkblue; --link-decoration: underline;
+		--radius-m: 6px; --radius-s: 4px; --shadow-m: 0 2px 8px rgba(0,0,0,.2); --shadow-s: 0 1px 4px rgba(0,0,0,.15);
+		--size-4-1: 4px; --size-4-2: 8px; --size-4-3: 12px; --size-4-4: 16px; --size-4-6: 24px;
+		--table-border-color: #ccc; --tag-background: #eee; --tag-color: #333;
+		--text-error: red; --text-faint: #999; --text-muted: #666; --text-normal: #111;
+		--text-on-accent: #fff; --text-warning: #b45309;
+	}
+	body { margin: 20px; }
+</style>
+<link rel="stylesheet" href="../../../styles.css">
+</head>
+<body>
+	<div class="bt-render-root" id="root">
+		<table class="bt-table" id="table" style="table-layout:fixed; width:300px;">
+			<colgroup>
+				<col data-col="0" style="width:100px"><col data-col="1" style="width:100px"><col data-col="2" style="width:100px">
+			</colgroup>
+			<thead><tr>
+				<th class="bt-th" data-row="0" data-col="0">A</th>
+				<th class="bt-th" data-row="0" data-col="1">B</th>
+				<th class="bt-th" data-row="0" data-col="2">C</th>
+			</tr></thead>
+			<tbody>
+				<tr><td class="bt-td" data-row="1" data-col="0">1</td><td class="bt-td" data-row="1" data-col="1">2</td><td class="bt-td" data-row="1" data-col="2">3</td></tr>
+				<tr><td class="bt-td" data-row="2" data-col="0">4</td><td class="bt-td" data-row="2" data-col="1">5</td><td class="bt-td" data-row="2" data-col="2">6</td></tr>
+			</tbody>
+		</table>
+	</div>
+<script>
+	function forceImportant(el, prop, value) { el.style.setProperty(prop, value, 'important'); }
+	function addBoxShadow(cell, layer) {
+		const existing = cell.style.getPropertyValue('--bt-frozen-box-shadow-scratch');
+		const combined = existing ? `${existing}, ${layer}` : layer;
+		cell.style.setProperty('--bt-frozen-box-shadow-scratch', combined);
+		forceImportant(cell, 'box-shadow', combined);
+	}
+	function hideBorder(el, side) { forceImportant(el, `border-${side}-color`, 'transparent'); }
+
+	// Ported from applyFreeze()'s column-freeze path (src/renderFreeze.ts) —
+	// freezeCols fixed at 1 for this fixture (only the ci===0 outer-frame
+	// line is under test, not the multi-column seam behavior).
+	window.applyColumnFreeze = function (themeClass) {
+		const root = document.getElementById('root');
+		const table = document.getElementById('table');
+		if (themeClass) root.classList.add(themeClass);
+
+		table.style.removeProperty('border-left-color');
+		const tableStyle = getComputedStyle(table);
+		const outerLeftColor = tableStyle.borderLeftStyle !== 'none' ? tableStyle.borderLeftColor : null;
+		const outerLeftWidth = outerLeftColor !== null ? (parseFloat(tableStyle.borderLeftWidth) || 1) : 1;
+		const LINE_LEFT = `var(--bt-frozen-divider, ${outerLeftColor ?? 'var(--background-modifier-border)'})`;
+		forceImportant(table, 'border-left-color', 'transparent');
+
+		table.querySelectorAll('td[data-col="0"], th[data-col="0"]').forEach(cell => {
+			hideBorder(cell, 'left');
+			hideBorder(cell, 'right');
+			forceImportant(cell, 'background-color', 'var(--background-primary)');
+			addBoxShadow(cell, `inset ${outerLeftWidth}px 0 0 0 ${LINE_LEFT}`);
+		});
+
+		return { outerLeftColor, outerLeftWidth };
+	};
+</script>
+</body>
+</html>

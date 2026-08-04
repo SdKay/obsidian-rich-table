@@ -38,6 +38,10 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 	const sort    = parseSort(yaml?.sort);
 	const aggregate = parseAggregate(yaml?.aggregate);
 	const views   = parseViews(yaml?.views);
+	const freezeRows = parseFreezeCount(yaml?.freezeRows);
+	const freezeCols = parseFreezeCount(yaml?.freezeCols);
+	const viewWidth  = parseViewSize(yaml?.viewWidth);
+	const viewHeight = parseViewSize(yaml?.viewHeight);
 
 	return {
 		columns,
@@ -52,6 +56,10 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 		...(sort ? { sort } : {}),
 		...(aggregate.length > 0 ? { aggregate } : {}),
 		...(views.length > 0 ? { views } : {}),
+		...(freezeRows !== undefined ? { freezeRows } : {}),
+		...(freezeCols !== undefined ? { freezeCols } : {}),
+		...(viewWidth  !== undefined ? { viewWidth }  : {}),
+		...(viewHeight !== undefined ? { viewHeight } : {}),
 		// Only meaningful alongside a matching views[] entry — an activeViewId
 		// pointing nowhere behaves exactly like it being absent (default table).
 		...(typeof yaml?.activeViewId === 'string' && views.some(v => v.id === yaml.activeViewId)
@@ -210,6 +218,21 @@ function parseSort(raw: unknown): { colId: string; dir: 'asc' | 'desc' } | null 
 function parseAggregate(raw: unknown): AggType[] {
 	if (!Array.isArray(raw)) return [];
 	return raw.filter((v): v is AggType => AGG_TYPES.includes(v as AggType));
+}
+
+/** Shape-only validation (non-negative integer) — matches this parser's own
+ *  convention elsewhere of not cross-checking against other fields (e.g.
+ *  parseSort never checks colId still names a real column either); whether
+ *  a given count would split a merge is the reducer/render layer's concern
+ *  (see canFreezeRows/canFreezeCols, operations.ts), not the parser's. */
+function parseFreezeCount(raw: unknown): number | undefined {
+	return typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? raw : undefined;
+}
+
+// Manual view width/height in px — a positive finite number, else undefined
+// (= auto). Rounded to an integer so a dragged fractional value serializes cleanly.
+function parseViewSize(raw: unknown): number | undefined {
+	return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.round(raw) : undefined;
 }
 
 function parseViews(raw: unknown): ViewDefV2[] {

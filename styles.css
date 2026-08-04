@@ -35,13 +35,16 @@
  * within root. Coordinates are set from getBoundingClientRect() deltas so they
  * track the TABLE's actual position regardless of how the theme aligns the table
  * within the wrapper (e.g. margin:auto centering).
- * --bt-sel-pad is set by JS to 22px on hover-show and back to 0px on hide, which
- * creates space for the col-selector strip without permanently shifting the table. */
+ * --bt-sel-pad is set by JS once at first paint and never collapsed back to 0
+ * (renderer.ts) — reserving this permanently, rather than toggling it on
+ * hover, is deliberate: collapsing it on mouseleave shrinks root's own
+ * rendered height, which can tip Obsidian's own reading-pane scroll
+ * container in or out of needing a vertical scrollbar, changing the pane's
+ * available width and visibly shifting the (centered) table sideways with
+ * no change to its own size at all — reported as unacceptable regardless of
+ * whether the strips themselves stay positioned correctly through it. */
 .bt-render-root.bt-has-strips {
 	padding-top: var(--bt-sel-pad, 0px);
-	/* --bt-add-pad mirrors --bt-sel-pad: JS sets it to 24px on hover (making room
-	 * for the add-row strip) and back to 0px on hide (footer stays tight). */
-	padding-bottom: var(--bt-add-pad, 0px);
 	/* --bt-sel-pad-left: JS sets it on hover ONLY when a wide/flush-left table has
 	 * no natural room to the left for the row selector + ctrl column (otherwise 0,
 	 * so centered/narrow tables don't shift). Shifts the table right just enough to
@@ -63,8 +66,22 @@
 	 * strips back inside root's bounds). Clipping HERE, at the source, is contained:
 	 * the compensating padding is applied synchronously before the strips' opacity
 	 * transitions them visible, so nothing actually shown is ever cut off — this only
-	 * clips the resting-state, invisible overflow before it can leak upward. */
-	overflow: hidden;
+	 * clips the resting-state, invisible overflow before it can leak upward.
+	 *
+	 * clip-path, not overflow — an `overflow` value other than `visible` on ANY
+	 * ancestor between a position:sticky descendant and the actual scrolling
+	 * viewport becomes that descendant's sticky reference frame instead of the
+	 * real scroll container (per spec, sticky resolves against the nearest
+	 * ancestor with non-visible overflow, whether or not that ancestor itself
+	 * ever scrolls). root sits directly above <table>, so `overflow: hidden`
+	 * here silently broke frozen-row stickiness entirely (confirmed: freeze
+	 * rows scrolled off exactly like no freeze was set) — root's own box is
+	 * just as tall as its content and never scrolls, so resolving sticky
+	 * against it can never produce any stick at all. clip-path achieves the
+	 * same visual clipping (content rendered outside root's own box is cut
+	 * off) without registering as a scroll container, so <table>'s sticky
+	 * descendants keep resolving against Obsidian's real scrolling pane. */
+	clip-path: inset(0);
 }
 .bt-render-root.bt-has-strips .bt-col-selector {
 	position: absolute;
@@ -84,14 +101,27 @@
 	top:    var(--rs-top,   var(--bt-sel-total));
 	width:  var(--bt-sel-total); /* grip zone (left) + label zone (right) */
 	height: var(--rs-height, 100px);
+	/* Vertical mirror of the col selector: pinned to the visible band and
+	 * clipped, so row numbers offset by --rs-off (inner vertical scroll) are
+	 * hidden past the visible top/bottom instead of spilling off. */
+	overflow: hidden;
 }
-.bt-render-root.bt-has-strips .bt-edge-add-row,
-.bt-render-root.bt-has-strips .bt-edge-add-col {
-	position: absolute;
-}
-
 .bt-table-wrapper {
-	overflow-x: auto;
+	/* The view is a real, bounded scroll container on both axes. overflow-x
+	 * gives wide tables horizontal scroll; overflow-y + the max-height below
+	 * make it a genuine vertical scroll container too, which is what a frozen
+	 * header/row's position:sticky needs to stick against (the page's own
+	 * scroll can't serve that role once the wrapper has horizontal scroll —
+	 * the CSS overflow spec pairs the axes, so overflow-x:auto alone already
+	 * made this a Y-axis scroll container with no bound, which is exactly why
+	 * frozen rows had nothing to stick to before this max-height existed). */
+	overflow: auto;
+	/* Auto height: grow with content, but cap at ~viewport so a tall table
+	 * scrolls INSIDE the view (scrollbar appears only when it can't fit) —
+	 * short tables stay their natural height (this only bites past the cap).
+	 * A manual height (drag-resize / settings) sets --bt-view-height, and the
+	 * .bt-view-fixed-h class below switches to an exact height. */
+	max-height: var(--bt-view-max-h, 70vh);
 	/* Default: shrink to table's natural content width and center.
 	 * max-width:100% ensures wide tables stop at the container edge and scroll.
 	 * Themes override via --bt-wrapper-width / --bt-wrapper-margin variables. */
@@ -100,6 +130,153 @@
 	margin-inline: var(--bt-wrapper-margin, auto);
 	margin-block: 0;
 }
+/* Manual height: exact, no viewport cap — set by drag-resize or the view
+ * settings menu (renderer.ts sets --bt-view-height and toggles this class). */
+.bt-render-root .bt-table-wrapper.bt-view-fixed-h {
+	height: var(--bt-view-height);
+	max-height: none;
+}
+/* Manual width: exact (still capped at the container so it can't overflow the
+ * pane — horizontal scroll handles a table wider than that). */
+.bt-render-root .bt-table-wrapper.bt-view-fixed-w {
+	width: var(--bt-view-width);
+}
+/* Corner brackets mark a manual view WIDTH that's narrower than the space
+ * actually available (renderer.ts's updateViewFrame — see its own comment
+ * for the exact condition and for --vf-l/-t/-r/-b) — like Word's page-
+ * boundary corners, a quieter alternative to visibly stretching addRowBtn/
+ * the table across dead space to show the same fact.
+ *
+ * Children of `root`, NOT `wrapper`, positioned via JS-computed --vf-*
+ * (root-relative px, matching wrapper's actual getBoundingClientRect()
+ * edges) rather than right:/bottom: anchoring from inside wrapper itself —
+ * tried that first and it measurably missed by ~14-15px on the right/bottom
+ * corners specifically: `right`/`bottom` on an absolutely-positioned child
+ * resolve against the containing block's PADDING box, which `overflow:auto`
+ * shrinks by the scrollbar's width/height whenever one is actually showing
+ * — exactly the corners meant to mark wrapper's real, scrollbar-included
+ * OUTER edge, so anchoring from inside it was self-defeating. Root has no
+ * scrollbar of its own, so plain top:/left: from computed pixel values
+ * sidesteps the whole issue. Same reasoning as why the other overlay strips
+ * are positioned this way already. */
+.bt-view-corner {
+	position: absolute;
+	/* border-box, not the content-box default: each corner's border (below)
+	 * is on only 2 of its 4 sides, so content-box sizing would add the
+	 * border width onto whichever far edge that corner's border touches,
+	 * measurably missing the wrapper edge it's meant to mark by exactly
+	 * that amount (2px) — confirmed by measuring it in a repro. */
+	box-sizing: border-box;
+	width: 14px;
+	height: 14px;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+.bt-render-root.bt-view-framed .bt-view-corner {
+	opacity: 1;
+}
+.bt-view-corner-tl {
+	top:  var(--vf-t, 0px);
+	left: var(--vf-l, 0px);
+	border-top:  2px solid var(--interactive-accent);
+	border-left: 2px solid var(--interactive-accent);
+}
+.bt-view-corner-tr {
+	top:  var(--vf-t, 0px);
+	left: calc(var(--vf-r, 0px) - 14px);
+	border-top:   2px solid var(--interactive-accent);
+	border-right: 2px solid var(--interactive-accent);
+}
+.bt-view-corner-bl {
+	top:  calc(var(--vf-b, 0px) - 14px);
+	left: var(--vf-l, 0px);
+	border-bottom: 2px solid var(--interactive-accent);
+	border-left:   2px solid var(--interactive-accent);
+}
+.bt-view-corner-br {
+	top:  calc(var(--vf-b, 0px) - 14px);
+	left: calc(var(--vf-r, 0px) - 14px);
+	border-bottom: 2px solid var(--interactive-accent);
+	border-right:  2px solid var(--interactive-accent);
+}
+/* Wraps <table> + addColBtn side by side so addColBtn sits immediately to the
+ * table's right without any JS left/width math.
+ *
+ * width:max-content + margin-inline:auto — NOT width:auto (the flex default):
+ * width:auto on a block-level flex container FILLS its containing block's
+ * available width whenever that width is a definite, independently-set value
+ * — which .bt-table-wrapper's width normally ISN'T (it's max-content,
+ * deriving from contentRow's OWN contribution, a harmless circularity that
+ * resolves correctly), but very much IS once the view has a manual fixed
+ * width (drag-resize, or the view-settings menu) that happens to be WIDER
+ * than the table currently needs (e.g. right after "auto-fit columns"
+ * shrinks them). In that case width:auto stretched contentRow to match, and
+ * since neither <table> nor addColBtn grow to fill it (flex-grow:0 default),
+ * both sat flush-left with dead space to their right — reported as the table
+ * "not centered" after auto-fitting, with addRowBtn (sized off the wrapper's
+ * own genuine width, unaffected either way) then visibly wider than the
+ * shrunken, off-center table beside it. width:max-content always shrink-
+ * wraps to the children's actual combined width regardless of the
+ * containing block's own width, and margin-inline:auto centers that
+ * shrink-wrapped box within whatever extra room a wider manual width leaves
+ * — the same pattern .bt-table-wrapper itself already uses to center within
+ * root.
+ *
+ * flex-shrink:0 on BOTH children (below): a wide/fixed-width table whose
+ * content doesn't fit the available space (root narrower than the table)
+ * must overflow into .bt-table-wrapper's own horizontal scroll — that's the
+ * established, correct behavior for a wide table in this codebase. Flex's
+ * DEFAULT shrink algorithm instead tries to squeeze both items down to fit,
+ * which for addColBtn (no min-content resistance, and `overflow:hidden`
+ * zeroes its automatic minimum size) meant it silently absorbed nearly the
+ * entire deficit — reported as the "+" shrinking down to a thin vertical
+ * line. flex-shrink:0 opts both out, forcing contentRow to render at its
+ * children's full natural width and letting the wrapper's overflow-x:auto
+ * take over exactly as it already does for a table with no addColBtn at all. */
+.bt-table-content-row {
+	display: flex;
+	width: max-content;
+	margin-inline: auto;
+	/* Positioning context for .bt-resize-indicator (see its own comment) —
+	 * doesn't affect this element's own flex layout, since position:relative
+	 * with no offsets keeps it exactly where static flow already placed it. */
+	position: relative;
+}
+.bt-table-content-row > .bt-table,
+.bt-table-content-row > .bt-edge-add-col {
+	flex-shrink: 0;
+}
+/* Drag-resize handles — bottom edge (height), right edge (width), corner
+ * (both). Only shown on hover of the view (like the other overlay affordances)
+ * so they don't clutter the resting table.
+ *
+ * z-index 12 — ABOVE addRowBtn/addColBtn (z-index 10): both are sticky at
+ * wrapper's own visible bottom/right edge, which coincides EXACTLY with
+ * root's true bottom/right edge (where these handles live) whenever there's
+ * no horizontal/vertical scrollbar to push them off it — reported: with no
+ * scrollbar, hovering the height-resize strip only ever hit addRowBtn (the
+ * higher z-index at the time), and there was nothing reachable past it to
+ * grab; once a scrollbar appeared (sticky making room above it, see
+ * addRowBtn's own CSS comment), addRowBtn no longer reached all the way to
+ * root's edge and the handle worked again — confirming the two were simply
+ * fighting over the same pixels whenever they DID coincide. Raising the
+ * handle above them fixes the coincide case without affecting the already-
+ * working non-coincide case: the overlap is only ever a few px of
+ * addRowBtn/addColBtn's own bottom/right edge, so the rest of each button
+ * stays clickable either way. */
+.bt-view-resize {
+	position: absolute;
+	z-index: 12;
+	opacity: 0;
+	transition: opacity 0.12s;
+}
+.bt-render-root:hover .bt-view-resize { opacity: 1; }
+.bt-view-resize-b { left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
+.bt-view-resize-r { top: 0; bottom: 0; right: 0; width: 6px; cursor: ew-resize; }
+.bt-view-resize-br { right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+.bt-view-resize:hover { background: var(--interactive-accent); opacity: 0.35; }
+.bt-view-resize-br:hover { opacity: 0.55; }
 /* Suppress Obsidian-theme margins and cell borders that bleed into rich-table.
  * Themes control lines via CSS variables (§15: themes only set variables, base sets properties):
  *   --bt-cell-border          shorthand for all four sides  (default: none)
@@ -482,11 +659,49 @@
 	left:  calc(var(--cl, 0px) + var(--cs-off, 0px));
 	width: var(--cw, 60px);
 }
+/* A frozen column's real cell doesn't move on horizontal scroll — its label
+ * (and drag grip, same rule below) shouldn't either. --cl alone is already
+ * the label's correct fixed position: it's the same table-relative left
+ * offset (sum of preceding columns' widths) that applyFreeze computes into
+ * --bt-frozen-left for the real cell, just dropping --cs-off so it stops
+ * tracking scroll. renderer.ts's rebuild() adds this class only to cells for
+ * columns actually within the current model.freezeCols. */
+.bt-col-selector .bt-sel-cell.bt-sel-cell-frozen {
+	left: var(--cl, 0px);
+	/* Both cell and grip are already position:absolute with an opaque
+	 * background (base rules above) — DOM order alone decides paint order
+	 * otherwise, and a frozen cell is added to colSel earlier than the
+	 * non-frozen cells scrolling past it, so without a higher z-index the
+	 * later (non-frozen) cells painted on top as they slid underneath,
+	 * covering the now-fixed frozen label — reported as still being
+	 * "curtained" even after the position fix. z-index 2 matches the real
+	 * frozen table cells' own z-index for the same reason. */
+	z-index: 2;
+}
+.bt-col-selector .bt-sel-col-drag.bt-sel-cell-frozen {
+	left: var(--cdx, 0px);
+	z-index: 2;
+}
 /* Row selector: labels sit in the right label zone; left grip zone reserved for drag grips */
 .bt-row-selector .bt-sel-cell {
 	left: calc(var(--bt-sel-total) - var(--bt-sel-cell)); width: var(--bt-sel-cell);
-	top:    var(--rt, 0px);
+	/* + --rs-off tracks inner vertical scroll — mirror of the col cell's --cs-off. */
+	top:    calc(var(--rt, 0px) + var(--rs-off, 0px));
 	height: var(--rh, 30px);
+}
+/* A frozen row's real cell doesn't move on vertical inner-scroll — its row-number
+ * label (and drag grip, same rule below) shouldn't either. --rt alone is already
+ * the label's correct fixed position (the same table-relative top offset the row's
+ * sticky --bt-frozen-top mirrors), just dropping --rs-off so it stops tracking
+ * scroll. z-index 2 keeps it above the non-frozen labels sliding underneath — same
+ * reasoning as the frozen-column rule above. */
+.bt-row-selector .bt-sel-cell.bt-sel-cell-frozen {
+	top: var(--rt, 0px);
+	z-index: 2;
+}
+.bt-row-selector .bt-sel-row-drag.bt-sel-cell-frozen {
+	top: var(--rdy, 0px);
+	z-index: 2;
 }
 
 /* Summary/aggregate row selector cell — icon instead of a row number (it isn't
@@ -512,7 +727,7 @@
 	left: 0;
 	width: var(--bt-sel-total); /* spans full row-selector width */
 	height: 9px;
-	top: var(--ry, 0px);
+	top: calc(var(--ry, 0px) + var(--rs-off, 0px)); /* track inner vertical scroll */
 	transform: translateY(-50%);
 	cursor: row-resize;
 	z-index: 1;
@@ -546,20 +761,90 @@
 	opacity: 1;
 }
 
+/* Unlike addColBtn (below), addRowBtn is a normal-flow sibling of <table>
+ * inside .bt-table-wrapper (the real scroll container) — position:sticky
+ * pins it to the wrapper's visible viewport on all three of these edges at
+ * once: bottom (always above the horizontal scrollbar — sticky resolves
+ * against the padding edge, the scrollbar sits outside it) and left+right
+ * (stretches to exactly the visible width and stays there through
+ * horizontal scroll, the same trick a "sticky full-width bottom bar" uses
+ * in a horizontally-scrolling container). No JS position math for the
+ * sticky tracking itself — see the comment at its creation in renderer.ts.
+ *
+ * --strip-max-width (JS-set, positionEdgeStrips) caps + margin-inline:auto
+ * centers this within that viewport-tracking span, matching contentRow's own
+ * (table + addColBtn) rendered width instead of always stretching to the
+ * full visible width. Without it, a manual view width WIDER than the table
+ * currently needs (e.g. right after "auto-fit columns" shrinks them) left
+ * this bar stretched across dead space while the (now correctly centered,
+ * see .bt-table-content-row's own comment) table sat much narrower inside
+ * it — reported as ugly. This is a plain `max-width`, not a fixed width: for
+ * a WIDE table that itself needs horizontal scroll, contentRow's width
+ * naturally exceeds the visible viewport, so the cap is a no-op and left:0;
+ * right:0 alone determines the rendered width exactly as before — confirmed
+ * in a repro that this doesn't reintroduce the "+ stops tracking scroll"
+ * class of bug the sticky redesign fixed originally. */
 .bt-edge-add-row {
+	position: sticky;
 	cursor: pointer;
-	top:    var(--strip-top,   0px);
-	left:   var(--strip-left,  0px);
-	width:  var(--strip-width, 100px);
+	bottom: 0;
+	left:   0;
+	right:  0;
+	max-width: var(--strip-max-width, none);
+	margin-inline: auto;
 	height: 18px;
 }
 
+/* addColBtn is a flex sibling of <table> inside .bt-table-content-row (see
+ * that rule above) — sticky top/right pins it to the wrapper's visible right
+ * edge and keeps it above the horizontal scroll position, exactly the
+ * horizontal-axis mirror of addRowBtn's bottom/left/right above: sticky right
+ * resolves against the padding edge, so it stays BEFORE the vertical
+ * scrollbar (which sits outside the padding box), and top tracks vertical
+ * inner-scroll the same way frozen headers do.
+ *
+ * Height still comes from JS (renderer.ts's positionEdgeStrips, --strip-height
+ * = the clamped visible table height) rather than flex stretch — tried
+ * `align-self: stretch` first (inheriting <table>'s own rendered height with
+ * zero JS), but that sets addColBtn's height to the table's FULL scrollable
+ * content height, not just the visible slice. A sticky box exactly as tall as
+ * the entire scrollable range has no shorter-than-content box left to move
+ * within, so `top: 0` had nothing to stick against and silently stopped
+ * tracking scroll (confirmed by measuring it scroll away in a repro) — this
+ * is why `align-self: flex-start` opts it out of the container's default
+ * stretch, and why the height still needs the same clamp-to-visible-height
+ * math the JS already did for the old fully-absolute version. Real savings
+ * over that version: no left/top JS at all, and height only needs recomputing
+ * on resize, not every scroll frame.
+ *
+ * Width is a constant 18px, not toggled to 0 at rest like an earlier version
+ * of this rule did — that version's own reasoning ("a WIDTH change here
+ * doesn't touch root's height, so it can't reintroduce the sheet-tab-bar-
+ * jump problem a height toggle would... it's the same hover-reservation
+ * pattern the row-selector/ctrl-column strips already use") missed that
+ * this element, unlike those two, is a real in-flow flex CHILD of
+ * .bt-table-content-row (position:absolute for the selector/ctrl-column
+ * strips takes them out of flow entirely, so a size change on THEM can't
+ * affect their container's own size at all — not true here). .content-row
+ * is width:max-content and .bt-table-wrapper centers via margin-inline:auto,
+ * so toggling this width still shifted the whole (centered) table sideways
+ * on hover exactly like the height-toggle bug on the vertical axis — just
+ * reported later, once that one was already fixed ("选择器先出来，此时表格
+ * 没动，然后增加行列按钮出现，表格又左移了"). Reserving the width
+ * permanently and only toggling visibility/opacity (the shared
+ * .bt-edge-add-row/.bt-edge-add-col rule above) fixes it the same way the
+ * permanent --bt-sel-pad reservation fixed the vertical case — visibility:
+ * hidden still occupies its layout box, so nothing here ever needs to grow
+ * on hover at all. */
 .bt-edge-add-col {
-	cursor: pointer;
-	top:    var(--strip-top,    0px);
-	left:   var(--strip-left,   0px);
-	width:  18px;
-	height: var(--strip-height, 40px);
+	position:   sticky;
+	cursor:     pointer;
+	top:        0;
+	right:      0;
+	align-self: flex-start;
+	width:      18px;
+	height:     var(--strip-height, 40px);
+	overflow:   hidden;
 }
 
 .bt-edge-add-row:hover,
@@ -587,7 +872,7 @@
 	left: 1px;
 	width: var(--bt-sel-grip);
 	height: var(--bt-sel-cell);
-	top: var(--rdy, 0px);
+	top: calc(var(--rdy, 0px) + var(--rs-off, 0px)); /* track inner vertical scroll */
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -635,9 +920,15 @@
 
 /* Column / row resize is handled by the selector-strip handles (.bt-sel-resize-*). */
 
-/* Full-column / full-row indicator line; --bt-ri-opacity set via setCssProps (hover: 0.4, drag: 0.75) */
+/* Full-column / full-row indicator line; --bt-ri-opacity set via setCssProps (hover: 0.4, drag: 0.75).
+ * position:absolute, a child of .bt-table-content-row (its offsetParent, via
+ * that element's own position:relative below) rather than a viewport-fixed
+ * overlay on document.body — this makes the line share the table's own
+ * clipping ancestor (.bt-table-wrapper's overflow), so it gets cut off
+ * exactly where the table itself does, for free, instead of needing its own
+ * viewport-rect math to reproduce that boundary (renderResize.ts). */
 .bt-resize-indicator {
-	position: fixed;
+	position: absolute;
 	z-index: var(--layer-popover);
 	pointer-events: none;
 	background: var(--interactive-accent);
@@ -647,17 +938,17 @@
 .bt-resize-indicator-col {
 	top:    var(--ri-top,  0px);
 	left:   var(--ri-x,   0px);
-	width:  2px;
+	width:  4px;
 	height: var(--ri-height, 100px);
-	transform: translateX(-1px);
+	transform: translateX(-2px);
 }
 
 .bt-resize-indicator-row {
 	left:   var(--ri-left,  0px);
 	top:    var(--ri-y,     0px);
 	width:  var(--ri-width, 100px);
-	height: 2px;
-	transform: translateY(-1px);
+	height: 4px;
+	transform: translateY(-2px);
 }
 
 /* Drop indicators — must win over the --bt-cell-border block above, which sets
@@ -687,13 +978,51 @@
  *   --bt-border-outer  none                          → table's own outer edge
  *   --bt-cell-bg        transparent                  → data cell background
  *   --bt-header-bg      var(--background-secondary)  → header cell background
- * (See the --bt-cell-border block above for the inner/gridline equivalent.) */
+ * (See the --bt-cell-border block above for the inner/gridline equivalent.)
+ * Five more are applied inline by renderFreeze.ts (see its VISUAL MODEL note
+ * for why the frozen region is a plain opaque block with a neutral frame,
+ * not a per-cell replica of the theme's gridlines) — a theme/snippet can set
+ * any of them to restyle the frozen region without touching a selector:
+ *   --bt-frozen-bg           var(--background-primary)    → frozen data cell background
+ *   --bt-frozen-header-bg    var(--background-secondary)  → frozen header cell background
+ *   --bt-frozen-divider      var(--background-modifier-border)  → the frozen block's frame + seam line
+ *   --bt-frozen-row-shadow  inset 0 -6px 6px -6px rgba(0,0,0,0.3)  → elevation shadow at the frozen-row/scroll seam
+ *   --bt-frozen-col-shadow  inset -6px 0 6px -6px rgba(0,0,0,0.3)  → elevation shadow at the frozen-col/scroll seam
+ * --bt-frozen-bg/-header-bg are deliberately separate from --bt-cell-bg/
+ * --bt-header-bg above — those express "what should a normal cell look
+ * like" (academic.css sets them to `none`), but a frozen cell needs real
+ * opacity to occlude scrolling content underneath regardless of what a
+ * theme wants for normal cells; reusing the normal-cell variable inherited
+ * academic's `none`, which isn't a valid background-color, silently
+ * dropping the whole opacity rule under that theme specifically.
+ * --bt-frozen-row-shadow/-col-shadow must stay `inset` — Chromium/WebKit
+ * don't paint a non-inset box-shadow on a table cell once border-collapse:
+ * collapse is set. To disable either, set it to a zero-size transparent
+ * shadow (`0 0 0 0 transparent`) — not `none`, which is only valid as an
+ * entire box-shadow value and would invalidate the frame/seam lines it's
+ * combined with on the same cell (see renderFreeze.ts's addBoxShadow). */
 .bt-table {
 	border: var(--bt-border-outer, none);
 	border-collapse: collapse;
 	table-layout: auto; /* JS switches to fixed + sets inline width when any column has an explicit width */
 	font-size: var(--font-ui-medium);
+	/* Measured via getComputedStyle (not found in any rule of ours, so this is
+	 * Obsidian's own base CSS for markdown tables bleeding through — we never
+	 * needed to override it before, since it only started mattering once a
+	 * descendant used position:sticky): <table> itself was computing overflow
+	 * as hidden/hidden. Any ancestor with non-visible overflow between a
+	 * sticky element and its intended scroll container hijacks the sticky
+	 * reference frame (same mechanism as the wrapper/root fixes above) — this
+	 * one sits closer to the frozen <tr> than either of those, so it wins
+	 * regardless of what they're set to. Force it back to visible explicitly;
+	 * !important since we don't know if the source rule uses it. */
+	overflow: visible !important;
 }
+/* The table's own outer top/left border suppression (needed once row/col
+ * freeze is active — see renderFreeze.ts's module doc comment) is applied as
+ * an inline style directly on <table>, not a class-toggled rule here — same
+ * "inline beats any stylesheet specificity, permanently" reasoning as every
+ * other freeze override, see that file. */
 
 
 /* Use .bt-table prefix to outweigh Obsidian theme selectors */
@@ -744,36 +1073,24 @@
 /* The <tr> itself never gets a background of its own — Obsidian's reading-
  * view CSS otherwise paints one directly (zebra striping, row hover), which
  * would show through any cell whose own background resolves to transparent.
- * bt-row-hover below deliberately targets individual cells, not the <tr>,
- * specifically so it always paints on top of whatever a theme sets rather
- * than depending on any cell being transparent. */
+ * The hover highlight below (see comment there) deliberately targets
+ * individual cells, not the <tr>, for the same reason. */
 .bt-render-root .bt-table tbody tr,
 .bt-render-root .bt-table thead tr {
 	background: none !important;
 }
 
-/* Row/cell hover highlight — JS-driven (renderer.ts), not native `tr:hover`/
- * `td:hover`. A rowspanned cell's <td> lives in only the FIRST <tr> it
- * visually spans, so `tr:hover` can only ever light up that one row; this is
- * applied per-cell across every row a hovered merge actually spans instead.
- * Also replaces (rather than layering onto) the three previous single-cell
- * hover rules this consolidates — .bt-td-editable:hover, .bt-th-editable:hover,
- * .bt-th-typed:hover all did the exact same "background: var(--background-
- * modifier-hover) on hover" independently, for three different cell kinds,
- * and had the same merge-blindness this fixes for none of them. bt-cell-hover
- * reuses their exact color for the specific hovered cell (proven "reads as
- * the right amount of dark" already); bt-row-hover is a lighter tint of that
- * same color, not a different one, so both read as one consistent hover
- * language regardless of the active Obsidian theme's own hover tint. */
-.bt-render-root .bt-table .bt-td.bt-row-hover,
-.bt-render-root .bt-table .bt-th.bt-row-hover {
-	background: color-mix(in srgb, var(--background-modifier-hover) 50%, transparent) !important;
-}
-
-.bt-render-root .bt-table .bt-td.bt-cell-hover,
-.bt-render-root .bt-table .bt-th.bt-cell-hover {
-	background: var(--background-modifier-hover) !important;
-}
+/* Row/cell hover highlight is entirely JS-driven (renderer.ts's table
+ * `mouseover` handler) — no CSS classes or rules live here. Originally this
+ * WAS a CSS-class + `background` approach (bt-row-hover/bt-cell-hover), but
+ * that never painted on a frozen cell or any cell with a user-set per-cell
+ * background color: both set `background-color` inline with 'important'
+ * priority, which always beats a stylesheet rule's own !important regardless
+ * of specificity — so the hover tint was silently invisible on exactly the
+ * cells most likely to need a visible "this is the hovered row/column"
+ * signal. Replaced with an inline `box-shadow` tint instead (see renderer.ts)
+ * — box-shadow paints in a layer after background regardless of who set the
+ * background or with what priority, so it can't be blocked the same way. */
 
 /* Summary/aggregate rows — visually distinct from data rows. border-top on
  * every row (not just the first) is intentional: border-collapse merges
@@ -797,6 +1114,75 @@
 	font-weight: var(--font-normal);
 	margin-right: 4px;
 }
+
+/* ── Frozen rows/columns ────────────────────────────────────────────────── */
+/* border-collapse:collapse's shared-edge computation doesn't track a sticky
+ * cell repositioning during scroll, so switching to border-collapse:separate
+ * was tried first — but this table's column widths are fractional px
+ * (e.g. "39.9952px"), and separate mode rounds each cell's own border to the
+ * nearest device pixel independently, so two adjacent cells can round
+ * differently at their shared boundary. That produced worse artifacts than
+ * the original bug: missing verticals, uneven-length horizontals, dot-like
+ * corner artifacts, and sub-pixel gaps letting scrolled content peek through.
+ * Reverted — .bt-table keeps its default border-collapse:collapse always.
+ * Instead, only the single seam between the frozen region and the scrolling
+ * region (which is the only border whose two sides genuinely move relative
+ * to each other) gets a synthetic boundary via box-shadow below, which is
+ * painted as part of the frozen cell's own box and isn't subject to
+ * collapse's cross-cell shared-edge computation at all. */
+/* --bt-frozen-top/-left are set by renderFreeze.ts's live geometry walk (row
+ * heights / column widths can change at any time, so these are recomputed,
+ * not fixed values).
+ *
+ * Row-freeze sticks the <tr> itself, not each of its cells: a <tr> supports
+ * position:sticky directly in modern engines, so one sticky declaration
+ * covers the whole row instead of one per cell. This isn't just fewer rules —
+ * it sidesteps a real bug found via user testing: changing an ancestor's
+ * padding (to reserve room for the hover-only selector strips) shifts the
+ * scrolling wrapper's on-screen position without changing its size, and
+ * Chromium doesn't reliably re-evaluate a sticky element's offset from a
+ * pure ancestor-position change (only from the scrolling container's own
+ * scroll/resize) — with N independent sticky cells per row that showed up as
+ * the whole frozen row intermittently losing its stick until the user
+ * actually dragged the scrollbar. A single sticky point per row narrows the
+ * exposure; it doesn't eliminate it (column-freeze below still has this
+ * risk, cell-by-cell, since <col> can't be positioned — see the next rule).
+ * The row's own z-index covers layering against non-frozen rows scrolling
+ * underneath; individual cells no longer need position/z-index for this
+ * axis. */
+/* z-index tiers matter when BOTH axes are frozen: a frozen ROW must sit above
+ * a frozen COLUMN, so the top-left corner cells (which live inside a frozen
+ * <tr>) stay on top of the frozen-column cells of the scrolling rows sliding
+ * up underneath them. With equal z-index the later (scrolling) rows won by DOM
+ * order and covered the corner (reported: the corner data got overwritten on
+ * vertical scroll). Frozen row = 3 (whole <tr> is a stacking context, so its
+ * corner cells inherit that tier), frozen column = 2, normal cells = auto. */
+.bt-render-root .bt-table tr.bt-frozen-row {
+	position: sticky;
+	top: var(--bt-frozen-top, 0px);
+	z-index: 3;
+}
+.bt-render-root .bt-table .bt-td.bt-frozen-col,
+.bt-render-root .bt-table .bt-th.bt-frozen-col {
+	position: sticky;
+	left: var(--bt-frozen-left, 0px);
+	z-index: 2;
+}
+/* Everything else a frozen row/column needs — border suppression, opaque
+ * background, the synthetic border/elevation box-shadow — is applied as an
+ * INLINE style with 'important' priority directly in renderFreeze.ts, not as
+ * a stylesheet rule here. That's a deliberate architecture choice, not an
+ * oversight: a stylesheet rule has to out-specificity every theme's own
+ * selectors, one at a time, forever, and this broke twice in practice (grid
+ * theme's `thead .bt-th` border-bottom, then academic theme's box-shadow-
+ * based toprule/midrule — fixing the second by adding !important to an
+ * already-!important stylesheet rule surfaced a NEW conflict rather than
+ * actually ending the pattern). Inline + 'important' beats ANY stylesheet
+ * rule's 'important' regardless of that rule's specificity, permanently —
+ * the same guarantee this codebase already relies on for "a user's own
+ * per-cell style always wins over theme decoration" (applyResolvedStyle,
+ * see "Theme system" in CLAUDE.md). See renderFreeze.ts's module doc comment
+ * for the full reasoning. */
 
 /* Column alignment overrides */
 .bt-table .bt-align-left   { text-align: left; }
@@ -871,9 +1257,10 @@
 	position: relative;
 }
 
-/* Editable data cells. Hover tint is bt-cell-hover (see above), not a rule
- * here — this used to set its own background-color on :hover independently
- * of every other cell kind; consolidated so all cell kinds hover the same way. */
+/* Editable data cells. Hover tint is JS-driven (renderer.ts, see above), not
+ * a rule here — this used to set its own background-color on :hover
+ * independently of every other cell kind; consolidated so all cell kinds
+ * hover the same way. */
 .bt-table .bt-td-editable {
 	cursor: text;
 }
@@ -1131,7 +1518,7 @@
 	opacity: 0.45;
 }
 
-/* Hover tint is bt-cell-hover (see above) — same consolidation as
+/* Hover tint is JS-driven (renderer.ts, see above) — same consolidation as
  * bt-td-editable/bt-th-editable. */
 .bt-table .bt-th-typed:focus-visible {
 	outline: 2px solid var(--interactive-accent);

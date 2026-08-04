@@ -175,6 +175,26 @@ export interface TableModelV2 {
 	/** Which entry in `views` is currently shown; absent or unmatched = the
 	 *  default Table view (today's plain rendering). */
 	activeViewId?: string;
+	/** Freezes the header row plus the first `freezeRows` data rows so they
+	 *  stay visible while scrolling — a position (like Excel's freeze panes),
+	 *  not a set of row IDs: reordering rows changes which rows end up in the
+	 *  frozen region, the count itself doesn't move. 0 = header only frozen,
+	 *  absent = no row freeze (header scrolls away like today). Rejected by
+	 *  the reducer (see canFreezeRows in operations.ts) if it would split a
+	 *  vertical merge across the boundary. */
+	freezeRows?: number;
+	/** Column-axis mirror of `freezeRows` — freezes the first `freezeCols`
+	 *  columns. */
+	freezeCols?: number;
+	/** Manual view width in px. Absent = auto (hug the table's natural width,
+	 *  capped at the container, with horizontal scroll for wider tables) —
+	 *  today's behaviour, so absence keeps old tables rendering identically. */
+	viewWidth?: number;
+	/** Manual view height in px. Absent = auto: grow with content up to the
+	 *  visible viewport, then scroll inside the view (so a frozen header/row
+	 *  always has a real scroll container to stick against, and a scrollbar
+	 *  appears only when the table can't fully fit). */
+	viewHeight?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<!--
+  Mirrors src/renderFreeze.ts's applyFreeze() in full (both row- and
+  column-freeze passes) closely enough to test multi-row/multi-column
+  freeze specifically — a single frozen row/column has no "interior"
+  boundary to lose, so that case alone never caught the bug this fixture
+  targets: freezing MORE than one row (or column) together used to blank
+  every internal separator across the WHOLE frozen band (not just at the
+  row/column intersection), including the theme's own real gridlines
+  between two frozen rows or two frozen columns — reported as looking
+  broken ("看着太丑了") rather than intentional.
+
+  window.applyFreezeBoth(freezeRows, freezeCols) runs the ported logic
+  against #table, using the REAL styles.css (loaded below) for every
+  computed style read. If applyFreeze()'s border-hiding conditions change
+  shape, this needs a matching update — nothing here imports the real
+  source.
+-->
+<html>
+<head>
+<style>
+	:root {
+		--background-modifier-border: #ccc; --background-modifier-hover: rgba(0,0,0,0.05);
+		--background-primary: #fff; --background-secondary: #f2f2f2; --background-secondary-alt: #eaeaea;
+		--color-orange: orange; --color-yellow: gold; --font-monospace: monospace;
+		--font-medium: 500; --font-normal: 400; --font-semibold: 600; --font-text: 16px;
+		--font-ui-medium: 14px; --font-ui-small: 12px; --font-ui-smaller: 11px; --h4-size: 16px;
+		--interactive-accent: #7c3aed; --interactive-accent-hover: #6d28d9; --layer-popover: 60;
+		--link-color: blue; --link-color-hover: darkblue; --link-decoration: underline;
+		--radius-m: 6px; --radius-s: 4px; --shadow-m: 0 2px 8px rgba(0,0,0,.2); --shadow-s: 0 1px 4px rgba(0,0,0,.15);
+		--size-4-1: 4px; --size-4-2: 8px; --size-4-3: 12px; --size-4-4: 16px; --size-4-6: 24px;
+		--table-border-color: #ccc; --tag-background: #eee; --tag-color: #333;
+		--text-error: red; --text-faint: #999; --text-muted: #666; --text-normal: #111;
+		--text-on-accent: #fff; --text-warning: #b45309;
+	}
+	body { margin: 20px; }
+</style>
+<link rel="stylesheet" href="../../../styles.css">
+</head>
+<body>
+	<div class="bt-render-root bt-theme-grid" id="root">
+		<table class="bt-table" id="table" style="table-layout:fixed; width:400px;">
+			<colgroup>
+				<col data-col="0" style="width:100px"><col data-col="1" style="width:100px"><col data-col="2" style="width:100px"><col data-col="3" style="width:100px">
+			</colgroup>
+			<thead><tr>
+				<th class="bt-th" data-row="0" data-col="0">A</th>
+				<th class="bt-th" data-row="0" data-col="1">B</th>
+				<th class="bt-th" data-row="0" data-col="2">C</th>
+				<th class="bt-th" data-row="0" data-col="3">D</th>
+			</tr></thead>
+			<tbody>
+				<tr><td class="bt-td" data-row="1" data-col="0">1</td><td class="bt-td" data-row="1" data-col="1">2</td><td class="bt-td" data-row="1" data-col="2">3</td><td class="bt-td" data-row="1" data-col="3">4</td></tr>
+				<tr><td class="bt-td" data-row="2" data-col="0">5</td><td class="bt-td" data-row="2" data-col="1">6</td><td class="bt-td" data-row="2" data-col="2">7</td><td class="bt-td" data-row="2" data-col="3">8</td></tr>
+				<tr><td class="bt-td" data-row="3" data-col="0">9</td><td class="bt-td" data-row="3" data-col="1">10</td><td class="bt-td" data-row="3" data-col="2">11</td><td class="bt-td" data-row="3" data-col="3">12</td></tr>
+			</tbody>
+		</table>
+	</div>
+<script>
+	function forceImportant(el, prop, value) { el.style.setProperty(prop, value, 'important'); }
+	function addBoxShadow(cell, layer) {
+		const existing = cell.style.getPropertyValue('--bt-frozen-box-shadow-scratch');
+		const combined = existing ? `${existing}, ${layer}` : layer;
+		cell.style.setProperty('--bt-frozen-box-shadow-scratch', combined);
+		forceImportant(cell, 'box-shadow', combined);
+	}
+	const LINE = 'var(--bt-frozen-divider, var(--background-modifier-border))';
+	function seedThemeShadow(cell) {
+		if (cell.style.getPropertyValue('--bt-frozen-box-shadow-scratch')) return;
+		const themed = getComputedStyle(cell).boxShadow;
+		if (themed && themed !== 'none') {
+			cell.style.setProperty('--bt-frozen-box-shadow-scratch', themed);
+			forceImportant(cell, 'box-shadow', themed);
+		}
+	}
+	function opaqueBg(cell) {
+		const isHeader = cell.tagName === 'TH';
+		forceImportant(cell, 'background-color', isHeader ? 'var(--bt-frozen-header-bg, var(--background-secondary))' : 'var(--bt-frozen-bg, var(--background-primary))');
+	}
+	function hideBorder(el, side) { forceImportant(el, `border-${side}-color`, 'transparent'); }
+
+	window.applyFreezeBoth = function (freezeRows, freezeCols) {
+		const table = document.getElementById('table');
+		const thead = table.querySelector('thead');
+		const tbody = table.querySelector('tbody');
+
+		table.style.removeProperty('border-top-color');
+		table.style.removeProperty('border-left-color');
+		const tableStyle = getComputedStyle(table);
+		const outerTopColor  = tableStyle.borderTopStyle  !== 'none' ? tableStyle.borderTopColor  : null;
+		const outerLeftColor = tableStyle.borderLeftStyle !== 'none' ? tableStyle.borderLeftColor : null;
+		const outerTopWidth  = outerTopColor  !== null ? (parseFloat(tableStyle.borderTopWidth)  || 1) : 1;
+		const outerLeftWidth = outerLeftColor !== null ? (parseFloat(tableStyle.borderLeftWidth) || 1) : 1;
+		const LINE_TOP  = `var(--bt-frozen-divider, ${outerTopColor  ?? 'var(--background-modifier-border)'})`;
+		const LINE_LEFT = `var(--bt-frozen-divider, ${outerLeftColor ?? 'var(--background-modifier-border)'})`;
+		if (freezeRows !== undefined) forceImportant(table, 'border-top-color', 'transparent');
+		if (freezeCols !== undefined) forceImportant(table, 'border-left-color', 'transparent');
+
+		if (freezeRows !== undefined) {
+			const allTrs = [...thead.querySelectorAll('tr'), ...tbody.querySelectorAll('tr')];
+			for (const tr of allTrs) {
+				const idxAttr = tr.querySelector('[data-row]')?.dataset.row;
+				if (idxAttr === undefined) continue;
+				const idx = parseInt(idxAttr);
+				if (idx > freezeRows) continue;
+				for (const cell of Array.from(tr.children)) {
+					seedThemeShadow(cell);
+					if (idx === 0) hideBorder(cell, 'top');
+					if (idx === freezeRows) hideBorder(cell, 'bottom');
+					opaqueBg(cell);
+					if (idx === 0) addBoxShadow(cell, `inset 0 ${outerTopWidth}px 0 0 ${LINE_TOP}`);
+					if (idx === freezeRows) {
+						addBoxShadow(cell, `inset 0 -${outerTopWidth}px 0 0 ${LINE}`);
+						addBoxShadow(cell, 'var(--bt-frozen-row-shadow, inset 0 -6px 6px -6px rgba(0, 0, 0, 0.3))');
+					}
+				}
+			}
+		}
+
+		if (freezeCols !== undefined) {
+			for (const c of Array.from(table.querySelectorAll('col'))) {
+				const ci = c.dataset.col !== undefined ? parseInt(c.dataset.col) : undefined;
+				if (ci !== undefined && ci < freezeCols) {
+					table.querySelectorAll(`td[data-col="${ci}"], th[data-col="${ci}"]`).forEach(cell => {
+						seedThemeShadow(cell);
+						if (ci === 0) hideBorder(cell, 'left');
+						if (ci + (cell.colSpan || 1) - 1 === freezeCols - 1) hideBorder(cell, 'right');
+						opaqueBg(cell);
+						if (ci === 0) addBoxShadow(cell, `inset ${outerLeftWidth}px 0 0 0 ${LINE_LEFT}`);
+						if (ci + (cell.colSpan || 1) - 1 === freezeCols - 1) {
+							addBoxShadow(cell, `inset -${outerLeftWidth}px 0 0 0 ${LINE}`);
+							addBoxShadow(cell, 'var(--bt-frozen-col-shadow, inset -6px 0 6px -6px rgba(0, 0, 0, 0.3))');
+						}
+					});
+				}
+			}
+		}
+	};
+</script>
+</body>
+</html>

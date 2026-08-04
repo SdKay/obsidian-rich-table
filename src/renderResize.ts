@@ -32,11 +32,25 @@ export function setupColResize(
 	const hideColLine = () => { colLine?.remove(); colLine = null; };
 	component?.register(hideColLine);
 
-	const makeColLine = (tblRect: DOMRect): HTMLElement => {
-		const line = activeDocument.body.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-col' });
+	// Appended as a sibling of `tbl` inside .bt-table-content-row (positioned
+	// relative to it — see the CSS), not document.body: this makes the line
+	// share the table's own coordinate space AND its clipping ancestor. Its
+	// span exactly matches the table's own rendered box (no reach into
+	// addRowBtn/the scrollbar beyond it), so wherever .bt-table-wrapper's own
+	// overflow clips the table it clips the line identically for free — no
+	// separate viewport-rect math needed (an earlier version tried to compute
+	// this via getBoundingClientRect deltas against the wrapper/add-strip and
+	// kept needing another special case for another scroll/view-size
+	// combination; matching the table's own DOM-nested geometry sidesteps the
+	// whole class of bug instead).
+	const makeColLine = (): HTMLElement => {
+		const parent = tbl.parentElement!;
+		const parentRect = parent.getBoundingClientRect();
+		const tblRect = tbl.getBoundingClientRect();
+		const line = parent.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-col' });
 		line.setCssProps({
-			'--ri-x':      `${colRightX(tbl, colIdx)}px`,
-			'--ri-top':    `${tblRect.top}px`,
+			'--ri-x':      `${tblRect.left - parentRect.left + colRightX(tbl, colIdx)}px`,
+			'--ri-top':    `${tblRect.top - parentRect.top}px`,
 			'--ri-height': `${tblRect.height}px`,
 		});
 		return line;
@@ -44,7 +58,7 @@ export function setupColResize(
 
 	handle.addEventListener('mouseenter', () => {
 		if (colLine || colDragging) return;
-		colLine = makeColLine(tbl.getBoundingClientRect());
+		colLine = makeColLine();
 		colLine.setCssProps({ '--bt-ri-opacity': '0.4' });
 	});
 	handle.addEventListener('mouseleave', () => {
@@ -71,10 +85,9 @@ export function setupColResize(
 		const startNextW = nextCol ? (parseInt(nextCol.style.width) || 120) : null;
 		const nextColIdx = nextCol ? parseInt(nextCol.dataset.col ?? '-1') : -1;
 		const MIN        = colMinWidth(col, getRegistry());
-		const tblRect    = tbl.getBoundingClientRect();
 
 		if (colLine) colLine.setCssProps({ '--bt-ri-opacity': '0.75' });
-		else { colLine = makeColLine(tblRect); colLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
+		else { colLine = makeColLine(); colLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
 
 		const onMove = (ev: PointerEvent) => {
 			const delta = ev.clientX - startX;
@@ -89,7 +102,10 @@ export function setupColResize(
 				.reduce((s, c) => s + (parseInt(c.style.width) || 0), 0);
 			tbl.style.setProperty('width', `${sum}px`);
 
-			if (colLine) colLine.setCssProps({ '--ri-x': `${colRightX(tbl, colIdx)}px` });
+			if (colLine) {
+				const parentLeft = tbl.parentElement!.getBoundingClientRect().left;
+				colLine.setCssProps({ '--ri-x': `${tbl.getBoundingClientRect().left - parentLeft + colRightX(tbl, colIdx)}px` });
+			}
 			// Grid auto-updates edge-add strip sizes — no manual repositioning needed.
 			tbl.dispatchEvent(new CustomEvent('bt-layout-changed'));
 		};
@@ -143,16 +159,27 @@ export function bindResizeHandle(
 		return single.length > 0 ? single : all;
 	};
 
-	const makeRowLine = (anchor: HTMLElement | undefined, tblRect: DOMRect): HTMLElement => {
-		const line = activeDocument.body.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-row' });
-		const borderY = anchor ? anchor.getBoundingClientRect().bottom : tblRect.bottom;
-		line.setCssProps({ '--ri-y': `${borderY}px`, '--ri-left': `${tblRect.left}px`, '--ri-width': `${tblRect.width}px` });
+	// Appended as a sibling of `table` inside .bt-table-content-row (see
+	// setupColResize's makeColLine for why this — DOM-nested in the table's
+	// own coordinate space and clipping ancestor — replaced a viewport-rect,
+	// wrapper/add-strip-aware version of this same line).
+	const makeRowLine = (anchor: HTMLElement | undefined): HTMLElement => {
+		const parent = table.parentElement!;
+		const parentRect = parent.getBoundingClientRect();
+		const tblRect = table.getBoundingClientRect();
+		const line = parent.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-row' });
+		const borderY = (anchor ? anchor.getBoundingClientRect().bottom : tblRect.bottom) - parentRect.top;
+		line.setCssProps({
+			'--ri-y':     `${borderY}px`,
+			'--ri-left':  `${tblRect.left - parentRect.left}px`,
+			'--ri-width': `${tblRect.width}px`,
+		});
 		return line;
 	};
 
 	handle.addEventListener('mouseenter', () => {
 		if (rowLine || rowDragging) return;
-		rowLine = makeRowLine(rowCells()[0], table.getBoundingClientRect());
+		rowLine = makeRowLine(rowCells()[0]);
 		rowLine.setCssProps({ '--bt-ri-opacity': '0.4' });
 	});
 	handle.addEventListener('mouseleave', () => {
@@ -170,7 +197,6 @@ export function bindResizeHandle(
 		// Only cells that belong to this row alone — anchor + height targets
 		const targets   = rowCells();
 		const anchor    = targets[0];
-		const tblRect   = table.getBoundingClientRect();
 
 		// Read actual height at drag time — avoids the detached-div zero issue
 		const actualStart = (anchor?.offsetHeight ?? 0) || minSize;
@@ -179,7 +205,7 @@ export function bindResizeHandle(
 
 		// Upgrade hover line or create fresh one
 		if (rowLine) rowLine.setCssProps({ '--bt-ri-opacity': '0.75' });
-		else { rowLine = makeRowLine(anchor, tblRect); rowLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
+		else { rowLine = makeRowLine(anchor); rowLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
 
 		const onMove = (ev: PointerEvent) => {
 			// Capture scroll position before the height change so we can restore it
@@ -192,7 +218,8 @@ export function bindResizeHandle(
 			for (const cell of targets) cell.style.setProperty(cssVar, `${lastSize}px`);
 			// Track actual cell bottom edge live — handles content min-height correctly
 			if (rowLine && anchor) {
-				rowLine.setCssProps({ '--ri-y': `${anchor.getBoundingClientRect().bottom}px` });
+				const parentTop = table.parentElement!.getBoundingClientRect().top;
+				rowLine.setCssProps({ '--ri-y': `${anchor.getBoundingClientRect().bottom - parentTop}px` });
 			}
 			onDrag?.();
 			// Row height change shifts cell geometry → rebuild selector strips to follow

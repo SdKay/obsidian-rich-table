@@ -47,10 +47,18 @@ export interface RenderSheetTabBarOptions {
 	component: Component;
 	/** Absent when the table is locked or editing is otherwise disallowed —
 	 *  same "no handler = no interactive affordance" convention used
-	 *  throughout renderer.ts (e.g. the views-switcher button). The bar still
-	 *  renders (so a locked table still shows which sheets exist and which is
-	 *  active), just without any click/drag/menu wiring. */
+	 *  throughout renderer.ts (e.g. the views-switcher button). Gates rename/
+	 *  drag-reorder/tab-style-menu specifically — NOT switching which sheet is
+	 *  active, which stays available while locked (see onSwitchSheet): picking
+	 *  which sheet to LOOK at isn't an edit, and a locked table is still
+	 *  expected to be readable/navigable, just not editable. */
 	onOp?: (op: WorkbookOpV2) => void;
+	/** Always provided, lock or not — dispatches `set-active-sheet` directly.
+	 *  Kept separate from onOp specifically so switching survives being
+	 *  locked (reported: switching sheets stopped working entirely once
+	 *  locked, alongside rename/drag/menu, which SHOULD be disabled — but
+	 *  switching isn't an edit, it doesn't touch any sheet's content). */
+	onSwitchSheet?: (sheetId: string) => void;
 	/** The "+" button's own handler for adding a THIRD-or-later sheet, kept
 	 *  separate from `onOp` purely for symmetry with the left-toolbar "add
 	 *  sheet" button (renderer.ts/renderViews.ts) that creates the FIRST
@@ -59,7 +67,7 @@ export interface RenderSheetTabBarOptions {
 }
 
 export function renderSheetTabBar(opts: RenderSheetTabBarOptions): void {
-	const { container, sheets, activeSheetId, cacheKey, component, onOp, onCreateSheet } = opts;
+	const { container, sheets, activeSheetId, cacheKey, component, onOp, onSwitchSheet, onCreateSheet } = opts;
 	const bar = container.createDiv({ cls: 'bt-sheet-tabbar' });
 	const resumeRenameId = renameHandoff.take(cacheKey);
 
@@ -70,21 +78,26 @@ export function renderSheetTabBar(opts: RenderSheetTabBarOptions): void {
 		if (sheet.tabTextColor) tab.setCssProps({ '--bt-sheet-tab-color': sheet.tabTextColor });
 		const label = tab.createSpan({ cls: 'bt-sheet-tab-label', text: sheet.name || sheetFallbackName(idx + 1) });
 
-		if (onOp) {
-			bindTabDrag(tab, sheet.id, sheets, onOp);
+		// Switching stays wired whenever onSwitchSheet exists at all (locked or
+		// not); rename/drag/menu additionally require onOp, so they drop out
+		// while locked without disabling activation too.
+		if (onSwitchSheet || onOp) {
+			if (onOp) bindTabDrag(tab, sheet.id, sheets, onOp);
 			bindTabActivation(tab, {
 				isActive: () => sheet.id === activeSheetId,
-				onActivate: () => onOp({ type: 'set-active-sheet', sheetId: sheet.id }),
-				onEnterRename: () => {
+				onActivate: () => onSwitchSheet?.(sheet.id),
+				onEnterRename: onOp ? () => {
 					renameHandoff.register(cacheKey, sheet.id);
 					enterSheetRename(tab, label, sheet, onOp, cacheKey);
-				},
-				onOpenMenu: (evt) => openTabMenu(evt, tab, label, sheet, component, onOp, cacheKey),
+				} : () => {},
+				onOpenMenu: onOp ? (evt) => openTabMenu(evt, tab, label, sheet, component, onOp, cacheKey) : () => {},
 			});
-			tab.addEventListener('contextmenu', (evt: MouseEvent) => {
-				evt.preventDefault();
-				openTabMenu(evt, tab, label, sheet, component, onOp, cacheKey);
-			});
+			if (onOp) {
+				tab.addEventListener('contextmenu', (evt: MouseEvent) => {
+					evt.preventDefault();
+					openTabMenu(evt, tab, label, sheet, component, onOp, cacheKey);
+				});
+			}
 		}
 
 		if (onOp && resumeRenameId === sheet.id) enterSheetRename(tab, label, sheet, onOp, cacheKey);

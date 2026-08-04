@@ -299,7 +299,7 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 | Auto-fit-all button (top-left ⊞) — one click to auto-fit every column and row | ✅ |
 | Hover bottom / right edge → **+** strips to append rows / columns | ✅ |
 | Hide and show rows / columns | ✅ |
-| Freeze header row / first N columns | 🔜 |
+| Freeze header + first N rows / first N columns — "Freeze up to here" in the row/column selector's popup menu; rejected (with a message) if a merged cell would straddle the boundary | ✅ |
 | Row grouping — collapsible groups | 🔜 |
 | **Views** — alternate ways to browse the same rows/columns, switched via the layout-grid icon (or a Kanban/Calendar board's own icon column) | |
 | Kanban board — group rows into lanes by any choice-typed column; drag a card to another lane to change its value | ✅ |
