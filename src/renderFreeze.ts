@@ -100,6 +100,7 @@ function clearFreeze(table: HTMLTableElement): void {
 function snapshotTable(
 	table: HTMLTableElement, thead: HTMLElement, tbody: HTMLElement,
 	freezeRows: number | undefined, freezeCols: number | undefined,
+	cache?: ThemeCache,
 ): TableSnapshot<HTMLElement> {
 	const tableStyle = getComputedStyle(table);
 	// borderTopStyle/-LeftStyle guard against a theme with NO outer border:
@@ -111,17 +112,20 @@ function snapshotTable(
 	// The width matters as well as the colour: the frame is a box-shadow standing
 	// in for a border, and a mismatched width is invisible along its own axis but
 	// visibly misaligns where the two frame lines meet at the corner.
-	const outer = {
+	// From cache when there is one: the table's own border is the value freeze
+	// overrides to transparent, so reading it back on a pass that hasn't cleared
+	// first measures our own write. See applyFreeze's note.
+	const outer = cache?.outer ?? {
 		topColor,
 		topWidth: topColor !== null ? parseFloat(tableStyle.borderTopWidth) || 1 : 1,
 		leftColor,
 		leftWidth: leftColor !== null ? parseFloat(tableStyle.borderLeftWidth) || 1 : 1,
 	};
 
-	const tbodyShadowRaw = getComputedStyle(tbody).boxShadow;
+	const tbodyShadowRaw = cache ? null : getComputedStyle(tbody).boxShadow;
 	const snapshot: TableSnapshot<HTMLElement> = {
 		rowOffsets: new Map(), colOffsets: new Map(), cells: [], outer,
-		tbodyShadow: tbodyShadowRaw && tbodyShadowRaw !== 'none' ? tbodyShadowRaw : null,
+		tbodyShadow: cache ? cache.tbodyShadow : (tbodyShadowRaw && tbodyShadowRaw !== 'none' ? tbodyShadowRaw : null),
 	};
 	if (freezeRows === undefined && freezeCols === undefined) return snapshot;
 
@@ -153,7 +157,11 @@ function snapshotTable(
 			const colIdx = cell.dataset.col !== undefined ? parseInt(cell.dataset.col) : undefined;
 			const frozenCol = colIdx !== undefined && snapshot.colOffsets.has(colIdx);
 			if (!frozenRow && !frozenCol) continue;
-			const bits = (() => {
+			// Cached theme bits skip the getComputedStyle entirely — the expensive
+			// part of this pass, and the only part a previous pass's writes could
+			// have corrupted. A miss means a new element, which is safe to read.
+			const cachedBits = cache?.bits.get(cell);
+			const bits = cachedBits ?? (() => {
 				const cs = getComputedStyle(cell);
 				const shadow = cs.boxShadow;
 				return {
@@ -200,9 +208,100 @@ function writePlan(table: HTMLTableElement, plan: FreezePlan<HTMLElement>): void
 	}
 }
 
+/** What the THEME contributes, for one table. Everything here is a value our own
+ * writes would corrupt if read back, which is precisely why the read has to
+ * happen before any write — and why caching it is what lets a repeat pass avoid
+ * reading at all. */
+interface ThemeCache {
+	/** Which theme this was measured under; anything else invalidates it. */
+	themeSig: string;
+	outer: TableSnapshot<HTMLElement>['outer'];
+	tbodyShadow: string | null;
+	/** Per cell. A Map (not a WeakMap) so invalidating the table drops all of it
+	 *  at once; it can't outlive the table, since every key is a descendant. */
+	bits: Map<HTMLElement, Pick<CellSnapshot<HTMLElement>, 'themeShadow' | 'hasRealBorder'>>;
+	/** The last plan actually written, for skipping an identical rewrite. */
+	written: { key: string; refs: HTMLElement[] } | null;
+}
+
+const themeCache = new WeakMap<HTMLTableElement, ThemeCache>();
+
+/**
+ * Identifies the active theme cheaply. A theme switch applies instantly to the
+ * DOM without a re-render (see the set-theme note in CLAUDE.md), so the same
+ * table element can outlive the values measured under the old theme — without
+ * this check the frozen region would keep painting the previous theme's frame.
+ */
+function themeSignature(table: HTMLTableElement): string {
+	return table.closest<HTMLElement>('.bt-render-root')?.className ?? '';
+}
+
+/** Everything about a plan that matters to the DOM, as a comparable string. */
+function planKey(plan: FreezePlan<HTMLElement>): string {
+	return JSON.stringify([
+		plan.table,
+		plan.cells.map(c => [c.classes, c.vars, c.hideBorders, c.background, c.shadow]),
+	]);
+}
+
 export function applyFreeze(table: HTMLTableElement, thead: HTMLElement, tbody: HTMLElement, model: TableModelV2): void {
-	clearFreeze(table);
 	const { freezeRows, freezeCols } = resolveFreeze(model);
-	const snapshot = snapshotTable(table, thead, tbody, freezeRows, freezeCols);
-	writePlan(table, planFreeze(snapshot, model));
+	const sig = themeSignature(table);
+	let cache = themeCache.get(table);
+	if (cache && cache.themeSig !== sig) cache = undefined; // theme changed → re-measure
+
+	// A pass with no cache must CLEAR before it reads, so it measures the theme's
+	// own values rather than this code's previous output. A cached pass reads no
+	// theme value at all (they all come from the cache) and therefore doesn't need
+	// to — it reads only geometry, which our writes never affect, since applyFreeze
+	// changes no layout (asserted by the baseline e2e suite).
+	//
+	// Getting this split wrong is not hypothetical: an earlier version skipped the
+	// clear on a cached pass while still reading the table's own border colour for
+	// the frame line, so it measured the `transparent` it had written itself and
+	// painted the frame in it. That reproduced as the table's outer border vanishing
+	// during a column-width or row-height drag — the one situation where a pass
+	// both reuses the cache and has a new geometry to write.
+	if (!cache) clearFreeze(table);
+	const snapshot = snapshotTable(table, thead, tbody, freezeRows, freezeCols, cache);
+	const plan = planFreeze(snapshot, model);
+
+	// IDEMPOTENCE. This runs from a ResizeObserver on every geometry-affecting
+	// change and used to rewrite every inline style on every frozen cell each time
+	// — measured at hundreds of style mutations on a SINGLE cell just from moving
+	// the pointer across the table. Every one of those is a style recalc, and a
+	// write visible to anything observing the table is exactly the fuel a
+	// ResizeObserver feedback loop runs on; this codebase has already had one such
+	// loop pin the main thread. With nothing to change there is nothing to gain
+	// from writing, so the steady state is now a pure read.
+	//
+	// Element identity is compared too, not just values: after a table rebuild the
+	// plan can be value-identical while every ref is a new element with none of it
+	// applied.
+	const key = planKey(plan);
+	const refs = plan.cells.map(c => c.ref);
+	const written = cache?.written;
+	const unchanged = written !== null && written !== undefined
+		&& written.key === key
+		&& written.refs.length === refs.length
+		&& written.refs.every((r, i) => r === refs[i]);
+
+	if (!unchanged) {
+		// Drop the previous pass's overrides first — a cell that is no longer frozen
+		// has to lose them entirely, not just stop being updated.
+		if (cache) clearFreeze(table);
+		writePlan(table, plan);
+	}
+
+	const bits = new Map<HTMLElement, Pick<CellSnapshot<HTMLElement>, 'themeShadow' | 'hasRealBorder'>>();
+	for (const cell of snapshot.cells) {
+		bits.set(cell.ref, { themeShadow: cell.themeShadow, hasRealBorder: cell.hasRealBorder });
+	}
+	themeCache.set(table, {
+		themeSig: sig,
+		outer: snapshot.outer,
+		tbodyShadow: snapshot.tbodyShadow,
+		bits,
+		written: unchanged ? written : { key, refs },
+	});
 }

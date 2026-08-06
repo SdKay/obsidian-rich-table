@@ -65,3 +65,65 @@ test.describe('freeze-outer-border', () => {
 		expect(info.rightWidth).toBeGreaterThan(0);
 	});
 });
+
+// The frame line's colour is read off the table's OWN border, which freeze then
+// overrides to transparent so the two don't double up. That makes the read
+// order load-bearing: read the theme's value first, override second. Reported as
+// "调整列宽行高过程中外边框不显示了" — during a resize the frame turned
+// transparent, because a pass that reused cached per-cell values stopped
+// resetting the table's inline override before reading it back, so it measured
+// its own previous write and painted the frame in it.
+test.describe('freeze-outer-border — frame colour survives repeated passes', () => {
+	const SOURCE = scrollableTable({ freezeRows: 2, freezeCols: 2, theme: 'grid' });
+
+	test('the frame keeps the theme\'s colour across a geometry change', async ({ page, renderReal }) => {
+		await renderReal(SOURCE);
+		const frameColour = () => page.locator('#table th[data-col="0"]').evaluate(el => getComputedStyle(el).boxShadow);
+		expect(await frameColour()).toContain('rgb(17, 17, 17)');
+
+		// A resize is exactly this: geometry changes, so applyFreeze re-runs and has
+		// something new to write. Ten rounds, because the bug needed a pass that
+		// both reuses cache AND writes.
+		for (let i = 0; i < 10; i++) {
+			await page.evaluate((n) => {
+				const table = document.querySelector('.bt-table') as HTMLTableElement;
+				const col = table.querySelector('col[data-col="1"]') as HTMLElement;
+				col.style.width = `${44 + n}px`;
+				window.RichTableReal.applyFreeze(
+					table,
+					table.querySelector('thead') as HTMLElement,
+					table.querySelector('tbody') as HTMLElement,
+					(window as unknown as { __btModel: never }).__btModel,
+				);
+			}, i);
+			expect(await frameColour(), `frame lost the theme's colour on pass ${i + 1}`).toContain('rgb(17, 17, 17)');
+			expect(await frameColour(), `frame went transparent on pass ${i + 1}`).not.toContain('rgba(0, 0, 0, 0)');
+		}
+	});
+
+	test('switching theme re-measures the frame instead of keeping the old one', async ({ page, renderReal }) => {
+		// A theme switch applies instantly to the DOM without a re-render, so the
+		// same table element outlives the values measured under the previous theme.
+		// The cache that makes repeat passes cheap therefore has to be invalidated
+		// by it — otherwise the frozen region keeps painting the old theme's frame.
+		await renderReal(SOURCE);
+		const frameColour = () => page.locator('#table th[data-col="0"]').evaluate(el => getComputedStyle(el).boxShadow);
+		expect(await frameColour()).toContain('rgb(17, 17, 17)'); // grid's --text-normal frame
+
+		await page.evaluate(() => {
+			const root = document.querySelector('.bt-render-root') as HTMLElement;
+			root.classList.remove('bt-theme-grid');
+			root.classList.add('bt-theme-academic'); // draws no outer border
+			const table = document.querySelector('.bt-table') as HTMLTableElement;
+			window.RichTableReal.applyFreeze(
+				table,
+				table.querySelector('thead') as HTMLElement,
+				table.querySelector('tbody') as HTMLElement,
+				(window as unknown as { __btModel: never }).__btModel,
+			);
+		});
+		// academic has no outer border, so the frame falls back to the generic
+		// divider (#ccc in the shim) — the point is that it is no longer grid's.
+		expect(await frameColour()).not.toContain('rgb(17, 17, 17)');
+	});
+});
