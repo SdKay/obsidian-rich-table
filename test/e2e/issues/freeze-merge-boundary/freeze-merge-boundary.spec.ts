@@ -1,64 +1,77 @@
-import { test, expect } from '@playwright/test';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { test, expect } from '../../common/test-base';
+import { scrollableTable } from '../../common/fixtures';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// A merged cell exists in the DOM only at its ANCHOR position — the rows and
+// columns it covers have no element there at all. So an anchor-only test for
+// "does this cell's edge land on the frozen boundary" misses any merge anchored
+// before the boundary and spanning into it, and such a merge silently never got
+// the boundary treatment. Reported as a line missing at exactly that merge's
+// edge, with nothing there to occlude the scrolling content either.
+//
+// The condition has to be `anchorIndex + span - 1 === boundary` on BOTH axes;
+// this is the focused test for that, with the merge deliberately placed so its
+// anchor is inside the band and its true edges land exactly on both boundaries.
+//
+// Rewritten against the REAL source — the hand-ported version asserted the
+// INVERSE of current behaviour (that the boundary edge gets hidden and replaced
+// by a synthetic line) and still passed, because the assertions ran against its
+// own inlined copy of the old algorithm rather than against the plugin.
+test.describe('freeze-merge-boundary', () => {
+	// freezeRows 2 → rows 0..2 frozen (header + 2 data rows); freezeCols 2 →
+	// columns 0..1. The merge is anchored at data row 0 / column 0 and spans 2x2,
+	// so its true bottom edge is row 2 (=== freezeRows) and its true right edge
+	// is column 1 (=== freezeCols - 1) while NEITHER anchor index is.
+	const SOURCE = scrollableTable({
+		freezeRows: 2, freezeCols: 2, theme: 'grid',
+		merges: [[0, 0, 1, 1]],
+	});
 
-declare global {
-	interface Window {
-		applyFreezeRows: (freezeRows: number, rowSpanAware: boolean) => void;
-	}
-}
+	test('a merge spanning into the boundary is recognised on both axes', async ({ page, renderReal }) => {
+		await renderReal(SOURCE);
+		const merged = page.locator('#table td[data-row="1"][data-col="0"]');
+		await expect(merged).toHaveCount(1);
+		const info = await merged.evaluate(el => {
+			const cell = el as HTMLTableCellElement;
+			const cs = getComputedStyle(el);
+			return { rowSpan: cell.rowSpan, colSpan: cell.colSpan, shadow: cs.boxShadow, zIndex: cs.zIndex };
+		});
+		expect(info.rowSpan).toBe(2);
+		expect(info.colSpan).toBe(2);
+		// Frozen on both axes → the top z tier, so no scrolling neighbour can
+		// paint over it from either direction.
+		expect(info.zIndex).toBe('4');
+		// And it carries the elevation shadow for both seams it sits on. Two
+		// distinct inset layers rather than one: the row seam casts downward and
+		// the column seam rightward, and a merge on both gets both.
+		const layers = info.shadow.split(/,(?![^(]*\))/).filter(l => l.includes('inset'));
+		expect(layers.length, `expected both seams' shadows, got: ${info.shadow}`).toBeGreaterThanOrEqual(2);
+	});
 
-// Regression test for: a merged (rowSpan>1) cell anchored one row above the
-// frozen row band's TRUE bottom edge, extending down into it — reproduced
-// from a real user table (freezeRows: 3, freezeCols: 3, a merge spanning
-// rows 2-3 and columns 1-2). The row-freeze loop's "is this the frozen
-// band's last row" check used the cell's own anchor row index, but a
-// rowSpan>1 merge only has a DOM element in its anchor row — the row it
-// visually extends into has no separate cell to match `idx === freezeRows`
-// against — so this merge never got the bottom-seam treatment at all,
-// leaving its real border untouched at exactly the boundary and no opaque
-// backing there either. Reported as a stray leaking line and clipped/
-// obscured text right at the merge. Fix: use the merge's true END row
-// (idx + rowSpan - 1), mirroring the colSpan-aware fix the column-freeze
-// loop already had for the same class of bug on the other axis.
+	test('the boundary edge keeps the theme\'s own border rather than a synthetic line', async ({ page, renderReal }) => {
+		await renderReal(SOURCE);
+		const info = await page.locator('#table td[data-row="1"][data-col="0"]').evaluate(el => {
+			const cs = getComputedStyle(el);
+			return { bottom: cs.borderBottomColor, right: cs.borderRightColor };
+		});
+		// Suppressing these and drawing a generic replacement was itself the later
+		// bug: it swapped grid's near-black rule for a pale grey one, one pixel out
+		// of place, which read as the line having gone missing.
+		expect(info.bottom).toBe('rgb(17, 17, 17)');
+		expect(info.right).toBe('rgb(17, 17, 17)');
+	});
 
-const FIXTURE = path.resolve(__dirname, './freeze-merge-boundary.html');
-
-test('pre-fix: a rowSpan merge anchored above the boundary never gets the bottom seam', async ({ page }) => {
-	await page.goto(`file://${FIXTURE}`);
-	await page.evaluate(() => window.applyFreezeRows(3, false));
-
-	const merged = page.locator('#mergedCell');
-	const borderBottomColor = await merged.evaluate(el => getComputedStyle(el).borderBottomColor);
-	const boxShadow = await merged.evaluate(el => getComputedStyle(el).boxShadow);
-	// Bug: the real border survives untouched (not hidden) AND no seam
-	// box-shadow was ever added — a plain grid line where a seam belongs.
-	expect(borderBottomColor).not.toBe('rgba(0, 0, 0, 0)');
-	expect(boxShadow).toBe('none');
-});
-
-test('fix: the same merge gets its bottom edge hidden and replaced by the seam line', async ({ page }) => {
-	await page.goto(`file://${FIXTURE}`);
-	await page.evaluate(() => window.applyFreezeRows(3, true));
-
-	const merged = page.locator('#mergedCell');
-	const borderBottomColor = await merged.evaluate(el => getComputedStyle(el).borderBottomColor);
-	const boxShadow = await merged.evaluate(el => getComputedStyle(el).boxShadow);
-	expect(borderBottomColor).toBe('rgba(0, 0, 0, 0)');
-	expect(boxShadow).not.toBe('none');
-	expect(boxShadow).toContain('inset');
-});
-
-test('fix: a normal (non-merged) cell at the same row boundary is unaffected', async ({ page }) => {
-	await page.goto(`file://${FIXTURE}`);
-	await page.evaluate(() => window.applyFreezeRows(3, true));
-
-	// data-row="3" data-col="0" ("7") — a plain cell at the frozen band's
-	// true last row, no rowSpan involved — must still get the seam exactly
-	// as before this fix.
-	const plain = page.locator('td[data-row="3"][data-col="0"]');
-	const borderBottomColor = await plain.evaluate(el => getComputedStyle(el).borderBottomColor);
-	expect(borderBottomColor).toBe('rgba(0, 0, 0, 0)');
+	test('a merge that does NOT reach the boundary gets no seam treatment', async ({ page, renderReal }) => {
+		// Same shape, but the merge stops one row and one column short, so neither
+		// of its true edges is a boundary. Guards the condition from the other
+		// side — an over-eager check would light this one up too.
+		await renderReal(scrollableTable({
+			freezeRows: 3, freezeCols: 3, theme: 'grid',
+			merges: [[0, 0, 1, 1]],
+		}));
+		const shadow = await page.locator('#table td[data-row="1"][data-col="0"]').evaluate(el => getComputedStyle(el).boxShadow);
+		// Not "no shadow at all": sitting in column 0 this cell still carries the
+		// block's outer LEFT frame line, which is unrelated to the seam. The seam's
+		// elevation shadows are the inset ones, so that's what must be absent.
+		expect(shadow).not.toContain('inset');
+	});
 });

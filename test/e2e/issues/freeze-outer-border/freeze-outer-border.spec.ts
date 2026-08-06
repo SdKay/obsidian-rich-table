@@ -1,60 +1,67 @@
-import { test, expect } from '@playwright/test';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { test, expect } from '../../common/test-base';
+import { scrollableTable } from '../../common/fixtures';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Reported as "the left border disappeared once column freeze was on": the
+// table's own outer border lives on <table>, so it scrolls away as soon as the
+// frozen columns stick, and the frozen block has to draw that edge itself. It
+// used to draw a generic, theme-neutral divider — so a theme with a bold outer
+// frame (grid: 2px --text-normal) had it silently swapped for a much fainter
+// unrelated line. The frame line now reproduces the table's own real border.
+//
+// Rewritten to render the REAL source (renderFreeze.ts et al) instead of a
+// hand-ported copy of the algorithm inside a fixture page. That hand-port had
+// gone stale with nothing failing: it still asserted the seam behaviour the
+// plugin deliberately stopped doing, and passed because it was testing its own
+// copy of the old logic rather than the plugin.
+test.describe('freeze-outer-border', () => {
+	const frozen = (theme?: string) => scrollableTable({ freezeCols: 2, theme });
 
-declare global {
-	interface Window {
-		applyColumnFreeze: (themeClass: string | null) => { outerLeftColor: string | null; outerLeftWidth: number };
-	}
-}
+	test('the block\'s left frame reproduces the theme\'s own outer border', async ({ page, renderReal }) => {
+		await renderReal(frozen('grid'));
+		const info = await page.locator('#table th[data-col="0"]').evaluate(el => {
+			const cs = getComputedStyle(el);
+			return { boxShadow: cs.boxShadow, borderLeftColor: cs.borderLeftColor };
+		});
+		// grid's --bt-border-outer is 2px solid var(--text-normal) (#111).
+		expect(info.boxShadow).toContain('rgb(17, 17, 17)');
+		expect(info.boxShadow).toMatch(/\b2px\b/);
+		// The real border on that edge is suppressed so the synthetic frame can't
+		// double up with it while the table sits at rest.
+		expect(info.borderLeftColor).toBe('rgba(0, 0, 0, 0)');
+	});
 
-// Regression test for: freezing a column silently replaced a theme's own
-// bold outer border (e.g. grid.css's --bt-border-outer: 2px solid
-// var(--text-normal)) with a color/width-mismatched generic line —
-// reported as "the left border disappeared" once freeze was on. Root cause
-// and fix: src/renderFreeze.ts's applyFreeze() now reads the table's own
-// real border color/width BEFORE suppressing it, and reuses both for the
-// frozen block's outer-frame synthetic line instead of a fixed generic one.
+	test('the frame line is drawn OUTSIDE the cell, where the real border was', async ({ page, renderReal }) => {
+		await renderReal(frozen('grid'));
+		// Outset, not inset: the table's real border sits in front of the first
+		// cell, so an inset line lands one border-width inside the block and
+		// leaves the strip the border vacated uncovered — measured as scrolling
+		// content leaking through a band at the block's edge.
+		const shadow = await page.locator('#table th[data-col="0"]').evaluate(el => getComputedStyle(el).boxShadow);
+		const layers = shadow.split(/,(?![^(]*\))/);
+		const frame = layers.find(l => l.includes('rgb(17, 17, 17)'));
+		expect(frame, `no frame layer found in box-shadow: ${shadow}`).toBeDefined();
+		expect(frame).not.toContain('inset');
+	});
 
-const FIXTURE = path.resolve(__dirname, './freeze-outer-border.html');
+	test('a theme with no outer border falls back to the generic divider', async ({ page, renderReal }) => {
+		await renderReal(frozen());
+		// Without this fallback the block would have no edge at all against the
+		// scrolling region. --background-modifier-border is #ccc in the shim.
+		const shadow = await page.locator('#table th[data-col="0"]').evaluate(el => getComputedStyle(el).boxShadow);
+		expect(shadow).toContain('rgb(204, 204, 204)');
+		expect(shadow).toMatch(/\b1px\b/);
+	});
 
-test('frozen column outer frame matches a theme with a real outer border (grid)', async ({ page }) => {
-	await page.goto(`file://${FIXTURE}`);
-	const result = await page.evaluate(() => window.applyColumnFreeze('bt-theme-grid'));
-
-	expect(result.outerLeftColor).toBe('rgb(17, 17, 17)'); // --text-normal: #111
-	expect(result.outerLeftWidth).toBe(2); // grid.css's --bt-border-outer: 2px
-
-	const frozenCell = page.locator('td[data-col="0"][data-row="1"]');
-	const boxShadow = await frozenCell.evaluate(el => getComputedStyle(el).boxShadow);
-	expect(boxShadow).toContain('rgb(17, 17, 17)');
-	expect(boxShadow).toMatch(/\b2px\b/);
-
-	// The real border is suppressed (not doubled with the synthetic line).
-	const borderLeftColor = await page.locator('#table').evaluate(el => getComputedStyle(el).borderLeftColor);
-	expect(borderLeftColor).toBe('rgba(0, 0, 0, 0)');
-
-	// applyFreeze's column-freeze path only hides LEFT/RIGHT borders on a
-	// frozen cell (hideBorder(cell, 'left')/'right') — TOP/BOTTOM (the
-	// row-separator lines between rows 1 and 2, both inside the frozen
-	// column) must survive untouched, using the theme's normal grid line —
-	// this is the "只有行线" invariant: a frozen column shows row-separator
-	// lines only, never a synthetic vertical line between its own rows.
-	const rowSeparatorColor = await frozenCell.evaluate(el => getComputedStyle(el).borderBottomColor);
-	expect(rowSeparatorColor).not.toBe('rgba(0, 0, 0, 0)');
-});
-
-test('frozen column outer frame falls back to the generic divider for a theme with no outer border', async ({ page }) => {
-	await page.goto(`file://${FIXTURE}`);
-	const result = await page.evaluate(() => window.applyColumnFreeze(null));
-
-	expect(result.outerLeftColor).toBeNull();
-
-	const frozenCell = page.locator('td[data-col="0"][data-row="1"]');
-	const boxShadow = await frozenCell.evaluate(el => getComputedStyle(el).boxShadow);
-	// --background-modifier-border shim value from the fixture's :root block.
-	expect(boxShadow).toContain('rgb(204, 204, 204)');
-	expect(boxShadow).toMatch(/\b1px\b/);
+	test('separators inside the block are the cells\' own real borders', async ({ page, renderReal }) => {
+		await renderReal(frozen('grid'));
+		// Only the block's outer edge is synthetic. Every separator INSIDE it is a
+		// real border owned by the cell, which is what lets it travel with the cell
+		// while scrolling — replacing these was the bug, not the fix.
+		const info = await page.locator('#table th[data-col="0"]').evaluate(el => {
+			const cs = getComputedStyle(el);
+			return { rightColor: cs.borderRightColor, rightWidth: parseFloat(cs.borderRightWidth) };
+		});
+		expect(info.rightColor).toBe('rgb(17, 17, 17)');
+		expect(info.rightWidth).toBeGreaterThan(0);
+	});
 });

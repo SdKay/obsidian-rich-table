@@ -1,6 +1,7 @@
 import { test, expect } from '../common/test-base';
 import { expectLinesPainted, frameProfile, cellInkCounts, probeLines, expectNoLeakThroughFrozenBlock } from '../common/appearance-probe';
 import { expectFrozenBlockInvariant, frozenBlockGeometry } from '../common/pixel-invariance';
+import { autoLayoutTable } from '../common/fixtures';
 import { BUILTIN_THEME_IDS } from '../../../src/themes';
 
 /**
@@ -179,6 +180,47 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 						.toBeGreaterThan(before.ink * 0.75);
 				}
 			}
+		});
+
+		test('turning freeze on changes no layout geometry', async ({ page, renderReal }) => {
+			// THE INVARIANT THAT KEEPS OBSIDIAN RESPONSIVE: applyFreeze runs inside a
+			// ResizeObserver on the <table>, and renderer.ts's own observer re-pins
+			// column widths from the same signal. If applyFreeze changed any measured
+			// size, the two would trigger each other every frame and pin the main
+			// thread — that actually happened, from suppressing a border with
+			// `border: none` (which drops its WIDTH) instead of only zeroing its
+			// colour. The rule "only ever change colour, never width" has lived in a
+			// comment on one function ever since; this asserts it instead.
+			//
+			// Every geometry a ResizeObserver could observe: the table's own box and
+			// each cell's. Compared between freeze off and freeze on, since the
+			// dangerous moment is the first application, not a later one.
+			const geometry = async () => await page.evaluate(() => {
+				const table = document.querySelector('.bt-table') as HTMLElement;
+				const t = table.getBoundingClientRect();
+				return {
+					table: [t.width, t.height],
+					cells: Array.from(table.querySelectorAll<HTMLElement>('.bt-th, .bt-td')).map(c => {
+						const r = c.getBoundingClientRect();
+						return `${c.dataset.row}:${c.dataset.col}=${r.width.toFixed(2)}x${r.height.toFixed(2)}`;
+					}),
+				};
+			});
+			// An AUTO-LAYOUT table on purpose: with explicit column widths
+			// `table-layout: fixed` pins every column, so a padding or border-width
+			// change measures identical and this assertion would have no teeth
+			// (verified — it passed unchanged with a deliberate padding injected).
+			// Auto-layout is also the configuration the feedback loop hung in.
+			const auto = (freeze: boolean) => autoLayoutTable(
+				theme ? { theme, ...(freeze ? { freezeRows: 2, freezeCols: 2 } : {}) }
+					: (freeze ? { freezeRows: 2, freezeCols: 2 } : {}));
+			await renderReal(auto(false));
+			const off = await geometry();
+			await renderReal(auto(true));
+			const on = await geometry();
+			// Positions legitimately differ (that's what sticky does); sizes must not.
+			expect(on.table, 'freeze changed the table\'s own size — this can feed back into the ResizeObserver that triggered it').toEqual(off.table);
+			expect(on.cells).toEqual(off.cells);
 		});
 
 		test('a bounded view stays scrollable on both axes', async ({ page, renderReal }) => {
