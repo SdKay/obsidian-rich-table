@@ -31,7 +31,18 @@ export interface RenderRealResult {
  * against `#table`/`#root` etc. in the shell page — this fixture only
  * handles getting a genuine, source-accurate table into the DOM.
  */
-export const test = base.extend<{ renderReal: (source: string, opts?: { sheetId?: string; scrollLeft?: number; scrollTop?: number }) => Promise<RenderRealResult> }>({
+export interface RenderFullOpts {
+	sheetId?: string;
+	scrollLeft?: number;
+	scrollTop?: number;
+	/** Collected structural ops instead of writing back — inspect via window.__btOps. */
+	captureOps?: boolean;
+}
+
+export const test = base.extend<{
+	renderReal: (source: string, opts?: { sheetId?: string; scrollLeft?: number; scrollTop?: number }) => Promise<RenderRealResult>;
+	renderFull: (source: string, opts?: RenderFullOpts) => Promise<RenderRealResult>;
+}>({
 	renderReal: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
 
@@ -72,6 +83,59 @@ export const test = base.extend<{ renderReal: (source: string, opts?: { sheetId?
 				// Published for assertions that need to know which rows/columns are
 				// frozen without re-parsing the source (pixel-invariance.ts).
 				window.__btModel = active;
+				if (scrollLeft !== undefined) wrapper.scrollLeft = scrollLeft;
+				if (scrollTop !== undefined) wrapper.scrollTop = scrollTop;
+				return active;
+			}, { source, sheetId: opts?.sheetId, scrollLeft: opts?.scrollLeft, scrollTop: opts?.scrollTop });
+
+			return { model };
+		};
+
+		await use(helper);
+	},
+
+	/**
+	 * Renders through the REAL `renderTable` — the whole interactive surface:
+	 * hover strips, resize handles, floating panels, cell editors. Possible only
+	 * because obsidian-shim.ts supplies a runtime for the types-only `obsidian`
+	 * package; before that, every one of those had zero coverage, and a hang in
+	 * the strips' hover path could only be chased by guessing and asking the user.
+	 *
+	 * Structural ops are captured into `window.__btOps` rather than written back,
+	 * so a test can assert what an interaction WOULD persist without needing a
+	 * vault.
+	 */
+	renderFull: async ({ page }, use) => {
+		await page.addInitScript({ path: POLYFILL });
+
+		const helper = async (source: string, opts?: RenderFullOpts): Promise<RenderRealResult> => {
+			await page.goto(`file://${SHELL}`);
+			await page.addScriptTag({ path: BUNDLE });
+
+			const model = await page.evaluate(async ({ source, sheetId, scrollLeft, scrollTop }) => {
+				const R = window.RichTableReal;
+				const parsed = R.parseSource(source);
+				const active = 'sheets' in parsed
+					? parsed.sheets.find(s => s.id === (sheetId ?? parsed.activeSheetId)) ?? parsed.sheets[0]
+					: parsed;
+				const root = document.getElementById('root');
+				// renderTable builds the whole root itself, so hand it an empty
+				// container rather than the pre-built wrapper the other fixture uses.
+				root.replaceChildren();
+				root.className = '';
+				window.__btOps = [];
+				window.__btModel = active;
+				const registry = new R.ChoiceRegistry([]);
+				await R.renderTable(
+					active,
+					() => registry,
+					root,
+					{},                       // app — only ever passed through
+					'test.md',
+					new R.ShimComponent(),
+					(op) => { window.__btOps.push(op); },
+				);
+				const wrapper = document.querySelector('.bt-table-wrapper');
 				if (scrollLeft !== undefined) wrapper.scrollLeft = scrollLeft;
 				if (scrollTop !== undefined) wrapper.scrollTop = scrollTop;
 				return active;
