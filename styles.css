@@ -723,6 +723,28 @@
 /* Resize handles living in the selector strips — one per column / row.
  * Positioned at each column's right edge / row's bottom edge. Work regardless
  * of cell merges since they read <col>/<tr> geometry. */
+/* z-index 3, above BOTH the label cells and the drag grips (2 when frozen). A
+ * resize seam is 9px wide and must be grabbable along the boundary's whole
+ * length, so it has to win over whatever is drawn either side of it. At 1 it lost
+ * to a frozen label cell — which occupies the strip's middle band (top:
+ * --bt-sel-grip 10px, height --bt-sel-cell 18px, of 32px total) — leaving the
+ * seam grabbable only in the 10px above and 4px below it, reported as column
+ * resize working "只在 A 的右上角和右下角". A frozen row's label covers its strip's
+ * right band (left: 14px of 32px) for the same reason. Non-frozen labels have no
+ * z-index of their own, so the seam already won there; this only ever affected
+ * frozen rows/columns.
+ *
+ * A first attempt at this was reverted because Obsidian hung: raising the seam
+ * made it receive mouseenter along the whole boundary for the first time, which
+ * reaches setupColResize's makeColLine (renderResize.ts) on essentially every
+ * pointer move across a seam. That path is pre-existing — the z-index only
+ * exposed it — and the churn it fed has since been cut off at the source:
+ * applyFreeze is now idempotent, so pointer movement over a settled table
+ * performs zero style writes (measured: sweeping six seams six times went from
+ * hundreds of writes on a single cell to 0). The hang itself was never
+ * reproduced in the harness across every dpr and layout mode tried, so this
+ * remains the one part of the fix resting on the user's testing rather than on a
+ * test. */
 .bt-sel-resize-col {
 	position: absolute;
 	top: 0;
@@ -731,7 +753,7 @@
 	left: calc(var(--rx, 0px) + var(--cs-off, 0px));
 	transform: translateX(-50%);
 	cursor: col-resize;
-	z-index: 1;
+	z-index: 3;
 }
 .bt-sel-resize-row {
 	position: absolute;
@@ -741,7 +763,19 @@
 	top: calc(var(--ry, 0px) + var(--rs-off, 0px)); /* track inner vertical scroll */
 	transform: translateY(-50%);
 	cursor: row-resize;
-	z-index: 1;
+	z-index: 3; /* mirror of the column seam above */
+}
+/* A frozen row/column's real cell doesn't move on inner scroll, so the hover
+ * zone that resizes it mustn't either — same rule, and the same class, as the
+ * frozen label cells above: drop the scroll offset and use the measured
+ * table-relative position alone (renderGeometry.ts is what guarantees the two
+ * agree). Without this the zone slid away from the boundary line it drags,
+ * ending up outside the strip along that line's extension. */
+.bt-col-selector .bt-sel-resize-col.bt-sel-cell-frozen {
+	left: var(--rx, 0px);
+}
+.bt-row-selector .bt-sel-resize-row.bt-sel-cell-frozen {
+	top: var(--ry, 0px);
 }
 .bt-sel-resize-hidden {
 	display: none;

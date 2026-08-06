@@ -5,6 +5,7 @@
 // globalSetup) and exposed on window as `RichTableReal`.
 export { parseTable, parseWorkbook, parseSource } from '../../../src/parser';
 export { applyFreeze } from '../../../src/renderFreeze';
+export { scrollContentOffset } from '../../../src/renderGeometry';
 // The whole interactive renderer — hover strips, floating panels, cell editing —
 // reachable now that obsidian-shim.ts provides a runtime for the `obsidian`
 // module. Previously untestable in any form.

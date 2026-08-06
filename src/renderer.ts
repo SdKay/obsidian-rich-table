@@ -17,6 +17,7 @@ import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { enterLineEdit } from './renderEditMode';
 import { colMinWidth, autoFitAllColWidths, autoFitRowHeight } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
+import { scrollContentOffset } from './renderGeometry';
 import { type CellOpEntry, openCellPanel } from './renderPanel';
 import { renderRow } from './renderCell';
 import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
@@ -1514,9 +1515,16 @@ export async function renderTable(
 			// separate calculation is needed here, just reusing the existing one.
 			const freezeCols = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
 			const freezeRows = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
-			let colX = 0;
 			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
 				const w = parseFloat(c.style.width) || 0;
+				// MEASURED via the same function the frozen cells use, not
+				// accumulated: an accumulator starting at 0 omits the table's own
+				// border, so the strip sat that far left of the columns it labels —
+				// and a frozen label (which drops --cs-off and relies on --cl alone
+				// matching --bt-frozen-left exactly) drifted off its own column. See
+				// renderGeometry.ts for why this is one shared function rather than
+				// two call sites that are "obviously" equal.
+				const colX = scrollContentOffset(c, 'x');
 				if (c.dataset.col !== undefined) {
 					// Visible column — one cell per physical column
 					const ci = parseInt(c.dataset.col);
@@ -1548,7 +1556,6 @@ export async function renderTable(
 				}
 				// Hidden column groups get no selector-strip cell — the in-table
 				// bt-col-indicator (§ renderRow) is the single "click to show" entry point.
-				colX += w;
 			}
 
 			// Row selector — cells positioned by --rt/--rh relative to the selector's
@@ -1657,21 +1664,33 @@ export async function renderTable(
 
 			// Reposition persistent resize handles (column seam positions, row bottom edges).
 			// parseFloat, not parseInt — see the matching comment on the colSel loop above.
-			let cx = 0;
 			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
-				cx += parseFloat(c.style.width) || 0;
 				const dc = c.dataset.col;
 				if (dc === undefined) continue;
 				const h = colResizeHandles.get(parseInt(dc));
-				if (h) h.setCssProps({ '--rx': `${cx}px` });
+				if (!h) continue;
+				// The seam this handle drags is the column's RIGHT edge, measured
+				// through the shared helper for the same reason as --cl above.
+				h.setCssProps({ '--rx': `${scrollContentOffset(c, 'x') + (parseFloat(c.style.width) || 0)}px` });
+				// A frozen column's real cell doesn't move on horizontal scroll, so
+				// neither may the hover zone that resizes it. Without this the zone
+				// tracked --cs-off and slid away from the boundary line it belongs to
+				// — reported as the resize hover area sitting outside the selector,
+				// along the extension of that line. The label cells were already
+				// freeze-aware; the handles never were.
+				h.toggleClass('bt-sel-cell-frozen', freezeCols !== undefined && parseInt(dc) < freezeCols);
 			}
 			for (const [ri, h] of rowResizeHandles) {
 				// data-row is 1-based (header=0, data rows=1,2,3…); ri is 0-based model index.
 				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri + 1}"]`);
 				const tr = firstCell?.closest<HTMLElement>('tr');
 				if (tr) {
-					const trR = tr.getBoundingClientRect();
-					h.setCssProps({ '--ry': `${trR.bottom - tableTop}px` });
+					// Row's BOTTOM edge, through the shared helper — the vertical
+					// mirror of the column seams above, freeze-aware part included: a
+					// frozen row's resize zone must stay on its boundary instead of
+					// tracking --rs-off away from it.
+					h.setCssProps({ '--ry': `${scrollContentOffset(tr, 'y') + tr.getBoundingClientRect().height}px` });
+					h.toggleClass('bt-sel-cell-frozen', freezeRows !== undefined && ri + 1 <= freezeRows);
 					h.removeClass('bt-sel-resize-hidden');
 				} else {
 					h.addClass('bt-sel-resize-hidden');

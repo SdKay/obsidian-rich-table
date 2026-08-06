@@ -123,3 +123,73 @@ test.describe('freeze-merge-corruption', () => {
 		]);
 	});
 });
+
+// The row/column selector strips can't be rendered by this harness (they're
+// built by renderTable, which needs Obsidian's App/MarkdownRenderer), so the
+// closest thing to covering them is to pin the GEOMETRY CONTRACT they depend on:
+// every strip element — a column's label, its drag grip, and the hover zone that
+// resizes it — is positioned from scrollContentOffset, the same function the
+// frozen cells' sticky offsets come from. Reported bug: the resize hover zone
+// for a frozen column sat outside the strip, along the extension of the boundary
+// line it drags, because the strips accumulated widths from zero (omitting the
+// table's own border) while the frozen cells measured properly. A comment in
+// renderer.ts even claimed the two were "the same offset … just reusing the
+// existing one" — they never were, only coincidentally equal.
+test.describe('freeze geometry contract (what the selector strips are positioned from)', () => {
+	test('a frozen column\'s measured offset is where its cell actually comes to rest', async ({ page, renderReal }) => {
+		await renderReal(SOURCE, { scrollLeft: 137 });
+		const rows = await page.evaluate(() => {
+			const wrapper = document.querySelector('.bt-table-wrapper') as HTMLElement;
+			const cs = getComputedStyle(wrapper);
+			const origin = wrapper.getBoundingClientRect().x + (parseFloat(cs.borderLeftWidth) || 0);
+			return Array.from(document.querySelectorAll<HTMLElement>('#table col'))
+				.filter(c => c.dataset.col !== undefined && parseInt(c.dataset.col) < 3)
+				.map(c => {
+					const ci = parseInt(c.dataset.col!);
+					const cell = document.querySelector<HTMLElement>(`#table th[data-col="${ci}"]`)!;
+					const rect = cell.getBoundingClientRect();
+					return {
+						ci,
+						// What the strips use to place a label / grip / resize handle.
+						measuredLeft: window.RichTableReal.scrollContentOffset(c, 'x'),
+						measuredRight: window.RichTableReal.scrollContentOffset(c, 'x') + c.getBoundingClientRect().width,
+						// Where the frozen cell has actually come to rest on screen.
+						restLeft: rect.left - origin,
+						restRight: rect.right - origin,
+					};
+				});
+		});
+		expect(rows.length).toBe(3);
+		for (const r of rows) {
+			// Sub-pixel tolerance only: a whole pixel out is exactly the failure that
+			// put the resize zone off its own boundary line.
+			expect(Math.abs(r.measuredLeft - r.restLeft), `column ${r.ci}: strips would place elements at ${r.measuredLeft}, cell rests at ${r.restLeft}`).toBeLessThan(0.5);
+			expect(Math.abs(r.measuredRight - r.restRight), `column ${r.ci}: the resize seam would land at ${r.measuredRight}, the cell's real right edge is ${r.restRight}`).toBeLessThan(0.5);
+		}
+	});
+
+	test('an accumulator from zero would NOT satisfy that contract', async ({ page, renderReal }) => {
+		await renderReal(SOURCE, { scrollLeft: 137 });
+		// Guards the fix from being "simplified" back: this reproduces the old
+		// accumulate-from-zero basis and asserts it disagrees with reality, so the
+		// test above is demonstrably measuring something rather than comparing two
+		// spellings of the same expression.
+		const drift = await page.evaluate(() => {
+			const wrapper = document.querySelector('.bt-table-wrapper') as HTMLElement;
+			const cs = getComputedStyle(wrapper);
+			const origin = wrapper.getBoundingClientRect().x + (parseFloat(cs.borderLeftWidth) || 0);
+			let acc = 0;
+			let worst = 0;
+			for (const c of Array.from(document.querySelectorAll<HTMLElement>('#table col'))) {
+				const ci = c.dataset.col !== undefined ? parseInt(c.dataset.col) : undefined;
+				if (ci !== undefined && ci < 3) {
+					const cell = document.querySelector<HTMLElement>(`#table th[data-col="${ci}"]`)!;
+					worst = Math.max(worst, Math.abs(acc - (cell.getBoundingClientRect().left - origin)));
+				}
+				acc += parseFloat(c.style.width) || 0;
+			}
+			return worst;
+		});
+		expect(drift, 'the old basis happens to agree here, so the contract test above proves nothing on this fixture').toBeGreaterThanOrEqual(1);
+	});
+});
