@@ -199,6 +199,23 @@ export class AbstractInputSuggest<T> {
 		this.app = app;
 		this.textInputEl = textInputEl;
 	}
+	/**
+	 * The real API's selection hook. Present because its ABSENCE broke edit mode
+	 * outright rather than merely degrading suggestions: WikilinkInputSuggest calls
+	 * onSelect from its constructor, so a missing method threw there, which aborted
+	 * the rest of enterEditMode — including the editor's focus() call. The editor
+	 * appeared, took no keystrokes, and nothing looked wrong. A shim missing a
+	 * method fails in whatever came after it, not where it's missing.
+	 */
+	onSelect(cb: (value: T, evt: MouseEvent | KeyboardEvent) => void): void {
+		this.selectCb = cb;
+	}
+	protected selectCb: ((value: T, evt: MouseEvent | KeyboardEvent) => void) | null = null;
+	/** Test hook: pick a suggestion as the user would. */
+	chooseSuggestion(value: T): void {
+		this.selectCb?.(value, new MouseEvent('click'));
+	}
+	setLimit(_n: number): void { /* no popup to limit */ }
 	getSuggestions(_query: string): T[] | Promise<T[]> { return []; }
 	renderSuggestion(_value: T, _el: HTMLElement): void { /* not rendered */ }
 	selectSuggestion(_value: T): void { /* not selectable */ }

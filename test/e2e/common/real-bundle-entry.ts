@@ -13,6 +13,10 @@ export { renderTable } from '../../../src/renderer';
 export { ChoiceRegistry } from '../../../src/choiceRegistry';
 // The shim's Component, so a test can hand renderTable a real lifecycle owner.
 export { Component as ShimComponent } from './obsidian-shim';
+// The hover-pin counter, so a test can assert the pin was released rather than
+// inferring it from the strips (which would confuse "released" with "the pointer
+// happens to be away").
+export { isHoverPinned } from '../../../src/renderHoverPin';
 export { buildOccupied, getMergeOrigin } from '../../../src/renderGridHelpers';
 export { canFreezeRows, canFreezeCols } from '../../../src/operations';
 export { cellEffectiveStyle, applyColStyle, applyStyleRulesV2, applyResolvedStyle } from '../../../src/renderCellStyle';

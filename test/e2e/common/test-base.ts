@@ -126,13 +126,19 @@ export const test = base.extend<{
 				window.__btOps = [];
 				window.__btModel = active;
 				const registry = new R.ChoiceRegistry([]);
+				// Published so a test can tear the table down the way Obsidian does
+				// (unloading the component), which is what runs every cleanup
+				// registration — several hover/edit fixes live in those.
+				const component = new R.ShimComponent();
+				component.load();
+				window.__btComponent = component;
 				await R.renderTable(
 					active,
 					() => registry,
 					root,
 					{},                       // app — only ever passed through
 					'test.md',
-					new R.ShimComponent(),
+					component,
 					(op) => { window.__btOps.push(op); },
 				);
 				const wrapper = document.querySelector('.bt-table-wrapper');
