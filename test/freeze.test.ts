@@ -4,9 +4,11 @@
  * panes semantics: reordering changes which rows/columns end up in the
  * frozen region, the count itself doesn't move.
  *
- * A freeze boundary that would split a merge across it is rejected outright
- * (model left unchanged) rather than silently adjusted — see canFreezeRows/
- * canFreezeCols in operations.ts. Only the axis being frozen matters: a
+ * A freeze boundary that would split a merge across it is rejected outright when
+ * the freeze is being SET (model left unchanged) — see canFreezeRows/
+ * canFreezeCols in operations.ts. The reverse order is reconciled instead: an
+ * operation performed later that would invalidate an existing freeze keeps the
+ * operation and shrinks the freeze, since that operation is the newer intent. Only the axis being frozen matters: a
  * merge confined to a single row can span any number of columns and never
  * blocks a row freeze, and vice versa for columns.
  */
@@ -163,5 +165,64 @@ describe('view width/height (manual view size)', () => {
 		const bare = parseTable(serializeTable(baseModel()));
 		expect(bare.viewWidth).toBeUndefined();
 		expect(bare.viewHeight).toBeUndefined();
+	});
+});
+
+describe('freeze survives operations that would invalidate it', () => {
+	const model = (over: Partial<TableModelV2> = {}): TableModelV2 => ({
+		version: 2,
+		columns: [{ id: 'c_0', name: 'A' }, { id: 'c_1', name: 'B' }, { id: 'c_2', name: 'C' }],
+		rows: [{ id: 'r_0', cells: {} }, { id: 'r_1', cells: {} }, { id: 'r_2', cells: {} }, { id: 'r_3', cells: {} }],
+		merges: [],
+		styles: [],
+		...over,
+	});
+
+	// A freeze boundary can't cut through a merged cell, which is checked when the
+	// count is set — but an operation performed later can invalidate it just as
+	// easily, and nothing used to notice. The count stayed in the saved table while
+	// the renderer quietly refused to apply it: the rows simply stopped being frozen.
+	it('shrinks the frozen rows when a merge is made across the boundary', () => {
+		const m = model({ freezeRows: 2 });
+		expect(canFreezeRows(m, 2)).toBe(true);
+		// r_1..r_2 are display rows 2..3, so a merge over them straddles a boundary
+		// drawn after row 2.
+		applyStructuralOpV2(m, { type: 'merge-cells', anchorRowId: 'r_1', anchorColId: 'c_0', endRowId: 'r_2', endColId: 'c_0' });
+		// The merge is kept — it's what the user just asked for — and freeze gives way.
+		expect(m.merges).toHaveLength(1);
+		expect(m.freezeRows).toBe(1);
+		expect(canFreezeRows(m, m.freezeRows!)).toBe(true);
+	});
+
+	it('shrinks the frozen columns likewise', () => {
+		const m = model({ freezeCols: 2 });
+		expect(canFreezeCols(m, 2)).toBe(true);
+		applyStructuralOpV2(m, { type: 'merge-cells', anchorRowId: 'r_0', anchorColId: 'c_1', endRowId: 'r_0', endColId: 'c_2' });
+		expect(m.merges).toHaveLength(1);
+		expect(m.freezeCols).toBe(1);
+		expect(canFreezeCols(m, m.freezeCols!)).toBe(true);
+	});
+
+	it('leaves a valid freeze alone', () => {
+		// The merge sits entirely inside the frozen band, so nothing needs to give.
+		const m = model({ freezeRows: 3 });
+		applyStructuralOpV2(m, { type: 'merge-cells', anchorRowId: 'r_1', anchorColId: 'c_0', endRowId: 'r_2', endColId: 'c_0' });
+		expect(m.freezeRows).toBe(3);
+	});
+
+	it('drops the setting entirely when no count would work', () => {
+		// A merge starting at the very first data row leaves nothing to freeze but
+		// the header, and for columns nothing at all.
+		const m = model({ freezeCols: 1 });
+		applyStructuralOpV2(m, { type: 'merge-cells', anchorRowId: 'r_0', anchorColId: 'c_0', endRowId: 'r_0', endColId: 'c_1' });
+		expect(m.freezeCols).toBeUndefined();
+	});
+
+	it('reconciles after a split too, not just a merge', () => {
+		// Splitting a cell grows the merges around it, which can push one past a
+		// boundary — the reason this is reconciled centrally rather than per op.
+		const m = model({ freezeRows: 2 });
+		applyStructuralOpV2(m, { type: 'split-cell-row', rowId: 'r_1', colId: 'c_0' });
+		if (m.freezeRows !== undefined) expect(canFreezeRows(m, m.freezeRows)).toBe(true);
 	});
 });

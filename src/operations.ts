@@ -501,6 +501,45 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			break;
 		}
 	}
+
+	reconcileFreeze(model);
+}
+
+/**
+ * Keeps `freezeRows`/`freezeCols` valid after any operation.
+ *
+ * A freeze boundary may not cut through a merged cell — the frozen region would
+ * have to render half of one — so the counts are validated when they're set. But
+ * they can also be invalidated LATER, by an operation that has nothing to do with
+ * freeze: merging cells across the boundary, or splitting a cell so that a merge
+ * grows past it. Nothing reconciled that, so the count stayed in the model while
+ * the renderer quietly refused to apply it: the frozen rows simply stopped being
+ * frozen, with the saved table still claiming they were.
+ *
+ * Reconciled here, at the end of the one reducer every operation goes through,
+ * rather than in each operation that could break it — that list is not closed, and
+ * the ones missing from it would fail silently in exactly the same way.
+ *
+ * The newer intent wins: the operation the user just performed is kept and the
+ * older freeze setting shrinks to the largest count that still works (possibly 0,
+ * i.e. header only, or dropped entirely). Shrinking rather than growing because
+ * growing would freeze rows the user never asked to freeze.
+ */
+function reconcileFreeze(model: TableModelV2): void {
+	if (model.freezeRows !== undefined && !canFreezeRows(model, model.freezeRows)) {
+		let count = model.freezeRows - 1;
+		while (count >= 0 && !canFreezeRows(model, count)) count--;
+		if (count >= 0) model.freezeRows = count;
+		else delete model.freezeRows;
+	}
+	if (model.freezeCols !== undefined && !canFreezeCols(model, model.freezeCols)) {
+		let count = model.freezeCols - 1;
+		// 0 frozen columns is the same as none at all, unlike rows where 0 still
+		// means "the header row" — so stop at 1 and drop the setting below that.
+		while (count >= 1 && !canFreezeCols(model, count)) count--;
+		if (count >= 1) model.freezeCols = count;
+		else delete model.freezeCols;
+	}
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
