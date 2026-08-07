@@ -39,8 +39,7 @@
 	// Obsidian's element factory. `o` accepts cls / text / attr / title / value /
 	// type / placeholder / href, plus prepend, exactly as the real one does — the
 	// plugin uses cls/text/attr/type/value/placeholder in practice.
-	function createEl(tag, o, callback) {
-		const el = document.createElement(tag);
+	function applyOptions(el, o) {
 		if (typeof o === 'string') {
 			el.className = o;
 		} else if (o) {
@@ -61,6 +60,11 @@
 			if (o.placeholder !== undefined) el.setAttribute('placeholder', o.placeholder);
 			if (o.href !== undefined) el.setAttribute('href', o.href);
 		}
+		return el;
+	}
+
+	function createEl(tag, o, callback) {
+		const el = applyOptions(document.createElement(tag), o);
 		// The real API appends to the receiver (or prepends when asked) and returns
 		// the NEW element — code chains off the return value constantly.
 		if (o && o.prepend) this.insertBefore(el, this.firstChild);
@@ -122,6 +126,30 @@
 	cssProto.show = function () { this.style.display = ''; };
 	cssProto.hide = function () { this.style.display = 'none'; };
 	cssProto.toggleVisibility = function (visible) { visible ? this.show() : this.hide(); };
+
+	// Obsidian also exposes the factories as bare GLOBALS, which build a DETACHED
+	// element rather than appending to anything. That difference matters: the
+	// write-back path builds a whole table into a detached tree and swaps it in as
+	// one operation, so a global that appended would put a half-built table on
+	// screen. Their absence is what stopped tableBlock.ts from running here at all —
+	// its render() opens with a bare createDiv().
+	const globalFactory = (tag) => function (o, callback) {
+		const el = applyOptions(document.createElement(tag), o);
+		if (callback) callback(el);
+		return el;
+	};
+	window.createDiv = globalFactory('div');
+	window.createSpan = globalFactory('span');
+	window.createEl = function (tag, o, callback) {
+		const el = applyOptions(document.createElement(tag), o);
+		if (callback) callback(el);
+		return el;
+	};
+	window.createFragment = function (callback) {
+		const frag = document.createDocumentFragment();
+		if (callback) callback(frag);
+		return frag;
+	};
 
 	// Document-level factories the plugin may use for detached trees.
 	Document.prototype.createDiv = function (o, callback) { return createEl.call(this.body, 'div', o, callback); };

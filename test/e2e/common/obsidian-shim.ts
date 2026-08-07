@@ -185,7 +185,15 @@ export class Notice {
 }
 
 export class App { }
-export class TFile { path = ''; basename = ''; extension = 'md'; }
+export class TFile {
+	path = '';
+	basename = '';
+	extension = 'md';
+	constructor(path = '') {
+		this.path = path;
+		this.basename = path.replace(/\.[^.]*$/, '');
+	}
+}
 export class MarkdownView { }
 export class Plugin extends Component { }
 export class PluginSettingTab { }
@@ -222,4 +230,31 @@ export class AbstractInputSuggest<T> {
 	getValue(): string { return ''; }
 	setValue(_v: string): void { /* no-op */ }
 	close(): void { /* nothing open */ }
+}
+
+/**
+ * In-memory stand-in for the slice of the vault the write-back path uses: read a
+ * file's text, and rewrite it inside a callback (Obsidian's `process` is an atomic
+ * read-modify-write, and the plugin depends on that sequencing).
+ */
+export class FakeVault {
+	files = new Map<string, string>();
+
+	/**
+	 * Returns a real TFile, not a look-alike: the write-back path guards with
+	 * `instanceof TFile` and simply returns when it fails, so a plain object with
+	 * the right shape makes every write silently do nothing — no error, no clue.
+	 */
+	getAbstractFileByPath(path: string): TFile | null {
+		return this.files.has(path) ? new TFile(path) : null;
+	}
+	async read(file: TFile): Promise<string> {
+		return this.files.get(file.path) ?? '';
+	}
+	/** Matches the real signature: the callback receives current content and returns the new content. */
+	async process(file: TFile, fn: (data: string) => string): Promise<string> {
+		const next = fn(this.files.get(file.path) ?? '');
+		this.files.set(file.path, next);
+		return next;
+	}
 }

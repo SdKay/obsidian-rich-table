@@ -20,3 +20,11 @@ export { isHoverPinned } from '../../../src/renderHoverPin';
 export { buildOccupied, getMergeOrigin } from '../../../src/renderGridHelpers';
 export { canFreezeRows, canFreezeCols } from '../../../src/operations';
 export { cellEffectiveStyle, applyColStyle, applyStyleRulesV2, applyResolvedStyle } from '../../../src/renderCellStyle';
+
+// The write-back layer. Its Obsidian surface is small — a vault that can read and
+// rewrite a file, and the line range of the code block within it — so an in-memory
+// stand-in is enough to exercise the parts that historically caused trouble:
+// rewriting the note, and staying visually continuous across the rebuild Obsidian
+// performs afterwards.
+export { TableBlock } from '../../../src/tableBlock';
+export { FakeVault } from './obsidian-shim';

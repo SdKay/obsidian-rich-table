@@ -39,9 +39,18 @@ export interface RenderFullOpts {
 	captureOps?: boolean;
 }
 
+export interface RenderBlockResult {
+	/** The note's current text — assert write-back against this. */
+	noteText: () => Promise<string>;
+	/** Re-runs the code-block processor the way Obsidian does after a write:
+	 *  a brand-new instance, a fresh blank container, the updated source. */
+	reprocess: () => Promise<void>;
+}
+
 export const test = base.extend<{
 	renderReal: (source: string, opts?: { sheetId?: string; scrollLeft?: number; scrollTop?: number }) => Promise<RenderRealResult>;
 	renderFull: (source: string, opts?: RenderFullOpts) => Promise<RenderRealResult>;
+	renderBlock: (blockSource: string) => Promise<RenderBlockResult>;
 }>({
 	renderReal: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
@@ -148,6 +157,83 @@ export const test = base.extend<{
 			}, { source, sheetId: opts?.sheetId, scrollLeft: opts?.scrollLeft, scrollTop: opts?.scrollTop });
 
 			return { model };
+		};
+
+		await use(helper);
+	},
+
+	/**
+	 * Renders through the REAL write-back layer (tableBlock.ts) against an
+	 * in-memory note, so an interaction actually rewrites the note text and the
+	 * rebuild Obsidian performs afterwards can be reproduced faithfully.
+	 *
+	 * That rebuild is where a long tail of problems lived — the table flickering,
+	 * the page scrolling away from it, an in-progress edit being lost — and none of
+	 * it was reachable by a test before: it needs the code-block processor to run
+	 * twice over the same table, which is what `reprocess` does.
+	 */
+	renderBlock: async ({ page }, use) => {
+		await page.addInitScript({ path: POLYFILL });
+
+		const helper = async (blockSource: string): Promise<RenderBlockResult> => {
+			await page.goto(`file://${SHELL}`);
+			await page.addScriptTag({ path: BUNDLE });
+
+			await page.evaluate((src) => {
+				const R = window.RichTableReal;
+				const NOTE = 'note.md';
+				const vault = new R.FakeVault();
+				// A note with the block preceded by a line of prose, so lineStart is
+				// non-zero and an off-by-one in the line splice can't pass unnoticed.
+				const header = '# note\n\n';
+				vault.files.set(NOTE, `${header}\`\`\`rich-table\n${src}\`\`\`\n`);
+				const w = window as unknown as Record<string, unknown>;
+				w.__btVault = vault;
+				w.__btNote = NOTE;
+				w.__btSource = src;
+				w.__btPlugin = {
+					app: { vault },
+					choiceRegistry: new R.ChoiceRegistry([]),
+					settings: { allowReadingViewEdit: true, singleClickEdit: false },
+				};
+				w.__btMount = () => {
+					const host = document.getElementById('root');
+					// Obsidian hands each re-run a brand-new, EMPTY container.
+					const container = host.createDiv();
+					const lines = (vault.files.get(NOTE) ?? '').split('\n');
+					const lineStart = lines.findIndex(l => l.startsWith('```rich-table'));
+					const lineEnd = lines.findIndex((l, i) => i > lineStart && l.startsWith('```'));
+					const inner = lines.slice(lineStart + 1, lineEnd).join('\n') + '\n';
+					const ctx = { getSectionInfo: () => ({ lineStart, lineEnd, text: vault.files.get(NOTE) ?? '' }) };
+					const block = new R.TableBlock(container, inner, w.__btPlugin, NOTE, ctx, `${NOTE}:${lineStart}`);
+					w.__btBlock = block;
+					block.load();
+					return container;
+				};
+				w.__btMount();
+			}, blockSource);
+
+			// The first paint is async (a cell at a time), so wait for the table.
+			await page.locator('.bt-table').first().waitFor();
+
+			return {
+				noteText: () => page.evaluate(() => {
+					const w = window as unknown as { __btVault: { files: Map<string, string> }; __btNote: string };
+					return w.__btVault.files.get(w.__btNote) ?? '';
+				}),
+				reprocess: async () => {
+					await page.evaluate(() => {
+						const w = window as unknown as { __btBlock: { unload(): void }; __btMount: () => void };
+						w.__btBlock.unload();
+						// Obsidian DISCARDS the old element; unload alone only runs the
+						// instance's cleanups. Leaving it attached made assertions match
+						// the stale DOM instead of what the rebuild produced, so a test
+						// could pass with the mechanism it was checking removed entirely.
+						(document.getElementById('root') as HTMLElement).replaceChildren();
+						w.__btMount();
+					});
+				},
+			};
 		};
 
 		await use(helper);

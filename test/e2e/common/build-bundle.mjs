@@ -20,4 +20,7 @@ await esbuild.build({
 	alias: {
 		obsidian: path.join(__dirname, 'obsidian-shim.ts'),
 	},
+	// Same as the plugin's own build: the insertable templates are imported as
+	// text, and the write-back layer reaches them through tableBlock.ts.
+	loader: { '.yaml': 'text' },
 });
