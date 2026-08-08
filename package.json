@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-rich-table",
-	"version": "1.1.1",
-	"description": "Rich tables with merges, styles, and choice columns inside fenced code blocks.",
+	"version": "1.2.0",
+	"description": "Spreadsheet-like tables in a code block: merged cells, typed columns, sort, filter and summary rows, frozen panes, multi-sheet workbooks, and Kanban or calendar views of the same rows — with full Markdown and wikilinks in every cell.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {

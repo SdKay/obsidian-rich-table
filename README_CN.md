@@ -3,7 +3,7 @@
 <img src="./docs/banner.png" alt="Rich Table" />
 
 <p>
-  <b>🔀 合并单元格 &nbsp;·&nbsp; 🎨 样式设置 &nbsp;·&nbsp; 🏷️ 类型列 &nbsp;·&nbsp; 🔗 双链补全 &nbsp;·&nbsp; ↕️ 拖拽排序 &nbsp;·&nbsp; ↔️ 调整宽高 &nbsp;·&nbsp; 📐 数学公式 &nbsp;·&nbsp; 📋 列表</b>
+  <b>🔀 合并单元格 &nbsp;·&nbsp; 🏷️ 类型列 &nbsp;·&nbsp; 🎨 样式设置 &nbsp;·&nbsp; 🧊 冻结行列 &nbsp;·&nbsp; 🔽 排序筛选 &nbsp;·&nbsp; Σ 统计行 &nbsp;·&nbsp; 📑 多表工作簿 &nbsp;·&nbsp; 🗂️ 看板 &nbsp;·&nbsp; 📅 日历 &nbsp;·&nbsp; 🔗 双链补全 &nbsp;·&nbsp; 📐 数学公式</b>
 </p>
 
 <p>

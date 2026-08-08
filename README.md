@@ -3,7 +3,7 @@
 <img src="./docs/banner.png" alt="Rich Table" />
 
 <p>
-  <b>🔀 Merge &nbsp;·&nbsp; 🎨 Style &nbsp;·&nbsp; 🏷️ Type &nbsp;·&nbsp; 🔗 Wikilink &nbsp;·&nbsp; ↕️ Reorder &nbsp;·&nbsp; ↔️ Resize &nbsp;·&nbsp; 📐 Math &nbsp;·&nbsp; 📋 Lists</b>
+  <b>🔀 Merge &nbsp;·&nbsp; 🏷️ Type &nbsp;·&nbsp; 🎨 Style &nbsp;·&nbsp; 🧊 Freeze &nbsp;·&nbsp; 🔽 Sort &amp; Filter &nbsp;·&nbsp; Σ Summary &nbsp;·&nbsp; 📑 Sheets &nbsp;·&nbsp; 🗂️ Kanban &nbsp;·&nbsp; 📅 Calendar &nbsp;·&nbsp; 🔗 Wikilink &nbsp;·&nbsp; 📐 Math</b>
 </p>
 
 <p>

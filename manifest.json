@@ -1,9 +1,9 @@
 {
 	"id": "rich-table",
 	"name": "Rich Table",
-	"version": "1.1.1",
+	"version": "1.2.0",
 	"minAppVersion": "1.8.7",
-	"description": "Interactive tables with merges, typed columns, styles, and wikilinks inside fenced code blocks.",
+	"description": "Spreadsheet-like tables in a code block: merged cells, typed columns, sort, filter and summary rows, frozen panes, multi-sheet workbooks, and Kanban or calendar views of the same rows — with full Markdown and wikilinks in every cell.",
 	"author": "sdking.xing",
 	"authorUrl": "https://github.com/SdKay",
 	"fundingUrl": "https://paypal.me/ssdking",
