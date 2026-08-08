@@ -10,7 +10,9 @@
 		"test": "vitest run",
 		"test:e2e": "playwright test",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
-		"lint": "eslint ."
+		"lint": "eslint .",
+		"lockfile:normalize": "node lockfile-normalize.mjs",
+		"verify:ci": "node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true})\" && npm ci && npm run build && npm test"
 	},
 	"keywords": [],
 	"license": "AGPL-3.0",
@@ -18,7 +20,7 @@
 		"@eslint/js": "^9.39.4",
 		"@playwright/test": "^1.62.1",
 		"@types/node": "^22.15.17",
-		"esbuild": "0.25.5",
+		"esbuild": "0.28.2",
 		"eslint": "^9.39.4",
 		"eslint-plugin-obsidianmd": "^0.4.1",
 		"globals": "^17.6.0",
