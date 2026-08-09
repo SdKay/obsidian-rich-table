@@ -25,11 +25,12 @@
 </p>
 
 <p>
-  <a href="#why-rich-table">Why?</a> ·
-  <a href="#demo">Demo</a> ·
-  <a href="#format">Format</a> ·
-  <a href="#features">Features</a> ·
   <a href="#installation">Install</a> ·
+  <a href="#demo">Demo</a> ·
+  <a href="#keyboard">Keyboard</a> ·
+  <a href="#settings">Settings</a> ·
+  <a href="#features--roadmap">Features</a> ·
+  <a href="#format">Format</a> ·
   <a href="README_CN.md">中文</a>
 </p>
 
@@ -65,6 +66,22 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 | Insert / hide / delete rows & columns | ✗ | ✓ |
 | Row filtering by value | ✗ | ✓ |
 | Per-table lock | ✗ | ✓ |
+
+---
+
+## Installation
+
+**Community plugin browser (recommended):**
+
+1. Open **Settings → Community plugins → Browse**
+2. Search for **Rich Table** and install
+3. Enable the plugin
+
+Or: [Open in Obsidian](https://obsidian.md/plugins?id=rich-table)
+
+**Manual:** copy `main.js`, `manifest.json`, `styles.css` to `<vault>/.obsidian/plugins/rich-table/`
+
+Minimum Obsidian version: **1.8.7**
 
 ---
 
@@ -138,6 +155,153 @@ An empty `rich-table` code block shows one button per built-in template (current
 **16 · Split cell** — double-click a plain cell → split into 2 rows/columns; other cells in that row/column keep their current shape
 
 > 🎬 *Demo GIF coming soon*
+
+---
+
+## Keyboard
+
+A cell is in one of three states, and every shortcut below follows from which one you're in.
+
+**Editing** — an editor is open in the cell. This is where a click lands you.
+
+| Key | |
+|-----|--|
+| `Esc` | Discard the edit, keep the cell **selected** (like Excel — nothing is written) |
+| `Enter` | Commit and keep the cell **selected** |
+| `Tab` / `Shift`+`Tab` | Commit, then select the next / previous cell |
+| `←` `→` | Move the caret. Once it's at the first/last character, commit and select the cell beside it |
+| `↑` `↓` | Jump to the start / end of the cell's content. Once there, commit and select the cell above / below |
+| `Shift`+`Enter` | Line break inside the cell |
+
+**Selected** — the cell is outlined but no editor is open. Reached with `Esc` or `Enter` above.
+
+| Key | |
+|-----|--|
+| `←` `→` `↑` `↓` | Move the selection. Left/right wraps to the next row at a row's end; up/down stops at the table's edge |
+| `Tab` / `Shift`+`Tab` | Same as `→` / `←` |
+| Any character | Start editing, replacing the cell's contents with what you typed |
+| `Enter` | Start editing, keeping the contents (fully selected, so one keystroke replaces them) |
+| `Backspace` / `Delete` | Clear the cell without opening an editor |
+
+Notes:
+
+- **The header row takes part** — arrow up from the first data row to reach it; typing there renames the column.
+- **Merged cells** are entered at their anchor, never at a position they cover; **hidden and filtered-out** rows and columns are skipped.
+- **Typed columns** behave per type: a date cell opens the native picker, where the arrow keys step the day/month/year segments instead; a choice cell opens Obsidian's own value menu, which you navigate as any Obsidian menu. `Tab` commits and moves on from either.
+
+---
+
+## Claude Code Skill
+
+A [`SKILL.md`](SKILL.md) is included for use with [Claude Code](https://claude.ai/code). Once installed, Claude agents can create and modify `rich-table` blocks directly in your vault — adding rows, applying styles, defining merges — without you having to remember the syntax.
+
+```bash
+cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
+```
+
+Then ask Claude: *"Create a project tracker table in my note using rich-table"*.
+
+---
+
+## Settings
+
+Open **Settings → Rich Table** to configure the plugin.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Allow editing in reading view | Off | When off, all interactive behaviour (hover strips, click-to-edit, panels, dropdowns) is disabled in Obsidian's reading view. Live preview / source mode is always interactive. |
+| Single-click to edit | Off | When on, a single click on a cell enters edit mode immediately (no delay), and the style panel opens with Ctrl/Cmd+click instead of double-click. When off (default), single click enters edit after a short delay and double click opens the style panel. |
+| Custom types | — | Define custom choice-column types with labels and colors. |
+
+---
+
+## Features & Roadmap
+
+Status: **✅** shipped · **🔜** planned. Priority reflects how well something fits the current design — **P1** fits as it stands · **P2** fits but needs a new piece inside it · **P3** needs architectural change, a heavy dependency, or more thought.
+
+<table>
+<thead>
+<tr><th align="left">Area</th><th align="left">Capability</th><th align="center">Status</th><th align="center">Priority</th></tr>
+</thead>
+<tbody>
+
+<tr>
+  <td rowspan="6"><b>Editing</b></td>
+  <td>Click any cell to edit — full Markdown, with <code>[[</code> triggering Obsidian's own file &amp; heading autocomplete</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>Keyboard navigation — arrow keys, Tab, type-to-replace (see <a href="#keyboard">Keyboard</a>)</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Cell, header and selection menus — insert / delete / hide rows &amp; columns, merge, style, column type, alignment</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Excel / Sheets clipboard — paste a range into a cell, copy a selection back out (or as a Markdown table)</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Table title and footer notes — click to edit inline</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Cell comments</td><td align="center">🔜</td><td align="center">P2</td></tr>
+
+<tr>
+  <td rowspan="4"><b>Cell content</b></td>
+  <td>Full Obsidian Markdown — bold, italic, highlight, <code>[[wikilinks]]</code>, links, lists, multi-line</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>Math formulas — inline KaTeX, <code>$E=mc^2$</code></td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Images — <code>![](url)</code> or <code>![[local.png]]</code>, drag an edge to resize</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Another table embedded read-only in a cell</td><td align="center">🔜</td><td align="center">P3</td></tr>
+
+<tr>
+  <td rowspan="7"><b>Columns &amp; data</b></td>
+  <td>Typed columns — colored pills, click to pick; six built-in types plus your own in Settings</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>Filter rows by value — funnel icon on each column header</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Sort rows — one-time, or live with an indicator until cleared</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Summary rows — Sum / Average / Min / Max / Count over the visible rows</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Formulas — Excel-style <code>=SUM(A1:B3)</code></td><td align="center">🔜</td><td align="center">P2</td></tr>
+<tr><td>Progress-bar column type</td><td align="center">🔜</td><td align="center">P1</td></tr>
+<tr><td>A chart of the table's own data</td><td align="center">🔜</td><td align="center">P2</td></tr>
+
+<tr>
+  <td rowspan="4"><b>Styling</b></td>
+  <td>Per-cell background, text color and font size — via panel or YAML</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>Row / column selector strips — hover to reveal, style a whole row or column at once</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Themes — <code>academic</code>, <code>grid</code>, <code>plain</code>; plus a few CSS variables for small tweaks (see <a href="#themes">Themes</a>)</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Conditional formatting — styles applied automatically from value rules</td><td align="center">🔜</td><td align="center">P2</td></tr>
+
+<tr>
+  <td rowspan="7"><b>Structure</b></td>
+  <td>Merge cells, and split a plain cell into two rows or columns</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>Drag to reorder rows / columns; drag to resize; double-click or ⊞ to auto-fit</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Insert, hide and delete rows / columns; hover an edge for <b>+</b> strips</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Freeze the header plus the first N rows / columns</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Transposed starting template — row and column headers the same</td><td align="center">🔜</td><td align="center">P1</td></tr>
+<tr><td>Transpose in place — swap rows and columns</td><td align="center">🔜</td><td align="center">P2</td></tr>
+<tr><td>Row grouping — collapsible groups</td><td align="center">🔜</td><td align="center">P3</td></tr>
+
+<tr>
+  <td rowspan="2"><b>Views</b></td>
+  <td>Kanban — lanes from any choice column; drag a card to change its value</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>Calendar — a month grid from any date column; drag an event to reschedule</td><td align="center">✅</td><td align="center">—</td></tr>
+
+<tr>
+  <td rowspan="2"><b>Multi-sheet</b></td>
+  <td>Workbooks — an Excel-style tab bar once a table has two or more sheets, each with its own columns, rows, styles and views</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>Tabs — click to switch, double-click to rename, drag to reorder, right-click for color / delete</td><td align="center">✅</td><td align="center">—</td></tr>
+
+<tr>
+  <td rowspan="3"><b>Whole table</b></td>
+  <td>Lock — 🔒 disables every graphical edit for that table</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Back a table with an external <code>.xlsx</code> file and edit it from Obsidian</td><td align="center">🔜</td><td align="center">P3</td></tr>
+
+</tbody>
+</table>
 
 ---
 
@@ -253,69 +417,6 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 
 ---
 
-## Features & Roadmap
-
-| Feature | |
-|---------|:-:|
-| **Editing** | |
-| Single-click any cell to edit — text, `[[wikilinks]]`, bold, italic | ✅ |
-| `[[` triggers Obsidian's native file & heading autocomplete | ✅ |
-| Shift+Enter for line breaks inside the cell editor | ✅ |
-| Double-click / right-click menu — insert, delete, hide rows & columns; merge cells; set style; change column type | ✅ |
-| Column alignment (left / center / right) — in the double-click header menu | ✅ |
-| Keyboard navigation — arrow keys between cells, Tab to advance | 🔜 |
-| Paste values from Excel / Sheets — Ctrl+V into a cell, detected via clipboard HTML | ✅ |
-| **Rich cell content** | |
-| Math formulas — inline KaTeX: `$E=mc^2$` | ✅ |
-| Full Markdown: **bold**, *italic*, ==highlight==, `[[wikilinks]]`, external links | ✅ |
-| Images — inline `![](url)` or `![[local.png]]`; drag image edge to resize | ✅ |
-| Lists — lines starting with `- ` render as compact bullet lists | ✅ |
-| Multi-line — `<br>` tag or Shift+Enter in the editor | ✅ |
-| **Typed columns** | |
-| Colored pill badges; single-click to pick value from dropdown | ✅ |
-| Built-in types: `task-status` · `priority` · `boolean` · `rating` · `effort` · `approval` | ✅ |
-| Custom types defined in **Settings → Rich Table** | ✅ |
-| Row filtering — funnel icon on each column header; click to open a checkbox panel and filter by value | ✅ |
-| Filter status bar — "Showing X of Y · Clear" unified with sort / aggregate info | 🔜 |
-| Row sorting — via the column selector's popup menu: one-time (reorders rows once) or live (auto-sorts, shown by an indicator until cleared) | ✅ |
-| Summary rows — Sum / Average / Min / Max / Count, table-wide (toggle via the Σ icon in the left control column, or the column selector's popup menu); one row per active statistic at the table's bottom, computed over currently-visible rows, columns without meaningful data left blank. Each summary row gets its own selector cell (remove) and drag grip (reorder) | ✅ |
-| Custom formulas — type Excel-style syntax (`=SUM(A1:B3)`); cell references get converted to this table's own stable row/column IDs on entry, so they survive inserts/reorders instead of drifting like raw A1 coordinates would. Same-sheet first; cross-sheet references are a separate, later phase | 🔜 |
-| **Styles** | |
-| Per-cell bg color, text color, and font size — via panel or YAML | ✅ |
-| Row / column selector strips — hover to reveal, click or drag to style entire rows/columns | ✅ |
-| Per-table lock — click the 🔒 icon at the top-left corner to disable / re-enable all editing | ✅ |
-| **Themes** — set `theme: academic` (booktabs), `theme: grid` (full grid + bold outer/header rules), `theme: plain` (colorful gradient + animated border) | ✅ |
-| Custom cell padding (top / bottom / left / right) | 🔜 |
-| Collapsible table — fold-icon button in the top-left corner shows/hides the table body, keeping the title and header row visible | ✅ |
-| Conditional formatting — auto-apply styles based on cell value rules | 🔜 |
-| Progress bar column type | 🔜 |
-| **Merges** | |
-| Cell merging — drag-select → Merge in popup, or declare in YAML | ✅ |
-| Split a plain cell into 2 rows or 2 columns — double-click menu; other cells in that row/column keep their current shape (merged or not) | ✅ |
-| Copy selection to Excel / Sheets or as a Markdown table — selection/cell/header menus | ✅ |
-| Merge / style state preserved when copying to Excel | 🔜 |
-| **Table structure** | |
-| Hover selector strips to reveal ⠿ drag grips; drag to reorder rows / columns | ✅ |
-| Hover selector strips to reveal resize seams; drag to resize, double-click to auto-fit | ✅ |
-| Auto-fit-all button (top-left ⊞) — one click to auto-fit every column and row | ✅ |
-| Hover bottom / right edge → **+** strips to append rows / columns | ✅ |
-| Hide and show rows / columns | ✅ |
-| Freeze header + first N rows / first N columns — "Freeze up to here" in the row/column selector's popup menu; rejected (with a message) if a merged cell would straddle the boundary, and reduced automatically if a later merge would | ✅ |
-| Row grouping — collapsible groups | 🔜 |
-| **Views** — alternate ways to browse the same rows/columns, switched via the layout-grid icon (or a Kanban/Calendar board's own icon column) | |
-| Kanban board — group rows into lanes by any choice-typed column; drag a card to another lane to change its value | ✅ |
-| Calendar — place rows on a month grid by any `date`-typed column; drag an event to reschedule it, undated rows list in an Unscheduled tray below | ✅ |
-| **Multi-sheet** — Excel-style tab bar at the bottom once a table has 2+ sheets | |
-| Left-toolbar button converts a single-sheet table into a multi-sheet workbook; each sheet has its own columns/rows/merges/styles/views | ✅ |
-| Tabs: click to switch, click-again/double-click to rename, drag to reorder, right-click for rename / tab color / delete | ✅ |
-| **Title & annotations** | |
-| Table title above, footer notes below — click to edit inline | ✅ |
-| Cell comments — floating notes shown on hover | 🔜 |
-| **Excel interop** | |
-| Open/edit an external `.xlsx` file directly (e.g. `excel: path/to/file.xlsx` in the front matter) — same editing UI as a normal code-block table, backed by the actual spreadsheet file | 🔜 |
-
----
-
 ## Known Issues
 
 | Issue | Workaround |
@@ -324,51 +425,13 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 
 ---
 
-## Installation
-
-**Community plugin browser (recommended):**
-
-1. Open **Settings → Community plugins → Browse**
-2. Search for **Rich Table** and install
-3. Enable the plugin
-
-Or: [Open in Obsidian](https://obsidian.md/plugins?id=rich-table)
-
-**Manual:** copy `main.js`, `manifest.json`, `styles.css` to `<vault>/.obsidian/plugins/rich-table/`
-
-Minimum Obsidian version: **1.8.7**
-
----
-
-## Settings
-
-Open **Settings → Rich Table** to configure the plugin.
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Allow editing in reading view | Off | When off, all interactive behaviour (hover strips, click-to-edit, panels, dropdowns) is disabled in Obsidian's reading view. Live preview / source mode is always interactive. |
-| Single-click to edit | Off | When on, a single click on a cell enters edit mode immediately (no delay), and the style panel opens with Ctrl/Cmd+click instead of double-click. When off (default), single click enters edit after a short delay and double click opens the style panel. |
-| Custom types | — | Define custom choice-column types with labels and colors. |
-
----
-
-## Claude Code Skill
-
-A [`SKILL.md`](SKILL.md) is included for use with [Claude Code](https://claude.ai/code). Once installed, Claude agents can create and modify `rich-table` blocks directly in your vault — adding rows, applying styles, defining merges — without you having to remember the syntax.
-
-```bash
-cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
-```
-
-Then ask Claude: *"Create a project tracker table in my note using rich-table"*.
-
----
-
 ## License
 
 [AGPL-3.0](LICENSE) — derivatives must be open-sourced under the same license.
 
 For **commercial licensing**: sdkxyx@gmail.com
+
+---
 
 ## Support the Project
 Rich Table is free and open-source under the AGPL-3.0 license. If this plugin has improved your workflow, you can support its ongoing development with a voluntary donation. Every contribution helps fix bugs, add new features, and maintain compatibility with future Obsidian updates.
@@ -384,6 +447,8 @@ Rich Table is free and open-source under the AGPL-3.0 license. If this plugin ha
 
 Thank you for your support! 🙏
 
+---
+
 ## Feedback
 
 Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-rich-table/issues)
@@ -391,3 +456,4 @@ Issues and feature requests: [GitHub Issues](https://github.com/SdKay/obsidian-r
 ---
 
 [![Star History Chart](https://api.star-history.com/svg?repos=SdKay/obsidian-rich-table&type=Date)](https://star-history.com/#SdKay/obsidian-rich-table&Date)
+

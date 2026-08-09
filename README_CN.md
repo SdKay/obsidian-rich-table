@@ -25,11 +25,12 @@
 </p>
 
 <p>
-  <a href="#为什么选择-rich-table">为什么？</a> ·
-  <a href="#功能演示">演示</a> ·
-  <a href="#格式说明">格式</a> ·
-  <a href="#功能介绍">功能</a> ·
   <a href="#安装">安装</a> ·
+  <a href="#功能演示">演示</a> ·
+  <a href="#键盘操作">键盘操作</a> ·
+  <a href="#设置">设置</a> ·
+  <a href="#功能与计划">功能</a> ·
+  <a href="#格式说明">格式</a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -65,6 +66,22 @@
 | 插入 / 隐藏 / 删除行列 | ✗ | ✓ |
 | 按值筛选行 | ✗ | ✓ |
 | 单表锁定 | ✗ | ✓ |
+
+---
+
+## 安装
+
+**推荐 — 社区插件浏览器：**
+
+1. 打开 **设置 → 第三方插件 → 浏览**
+2. 搜索 **Rich Table** 并安装
+3. 启用插件
+
+或直接跳转：[在 Obsidian 中打开](https://obsidian.md/plugins?id=rich-table)
+
+**手动安装：** 将 `main.js`、`manifest.json`、`styles.css` 复制到 `<vault>/.obsidian/plugins/rich-table/`
+
+最低 Obsidian 版本：**1.8.7**
 
 ---
 
@@ -140,6 +157,153 @@
 **16 · 拆分单元格** — 双击一个未合并的普通格 → 拆分为两行/两列，同行/列其他格保持原有外形
 
 > 🎬 *演示 GIF 即将发布*
+
+---
+
+## 键盘操作
+
+单元格有三种状态，下面所有快捷键都取决于当前处在哪一种。
+
+**编辑态** —— 单元格里开着编辑器，单击进入的就是这个状态。
+
+| 按键 | |
+|------|--|
+| `Esc` | 放弃本次编辑，该格转为**选中态**（与 Excel 一致，不写入任何内容） |
+| `Enter` | 提交，该格转为**选中态** |
+| `Tab` / `Shift`+`Tab` | 提交，并选中下一个 / 上一个单元格 |
+| `←` `→` | 移动光标；光标已在首/尾字符时提交并选中左右相邻的单元格 |
+| `↑` `↓` | 跳到本格内容的开头 / 末尾；已在开头/末尾时提交并选中上方 / 下方的单元格 |
+| `Shift`+`Enter` | 在格内换行 |
+
+**选中态** —— 单元格有高亮边框但没开编辑器，由上面的 `Esc` 或 `Enter` 进入。
+
+| 按键 | |
+|------|--|
+| `←` `→` `↑` `↓` | 移动选中框。左右到行首尾会跨到相邻行；上下到表格边界则停住 |
+| `Tab` / `Shift`+`Tab` | 等同 `→` / `←` |
+| 任意字符 | 开始编辑，并用刚输入的字符替换原内容 |
+| `Enter` | 开始编辑并保留原内容（内容为全选状态，按一个键即整体替换） |
+| `Backspace` / `Delete` | 直接清空该格，不进入编辑态 |
+
+补充：
+
+- **表头参与导航** —— 从第一行数据行按 `↑` 即可到达；在表头输入即为重命名该列。
+- **合并单元格**只会落在其锚点格，不会落进被它覆盖的位置；**隐藏行列与被筛掉的行**会自动跳过。
+- **类型列**按各自类型响应：日期格打开原生选择器，此时方向键用于切换/增减年月日；选择格打开的是 Obsidian 自带的选项菜单，按 Obsidian 菜单的常规方式操作即可。两者都可用 `Tab` 提交并跳到下一格。
+
+---
+
+## Claude Code Skill
+
+仓库中附带了 [`SKILL.md`](SKILL.md)，可与 [Claude Code](https://claude.ai/code) 配合使用。安装后，Claude agent 可以直接在 vault 中创建和修改 `rich-table` 块——添加行、设置样式、定义合并——无需记忆语法。
+
+```bash
+cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
+```
+
+之后告诉 Claude："在我的笔记里用 rich-table 创建一个项目看板"，它会自动生成对应的代码块。
+
+---
+
+## 设置
+
+打开 **设置 → Rich Table** 进行配置。
+
+| 设置项 | 默认值 | 说明 |
+|--------|--------|------|
+| 阅读模式下允许编辑 | 关闭 | 关闭时，阅读模式下所有交互行为（hover 条带、单击编辑、双击面板、下拉选值）均被禁用。实时预览 / 源码模式不受影响。 |
+| 单击进入编辑 | 关闭 | 开启后，单击单元格立即进入编辑（无延迟），样式面板改用 Ctrl/Cmd+单击打开（而非双击）。关闭时（默认）：单击延迟一小段时间后进入编辑，双击打开样式面板。 |
+| 自定义类型 | — | 自定义带标签和颜色的选择列类型。 |
+
+---
+
+## 功能与计划
+
+状态：**✅** 已发布 · **🔜** 计划中。优先级反映的是与当前设计的契合度——**P1** 用现有架构直接可做 · **P2** 契合架构，但需要在其中新增一块 · **P3** 需要改架构、引入重依赖，或还没想清楚。
+
+<table>
+<thead>
+<tr><th align="left">分类</th><th align="left">功能</th><th align="center">状态</th><th align="center">优先级</th></tr>
+</thead>
+<tbody>
+
+<tr>
+  <td rowspan="6"><b>编辑</b></td>
+  <td>点击任意单元格即可编辑，支持完整 Markdown；输入 <code>[[</code> 触发 Obsidian 原生的文件与标题补全</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>键盘操作——方向键、Tab、直接打字替换内容（详见<a href="#键盘操作">键盘操作</a>）</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>单元格 / 表头 / 选区菜单——插入、删除、隐藏行列，合并，设置样式，切换列类型与对齐</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>与 Excel / Sheets 互通剪贴板——把一片区域粘进单元格，也可把选区复制回去（或复制为 Markdown 表格）</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>表格标题与页脚注释——点击即可就地编辑</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>单元格批注</td><td align="center">🔜</td><td align="center">P2</td></tr>
+
+<tr>
+  <td rowspan="4"><b>单元格内容</b></td>
+  <td>完整的 Obsidian Markdown——加粗、斜体、高亮、<code>[[双链]]</code>、外部链接、列表、多行</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>数学公式——行内 KaTeX，<code>$E=mc^2$</code></td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>图片——<code>![](url)</code> 或 <code>![[local.png]]</code>，拖动边缘缩放</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>在单元格里只读嵌入另一个表格</td><td align="center">🔜</td><td align="center">P3</td></tr>
+
+<tr>
+  <td rowspan="7"><b>列与数据</b></td>
+  <td>类型列——彩色胶囊标签，点击选值；6 种内置类型，也可在设置里自定义</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>按值筛选行——每个列标题上的漏斗图标</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>行排序——一次性排序，或实时排序并显示指示器直到取消</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>统计行——对当前可见行求 Sum / Average / Min / Max / Count</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>公式——Excel 风格的 <code>=SUM(A1:B3)</code></td><td align="center">🔜</td><td align="center">P2</td></tr>
+<tr><td>进度条列类型</td><td align="center">🔜</td><td align="center">P1</td></tr>
+<tr><td>把本表数据画成图表</td><td align="center">🔜</td><td align="center">P2</td></tr>
+
+<tr>
+  <td rowspan="4"><b>样式</b></td>
+  <td>单元格级的背景色、文字颜色与字号——面板设置或写在 YAML 里</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>行列选择器条带——悬停显现，一次给整行或整列设置样式</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>主题——<code>academic</code>、<code>grid</code>、<code>plain</code>；另有几个 CSS 变量用于小幅微调（详见<a href="#主题">主题</a>）</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>条件格式——按取值规则自动套用样式</td><td align="center">🔜</td><td align="center">P2</td></tr>
+
+<tr>
+  <td rowspan="7"><b>表格结构</b></td>
+  <td>合并单元格，以及把普通单元格拆成两行或两列</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>拖拽重排行列；拖拽调整宽高；双击或 ⊞ 一键自适应</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>插入、隐藏、删除行列；悬停边缘出现 <b>+</b> 快捷条</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>冻结表头及前 N 行 / 前 N 列</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>转置起始模板——行、列表头内容一致</td><td align="center">🔜</td><td align="center">P1</td></tr>
+<tr><td>一键转置——交换行与列</td><td align="center">🔜</td><td align="center">P2</td></tr>
+<tr><td>行分组——可折叠分组</td><td align="center">🔜</td><td align="center">P3</td></tr>
+
+<tr>
+  <td rowspan="2"><b>视图</b></td>
+  <td>看板——按任意选择类型的列分组成泳道，拖动卡片即改变该列取值</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>日历——按任意日期列排进月视图，拖动事件即改期</td><td align="center">✅</td><td align="center">—</td></tr>
+
+<tr>
+  <td rowspan="2"><b>多表工作簿</b></td>
+  <td>工作簿——表格有两个以上 sheet 时底部出现 Excel 式标签栏，每个 sheet 各有自己的列、行、样式与视图</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>标签页——单击切换，双击重命名，拖拽重排，右键设置颜色 / 删除</td><td align="center">✅</td><td align="center">—</td></tr>
+
+<tr>
+  <td rowspan="3"><b>整表操作</b></td>
+  <td>锁定——🔒 关闭该表格的所有图形化编辑</td>
+  <td align="center">✅</td><td align="center">—</td>
+</tr>
+<tr><td>折叠——隐藏表体，保留标题与表头行</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>让表格对应一份外部 <code>.xlsx</code> 文件，并在 Obsidian 里编辑它</td><td align="center">🔜</td><td align="center">P3</td></tr>
+
+</tbody>
+</table>
 
 ---
 
@@ -255,69 +419,6 @@ theme: plain      # 彩虹渐变表头 + 动态边框
 
 ---
 
-## 功能与计划
-
-| 功能 | |
-|------|:-:|
-| **编辑** | |
-| 单击任意单元格内联编辑——纯文本、`[[双链]]`、加粗、斜体 | ✅ |
-| 输入 `[[` 触发 Obsidian 原生文件与标题自动补全 | ✅ |
-| 编辑器内 Shift+Enter 换行 | ✅ |
-| 双击 / 右键菜单——插入、删除、隐藏行列；合并单元格；设置样式；切换列类型 | ✅ |
-| 列对齐方式（左/居中/右）——双击列标题弹出菜单设置 | ✅ |
-| 键盘导航——方向键在格间移动，Tab 跳到下一格 | 🔜 |
-| 从 Excel / Sheets 粘贴数值——在单元格内 Ctrl+V，通过剪贴板 HTML 识别 | ✅ |
-| **富内容单元格** | |
-| 数学公式——行内 KaTeX：`$E=mc^2$` | ✅ |
-| 完整 Markdown：**加粗**、*斜体*、==高亮==、`[[双链]]`、外部链接 | ✅ |
-| 图片——`![](url)` 或 `![[本地图片]]`；拖拽图片边缘调整大小 | ✅ |
-| 列表——以 `- ` 开头的行渲染为紧凑项目列表 | ✅ |
-| 多行——`<br>` 标签或编辑器内 Shift+Enter 换行 | ✅ |
-| **类型列** | |
-| 彩色标签徽章，单击下拉选值 | ✅ |
-| 内置类型：`task-status` · `priority` · `boolean` · `rating` · `effort` · `approval` | ✅ |
-| 自定义类型（设置 → Rich Table） | ✅ |
-| 行筛选——每列标题有漏斗图标，点击弹出勾选面板按值过滤 | ✅ |
-| 状态栏——"显示 X / Y 行 · 清除"，与排序/聚合统一设计 | 🔜 |
-| 行排序——通过列选择器的弹出菜单：一次性排序（直接调整行顺序）或自动排序（常驻提示，随时可取消） | ✅ |
-| 汇总行——求和/平均/最小值/最大值/计数，全表级别（左侧控制列的 Σ 图标，或列选择器的弹出菜单均可开启）；每种激活的统计类型在表底显示一行，基于当前可见行计算，无法计算的列留空；每行统计都有自己的选择器（删除）和拖拽手柄（调整顺序） | ✅ |
-| 自定义公式——照 Excel 习惯输入（如 `=SUM(A1:B3)`），坐标在输入时就转换成本表自己的稳定行/列 id，插入行列或调整顺序都不会像原始 A1 坐标那样跑偏。先支持同 sheet 内引用，跨 sheet 引用作为独立的后续阶段 | 🔜 |
-| **样式** | |
-| 双击面板或 YAML 对任意单元格/行/列/范围设置背景色、文字颜色、字号 | ✅ |
-| 行列选择条——悬停显示，点击或拖拽选整行/列，统一设置样式 | ✅ |
-| 单表锁定——点击左上角 🔒 图标，禁用 / 重新启用当前表格的图形化编辑 | ✅ |
-| **主题**——`theme: academic`（学术三线表）、`theme: grid`（全网格线+加粗外边框/表头线）、`theme: plain`（彩虹渐变边框） | ✅ |
-| 自定义单元格内边距（上/下/左/右） | 🔜 |
-| 表格折叠——左上角折叠图标按钮，一键收起/展开表格内容，保留标题和表头可见 | ✅ |
-| 条件格式——根据单元格值规则自动设置样式 | 🔜 |
-| 进度条类型列 | 🔜 |
-| **合并** | |
-| 单元格合并——拖选后点 Merge，或在 YAML 中声明 | ✅ |
-| 拆分一个普通格为两行或两列——双击弹出菜单；同一行/列的其他格保持原有外形（合并的还是合并，单个的还是单个） | ✅ |
-| 复制选区到 Excel / Sheets，或复制为 Markdown 表格——选区/单元格/表头菜单 | ✅ |
-| 复制到 Excel 时保留合并/样式状态 | 🔜 |
-| **表格结构** | |
-| 悬停行列选择条，在外侧边沿显示 ⠿ 拖拽手柄；拖拽排序行 / 列 | ✅ |
-| 悬停行列选择条显示调整手柄，拖拽调整宽高，双击自动适配内容 | ✅ |
-| 一键全部自适配按钮（左上角 ⊞）——自动调整所有列宽和行高 | ✅ |
-| 悬停底边 / 右边 → **+** 条带快速追加行 / 列 | ✅ |
-| 隐藏与显示行 / 列 | ✅ |
-| 冻结表头 + 前 N 行 / 前 N 列——行列选择条带弹出菜单里的"冻结到此行/列"；如果有合并格跨越冻结边界会被拒绝并提示；反之，之后新建的合并格若跨越边界，冻结范围会自动收缩 | ✅ |
-| 行分组——可折叠的行组 | 🔜 |
-| **视图** ——同一批行/列的多种浏览方式，通过左侧网格图标（或看板/日历视图自己的图标列）切换 | |
-| 看板视图——按任意选项类型列的值把行分组到不同看板栏；把卡片拖到另一栏即可修改该值 | ✅ |
-| 日历视图——按任意日期类型列把行放到月历格子上；拖拽事件改期，没有日期的行列在日历下方的"未排期"区域 | ✅ |
-| **多 Sheet** ——表格拥有 2 个以上 sheet 时，底部出现 Excel 风格的标签栏 | |
-| 左侧工具栏按钮把单 sheet 表格转换成多 sheet workbook；每个 sheet 拥有各自独立的列/行/合并/样式/视图 | ✅ |
-| 标签栏：单击切换，已激活状态下再点一下/双击重命名，拖拽调整顺序，右键可重命名/设置标签颜色/删除 | ✅ |
-| **标题与批注** | |
-| 表格标题和底部备注——单击内联编辑 | ✅ |
-| 单元格备注——浮动备注，悬停展开 | 🔜 |
-| **Excel 互通** | |
-| 直接打开/编辑外部 `.xlsx` 文件（例如前置元数据里写 `excel: path/to/file.xlsx`）——跟代码块表格一样的编辑体验，数据实际存在那份 Excel 文件里 | 🔜 |
-
----
-
 ## 已知问题
 
 | 问题 | 临时方案 |
@@ -326,51 +427,13 @@ theme: plain      # 彩虹渐变表头 + 动态边框
 
 ---
 
-## 安装
-
-**推荐 — 社区插件浏览器：**
-
-1. 打开 **设置 → 第三方插件 → 浏览**
-2. 搜索 **Rich Table** 并安装
-3. 启用插件
-
-或直接跳转：[在 Obsidian 中打开](https://obsidian.md/plugins?id=rich-table)
-
-**手动安装：** 将 `main.js`、`manifest.json`、`styles.css` 复制到 `<vault>/.obsidian/plugins/rich-table/`
-
-最低 Obsidian 版本：**1.8.7**
-
----
-
-## 设置
-
-打开 **设置 → Rich Table** 进行配置。
-
-| 设置项 | 默认值 | 说明 |
-|--------|--------|------|
-| 阅读模式下允许编辑 | 关闭 | 关闭时，阅读模式下所有交互行为（hover 条带、单击编辑、双击面板、下拉选值）均被禁用。实时预览 / 源码模式不受影响。 |
-| 单击进入编辑 | 关闭 | 开启后，单击单元格立即进入编辑（无延迟），样式面板改用 Ctrl/Cmd+单击打开（而非双击）。关闭时（默认）：单击延迟一小段时间后进入编辑，双击打开样式面板。 |
-| 自定义类型 | — | 自定义带标签和颜色的选择列类型。 |
-
----
-
-## Claude Code Skill
-
-仓库中附带了 [`SKILL.md`](SKILL.md)，可与 [Claude Code](https://claude.ai/code) 配合使用。安装后，Claude agent 可以直接在 vault 中创建和修改 `rich-table` 块——添加行、设置样式、定义合并——无需记忆语法。
-
-```bash
-cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
-```
-
-之后告诉 Claude："在我的笔记里用 rich-table 创建一个项目看板"，它会自动生成对应的代码块。
-
----
-
 ## 许可证
 
 [AGPL-3.0](LICENSE)——衍生作品须以相同协议开源。
 
 **商业授权**请联系：sdkxyx@gmail.com
+
+---
 
 ## 赞助支持
 Rich Table 是完全免费开源的插件，采用 AGPL-3.0 协议开源。如果这个插件提升了你的笔记效率，欢迎通过自愿捐赠支持后续开发，你的支持是持续修复问题、新增功能、适配 Obsidian 新版本的最大动力。
@@ -385,6 +448,8 @@ Rich Table 是完全免费开源的插件，采用 AGPL-3.0 协议开源。如�
 
 感谢支持！🙏
 
+---
+
 ## 支持与反馈
 
 问题反馈与功能建议：[GitHub Issues](https://github.com/SdKay/obsidian-rich-table/issues)
@@ -392,3 +457,4 @@ Rich Table 是完全免费开源的插件，采用 AGPL-3.0 协议开源。如�
 ---
 
 [![Star History Chart](https://api.star-history.com/svg?repos=SdKay/obsidian-rich-table&type=Date)](https://star-history.com/#SdKay/obsidian-rich-table&Date)
+
