@@ -259,12 +259,7 @@ export function openFilterPanel(
 	// This panel renders to document.body, outside the table's own DOM subtree —
 	// pin the table's hover state open so moving the mouse onto the panel doesn't
 	// collapse the selector/edge strips out from under it (see renderHoverPin.ts).
-	// Also registered on the component as a safety net (unpin is idempotent) —
-	// if the table's DOM gets torn down/re-rendered while this panel is still
-	// open, nothing else would ever call close(), which would otherwise leak
-	// the pin as permanently "open" for every table on the page.
 	const unpin = pinHover();
-	component.register(unpin);
 	let detach: (() => void) | null = null;
 	const close = () => {
 		panel.remove();
@@ -274,6 +269,20 @@ export function openFilterPanel(
 	};
 	const doClose = close;
 	closeActivePanel = doClose;
+	// Registering close() (not just unpin) is load-bearing, not just a safety
+	// net: bindPanelDismiss's outside-click/Escape listeners are registered on
+	// THIS component (registerDomEvent), so when the component unloads (note
+	// switch, or an unrelated write-back rebuilding this table into a fresh
+	// instance) those listeners are torn down too — but the panel's own <div>,
+	// parented to document.body rather than the table's containerEl, is never
+	// part of what Obsidian tears down. Without this, the panel is left on
+	// screen with no listeners left to dismiss it: Escape, outside-click, and
+	// note-switch all silently stop working. close() already calls unpin()
+	// itself, so registering close() alone covers both without a second,
+	// separate unpin registration — and it's safe to call again later via a
+	// normal button/dismiss path (panel.remove()/detach()/unpin() are all
+	// idempotent).
+	component.register(close);
 
 	clearBtn.addEventListener('click', () => {
 		void onStructuralOp({ type: 'set-filter', colId: col.id, values: null });
@@ -459,12 +468,7 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 	// This panel renders to document.body, outside the table's own DOM subtree —
 	// pin the table's hover state open so moving the mouse onto the panel doesn't
 	// collapse the selector/edge strips out from under it (see renderHoverPin.ts).
-	// Also registered on the component as a safety net (unpin is idempotent) —
-	// if the table's DOM gets torn down/re-rendered while this panel is still
-	// open, nothing else would ever call close(), which would otherwise leak
-	// the pin as permanently "open" for every table on the page.
 	const unpin = pinHover();
-	component.register(unpin);
 
 	// Actions
 	let committed = false;
@@ -479,6 +483,17 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 	};
 	const thisClose = () => close(true);
 	closeActivePanel = thisClose;
+	// Registering thisClose (not just unpin) is load-bearing, not just a safety
+	// net — see openFilterPanel's close() comment for the full reasoning: this
+	// component unloading (note switch, or an unrelated write-back rebuild)
+	// tears down bindPanelDismiss's Escape/outside-click listeners without
+	// ever removing the panel <div> itself (parented to document.body, outside
+	// the table's own containerEl), leaving it stuck on screen with nothing
+	// left to dismiss it. restore=true mirrors thisClose's own Escape/outside-
+	// click behaviour — treat an involuntary teardown as a cancel, not a
+	// silent commit of the live preview. thisClose already calls unpin()
+	// itself, so this one registration covers both.
+	component.register(thisClose);
 	clearBtn.addEventListener('click', () => { onApplyStyle(null, null, null, null, null); close(false); });
 	applyBtn.addEventListener('click', () => {
 		onApplyStyle(
