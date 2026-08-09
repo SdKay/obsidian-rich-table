@@ -10,8 +10,10 @@ import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
 import { SEL_TOTAL, AUTOFIT_OFFSET } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
-import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler } from './renderTypes';
-import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin } from './renderGridHelpers';
+import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler } from './renderTypes';
+import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue } from './renderGridHelpers';
+import { moveCell, clampToValidCell, type NavCell } from './cellNav';
+import { takeSelectedCell } from './renderSelectionHandoff';
 import { cellEffectiveStyle } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { enterLineEdit } from './renderEditMode';
@@ -19,9 +21,9 @@ import { colMinWidth, autoFitAllColWidths, autoFitRowHeight } from './renderAuto
 import { setupColResize, bindResizeHandle } from './renderResize';
 import { scrollContentOffset } from './renderGeometry';
 import { type CellOpEntry, openCellPanel } from './renderPanel';
-import { renderRow } from './renderCell';
+import { renderRow, triggerPrimaryAction } from './renderCell';
 import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
-import { isHoverPinned, onHoverUnpinned, showMenuPinned } from './renderHoverPin';
+import { isHoverPinned, onHoverUnpinned, showMenuPinned, getActiveCellMenu } from './renderHoverPin';
 import { renderKanbanBoard } from './renderKanban';
 import { renderCalendarBoard } from './renderCalendar';
 import { renderViewToolbar, buildViewSwitcherMenu } from './renderViews';
@@ -147,6 +149,16 @@ export async function renderTable(
 	}
 
 	const occupied = buildOccupied(model);
+	// The keyboard-Selected cell, carried over from the instance a write-back just
+	// replaced (renderSelectionHandoff.ts). Re-validated against the CURRENT model
+	// because the very operation that triggered this rebuild may have deleted the
+	// row or column it was sitting on. Applied after the rows exist — see the
+	// restore just below the data-row loop.
+	let restoredSel: NavCell | null = null;
+	if (cacheKey) {
+		const remembered = takeSelectedCell(cacheKey);
+		if (remembered) restoredSel = clampToValidCell(model, occupied, remembered);
+	}
 	// Root container with position:relative so all overlay elements (selectors,
 	// edge-add strips) can use position:absolute and stay naturally inside
 	// Obsidian's content pane — no viewport coordinate math needed.
@@ -491,6 +503,28 @@ export async function renderTable(
 		});
 	};
 
+	/** Move the single-cell keyboard selection, ignoring a clamped (null) target. */
+	const selectCell = (next: NavCell | null) => {
+		if (!next) return;
+		sel.start = next;
+		sel.end   = next;
+		updateHighlights();
+	};
+
+	// Handed to every cell editor: how it wants the selection to end up once it
+	// closes (see EditNavigateHandler). Only this side knows the grid, so a
+	// direction resolves to a real cell here, via cellNav.
+	const onEditNavigate: EditNavigateHandler = (rowIdx, colIdx, move) => {
+		const from: NavCell = { row: rowIdx, col: colIdx };
+		if (move === 'stay') { selectCell(from); return; }
+		const dir = move === 'next' ? 'right' : move === 'prev' ? 'left' : move;
+		// Falling back to `from` matters: the editor has already committed and closed
+		// by now, so a move clamped at the table's edge would otherwise leave the
+		// cell neither edited nor selected — the keyboard would have nothing to
+		// resume from.
+		selectCell(moveCell(model, occupied, from, dir) ?? from);
+	};
+
 	let selectionPanel: HTMLElement | null = null;
 	const removeSelectionPanel = () => { selectionPanel?.remove(); selectionPanel = null; };
 
@@ -563,7 +597,7 @@ export async function renderTable(
 	const headerTr = thead.createEl('tr');
 	await renderRow({
 		tr: headerTr, rowIdx: 0, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: true,
-		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
+		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
 	});
 
 	const tbody = table.createEl('tbody');
@@ -765,6 +799,78 @@ export async function renderTable(
 		}
 	});
 
+	// ── Keyboard cell navigation, Selected state (see cellNav.ts) ────────────
+	// Registered on the document, but gated on this table having exactly one
+	// Selected cell — so a table the user hasn't clicked into never swallows a
+	// keystroke meant for the note, and a multi-cell drag range (same
+	// `.bt-selected` class) is left to the mouse-driven selection panel.
+	component.registerDomEvent(activeDocument, 'keydown', (evt: KeyboardEvent) => {
+		if (!sel.start || !sel.end) return;
+		if (sel.start.row !== sel.end.row || sel.start.col !== sel.end.col) return;
+		if (!table.isConnected) return;
+		const current = sel.start;
+
+		// A choice column's value menu renders to document.body, outside `table` —
+		// so there's no cell class to find it by (renderHoverPin.ts tracks it
+		// instead). Tab closes it without picking a value and carries on, matching
+		// what Tab does out of a text or date editor; everything else is left to
+		// Obsidian's own Menu, which already handles ↑/↓ and Enter/Escape.
+		const activeMenu = getActiveCellMenu();
+		if (activeMenu && activeMenu.row === current.row && activeMenu.col === current.col) {
+			if (evt.key === 'Tab') {
+				evt.preventDefault();
+				activeMenu.close();
+				selectCell(moveCell(model, occupied, current, evt.shiftKey ? 'left' : 'right'));
+			}
+			return;
+		}
+
+		// An open editor owns these keys itself (renderEditMode.ts). What identifies
+		// that case is where the event CAME FROM — not whether the table currently
+		// carries `.bt-editing`, which is mutable state that has already changed by
+		// the time this listener runs: a microtask checkpoint happens after every
+		// event-listener callback returns, so the editor's own handler has not only
+		// run but its deferred commit has too — dropping `.bt-editing` and setting
+		// the selection — before this same keystroke finishes bubbling here. Reading
+		// the class would therefore see "not editing", treat the Enter the editor
+		// just consumed as a fresh command, and reopen the editor it just closed.
+		// (Same family as the isConnected-inside-blur trap in CLAUDE.md: don't judge
+		// an in-flight event by state that a microtask may already have rewritten.)
+		const target = evt.target as HTMLElement | null;
+		if (target?.closest('.bt-cell-editor, .bt-date-input, .bt-inline-editor')) return;
+
+		if (evt.key === 'Tab') {
+			evt.preventDefault();
+			selectCell(moveCell(model, occupied, current, evt.shiftKey ? 'left' : 'right'));
+			return;
+		}
+		if (evt.key === 'ArrowUp')    { evt.preventDefault(); selectCell(moveCell(model, occupied, current, 'up'));    return; }
+		if (evt.key === 'ArrowDown')  { evt.preventDefault(); selectCell(moveCell(model, occupied, current, 'down'));  return; }
+		if (evt.key === 'ArrowLeft')  { evt.preventDefault(); selectCell(moveCell(model, occupied, current, 'left'));  return; }
+		if (evt.key === 'ArrowRight') { evt.preventDefault(); selectCell(moveCell(model, occupied, current, 'right')); return; }
+
+		// Clear the cell in place, without opening an editor — spreadsheet standard.
+		if (evt.key === 'Backspace' || evt.key === 'Delete') {
+			evt.preventDefault();
+			if (!onCellChange) return;
+			const currentValue = current.row === 0
+				? (model.columns[current.col]?.name ?? '')
+				: resolveCellValue(model, rowId(model, current.row), colId(model, current.col));
+			if (currentValue !== '') onCellChange(current.row, current.col, '');
+			return;
+		}
+
+		// Enter opens the editor keeping the current content; any printable
+		// character opens it seeded with just that character (i.e. replacing the
+		// content, as Excel/Sheets do). Modifier combos are left to Obsidian.
+		if (evt.key === 'Enter' || (evt.key.length === 1 && !evt.ctrlKey && !evt.metaKey && !evt.altKey)) {
+			const cellEl = table.querySelector<HTMLElement>(`[data-row="${current.row}"][data-col="${current.col}"]`);
+			if (!cellEl) return;
+			evt.preventDefault();
+			triggerPrimaryAction(cellEl, evt.key === 'Enter' ? undefined : evt.key);
+		}
+	});
+
 	// Shared drag-over state — declared here so the drag-and-drop block and the
 	// selector-strip block can both read/write the same indicator state.
 	let dragOverRow = -1;
@@ -880,11 +986,19 @@ export async function renderTable(
 			const tr = tbody.createEl('tr');
 			await renderRow({
 				tr, rowIdx: displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: false,
-				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
+				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
 			});
 			di++;
 		}
 		renderAggregateRows(tbody, model);
+	}
+
+	// Re-apply the Selected highlight carried across the rebuild. Has to happen
+	// after the rows are built, since updateHighlights() walks the rendered cells.
+	if (restoredSel) {
+		sel.start = restoredSel;
+		sel.end   = restoredSel;
+		updateHighlights();
 	}
 
 	// TODO: filter status bar ("Showing X of Y rows · Clear filter") — deferred until

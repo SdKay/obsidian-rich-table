@@ -37,6 +37,15 @@ export interface RenderFullOpts {
 	scrollTop?: number;
 	/** Collected structural ops instead of writing back — inspect via window.__btOps. */
 	captureOps?: boolean;
+	/**
+	 * The plugin's "edit on single click" setting. Off (the default) is classic
+	 * mode: a click waits out the double-click delay before opening the editor,
+	 * and a double-click opens the style panel. On, a click opens the editor
+	 * immediately and Ctrl/Cmd+click takes over as the panel gesture — a
+	 * materially different path through bindCellActivation, so anything asserting
+	 * on click-to-edit behaviour should cover both.
+	 */
+	singleClickEdit?: boolean;
 }
 
 export interface RenderBlockResult {
@@ -121,7 +130,7 @@ export const test = base.extend<{
 			await page.goto(`file://${SHELL}`);
 			await page.addScriptTag({ path: BUNDLE });
 
-			const model = await page.evaluate(async ({ source, sheetId, scrollLeft, scrollTop }) => {
+			const model = await page.evaluate(async ({ source, sheetId, scrollLeft, scrollTop, singleClickEdit }) => {
 				const R = window.RichTableReal;
 				const parsed = R.parseSource(source);
 				const active = 'sheets' in parsed
@@ -149,12 +158,20 @@ export const test = base.extend<{
 					'test.md',
 					component,
 					(op) => { window.__btOps.push(op); },
+					undefined,                // onToggleLock
+					undefined,                // onRootReady
+					undefined,                // isSwapping
+					'test-cache-key',         // cacheKey — needed by the cross-rebuild handoffs
+					() => !!singleClickEdit,
 				);
 				const wrapper = document.querySelector('.bt-table-wrapper');
 				if (scrollLeft !== undefined) wrapper.scrollLeft = scrollLeft;
 				if (scrollTop !== undefined) wrapper.scrollTop = scrollTop;
 				return active;
-			}, { source, sheetId: opts?.sheetId, scrollLeft: opts?.scrollLeft, scrollTop: opts?.scrollTop });
+			}, {
+				source, sheetId: opts?.sheetId, scrollLeft: opts?.scrollLeft,
+				scrollTop: opts?.scrollTop, singleClickEdit: opts?.singleClickEdit,
+			});
 
 			return { model };
 		};

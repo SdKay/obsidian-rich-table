@@ -12,6 +12,7 @@ import { renderSheetTabBar } from './renderSheetTabs';
 import { applyThemeClass } from './renderThemeClass';
 import { genId } from './idGen';
 import { registerHoverState, takeHoverState } from './renderHoverHandoff';
+import { registerSelectedCell } from './renderSelectionHandoff';
 import { registerCalendarMonth } from './renderCalendar';
 import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
@@ -645,6 +646,17 @@ export class TableBlock extends MarkdownRenderChild {
 		// "strips pinned open because a menu is up" case (renderHoverPin.ts).
 		registerHoverState(this.cacheKey,
 			!!this.renderedRoot?.querySelector('.bt-strip-visible'));
+		// Same fact-driven idea for the keyboard-selected cell (see
+		// renderSelectionHandoff.ts). Exactly ONE `.bt-selected` element means a
+		// single Selected cell; a mouse drag-selection paints that same class across
+		// a whole range, which this single-cell mechanism deliberately doesn't cover,
+		// so anything other than one match registers nothing.
+		const selectedEls = this.renderedRoot?.querySelectorAll<HTMLElement>('.bt-selected');
+		const onlySelected = selectedEls?.length === 1 ? selectedEls[0] : undefined;
+		const selRow = parseInt(onlySelected?.dataset.row ?? '-1');
+		const selCol = parseInt(onlySelected?.dataset.col ?? '-1');
+		registerSelectedCell(this.cacheKey,
+			selRow >= 0 && selCol >= 0 ? { row: selRow, col: selCol } : null);
 		// Same idea for a Calendar view's displayed month (renderCalendar.ts):
 		// navigating months is a purely local DOM change, so the ONLY place that
 		// knows what's currently shown is the render root's own dataset, stamped

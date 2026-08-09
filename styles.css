@@ -1379,8 +1379,13 @@
 	width: 100%;
 	min-height: 24px;
 	padding: var(--size-4-2) var(--size-4-3);
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: -2px;
+	/* Same weight as a selected cell's outline (see the selection rule) — the two
+	 * are alternative states of the same cell, so a difference in thickness would
+	 * read as one being less "active" than the other. Drawn on the editor rather
+	 * than on the cell because the editor fills the cell and already owns this
+	 * outline; adding a second one to the cell would render two concentric lines. */
+	outline: 3px solid var(--interactive-accent);
+	outline-offset: -3px;
 	background: var(--background-primary);
 	color: var(--text-normal);
 	font-size: var(--font-ui-medium);
@@ -1403,8 +1408,9 @@
 	height: 100%;
 	padding: var(--size-4-2) var(--size-4-3);
 	border: none;
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: -2px;
+	/* Matches .bt-cell-editor — see the note there. */
+	outline: 3px solid var(--interactive-accent);
+	outline-offset: -3px;
 	background: var(--background-primary);
 	color: var(--text-normal);
 	font-size: var(--font-ui-medium);
@@ -1464,12 +1470,47 @@
 	font-size: var(--font-ui-smaller);
 }
 
-/* Cell selection highlight (drag-to-merge) — applies to both data and header cells */
+/* Cell selection highlight — the keyboard-selected cell, a drag-selected range,
+ * and a whole row/column picked from the selector strips all share this class.
+ *
+ * Two deliberate choices, both matching how a spreadsheet behaves:
+ *
+ * 1. The outline is the primary cue, not the fill. `outline` is the one paint
+ *    channel on a cell that nothing else in this plugin writes — borders are
+ *    taken (the base rule owns all four edges with !important, and changing a
+ *    border width would shift the grid), and box-shadow already has two
+ *    writers composing into it (frozen-region seams in renderFreezePlan.ts and
+ *    the hover tint in renderer.ts). Outline also doesn't participate in
+ *    layout, so selecting a cell can never nudge the table.
+ *
+ * 2. `background-color` is set WITHOUT !important on purpose, so a cell the
+ *    user has coloured keeps its own colour: applyResolvedStyle
+ *    (renderCellStyle.ts) writes user styles inline with !important, which
+ *    outranks any stylesheet rule. Cells with no colour of their own fall back
+ *    to this neutral grey rather than an accent tint, which keeps text legible
+ *    and stops a large selection from washing the table in colour. */
 .bt-table .bt-td.bt-selected,
 .bt-table .bt-th.bt-selected {
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: -2px;
-	background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	outline: 3px solid var(--interactive-accent);
+	outline-offset: -3px;
+}
+
+/* The grey fill marks cells that are *picked*, so it stops at the one being
+ * typed into — a tint there only competes with the text. A cell mid-edit carries
+ * BOTH classes (confirmed in the DOM: `bt-td bt-td-editable bt-selected
+ * bt-editing`), which is why this is stated as an exclusion rather than relying
+ * on a later rule to undo it.
+ *
+ * `!important` is required and does NOT cost the user their own cell colour.
+ * It's required because the base cell rule above sets background-color with
+ * !important of its own, which a plain declaration here loses to no matter how
+ * specific it is. And it's safe because applyResolvedStyle
+ * (renderCellStyle.ts) writes a user's colour INLINE with !important, and an
+ * inline !important outranks a stylesheet !important — so a coloured cell keeps
+ * its colour while selected, which is the behaviour we want. */
+.bt-table .bt-td.bt-selected:not(.bt-editing),
+.bt-table .bt-th.bt-selected:not(.bt-editing) {
+	background-color: var(--background-modifier-hover) !important;
 }
 
 /* Add-row button */
@@ -2783,13 +2824,28 @@
 /* No !important: this selector (4 classes) already outweighs the base
  * .bt-table .bt-td.bt-selected rule (3 classes, styles.css) it overrides for
  * outline-color/background, and .bt-selected is an internal plugin class no
- * unrelated theme/snippet would independently target. */
-.bt-theme-plain .bt-table .bt-td.bt-selected,
-.bt-theme-plain .bt-table .bt-th.bt-selected {
-    outline-color: hsl(var(--bt-p-hue), 88%, 68%);
-    background: color-mix(in srgb, hsl(var(--bt-p-hue), 85%, 65%) 22%,
-                          transparent);
+ * unrelated theme/snippet would independently target.
+ *
+ * Only the colours are restated — the base rule owns the outline WIDTH and the
+ * "no fill on the cell being edited" exclusion, so both carry over here.
+ *
+ * background-color rather than the `background` shorthand, and !important, for
+ * the same reason the base selection rule needs them: the base `.bt-table
+ * .bt-td` rule sets background-color !important, which any plain declaration
+ * loses to. A user's own per-cell colour still wins over this, being inline
+ * !important (applyResolvedStyle). */
+.bt-theme-plain .bt-table .bt-td.bt-selected:not(.bt-editing),
+.bt-theme-plain .bt-table .bt-th.bt-selected:not(.bt-editing) {
+    background-color: color-mix(in srgb, hsl(var(--bt-p-hue), 85%, 65%) 22%,
+                                transparent) !important;
     box-shadow: inset 0 0 12px hsl(var(--bt-p-hue), 70%, 65%, 0.22);
+}
+
+.bt-theme-plain .bt-table .bt-td.bt-selected,
+.bt-theme-plain .bt-table .bt-th.bt-selected,
+.bt-theme-plain .bt-table .bt-td.bt-editing,
+.bt-theme-plain .bt-table .bt-th.bt-editing {
+    outline-color: hsl(var(--bt-p-hue), 88%, 68%);
 }
 
 /* ── Choice pills ────────────────────────────────────────────────────── */

@@ -2,7 +2,7 @@ import { App, Component, MarkdownRenderer, Menu, setIcon } from 'obsidian';
 import { t, sortActiveLabel } from './i18n';
 import type { ColumnDefV2, TableModelV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
-import type { CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler } from './renderTypes';
+import type { CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler } from './renderTypes';
 import { rowId, colId, getMergeOrigin } from './renderGridHelpers';
 import {
 	cellEffectiveStyle, cellInheritedStyle, buildCellStyleContext,
@@ -28,14 +28,17 @@ import { takeLiveEdit } from './renderEditHandoff';
  *    immediately; Ctrl/Cmd+click opens the panel (double-click does nothing,
  *    since its first click already fired the primary action).
  */
+const primaryActions = new WeakMap<HTMLElement, (evt: MouseEvent, seedChar?: string) => void>();
+
 export function bindCellActivation(el: HTMLElement, opts: {
 	getSingleClickEdit: () => boolean;
 	delayMs: number;
-	primaryAction: (evt: MouseEvent) => void;
+	primaryAction: (evt: MouseEvent, seedChar?: string) => void;
 	panelAction: (evt: MouseEvent) => void;
 	/** Skip the click entirely (e.g. clicked an internal link, or a drag just ended). */
 	shouldSkip?: (evt: MouseEvent) => boolean;
 }): void {
+	primaryActions.set(el, opts.primaryAction);
 	const isEditing = () => el.hasClass('bt-editing');
 	let timer: number | null = null;
 	el.addEventListener('mousedown', (evt: MouseEvent) => {
@@ -63,6 +66,32 @@ export function bindCellActivation(el: HTMLElement, opts: {
 	});
 }
 
+/**
+ * Runs whatever bindCellActivation registered as this cell's primary action —
+ * the same closure a real click ends up calling — so keyboard activation
+ * (Enter, or typing while a cell is Selected) opens exactly the editor/menu that
+ * cell type uses, with no duplicate per-type dispatch to keep in sync here.
+ *
+ * The click/double-click disambiguation delay is skipped deliberately: there is
+ * no "double Enter" to wait for. The synthesized event carries the cell's own
+ * corner coordinates, matching the existing Enter-key precedent further down
+ * this file, so a primaryAction that positions a popup off `clientX/clientY`
+ * still lands on the right cell.
+ *
+ * `seedChar` reaches whichever primaryAction takes it — currently text and
+ * header cells, which forward it to enterEditMode's `initialText` so typing on a
+ * Selected cell replaces the content with that character instead of keeping it.
+ * Returns false when the cell has no primary action bound (a read-only cell, or
+ * one whose column has no onCellChange).
+ */
+export function triggerPrimaryAction(el: HTMLElement, seedChar?: string): boolean {
+	const fn = primaryActions.get(el);
+	if (!fn) return false;
+	const r = el.getBoundingClientRect();
+	fn(new MouseEvent('click', { clientX: r.left, clientY: r.bottom }), seedChar);
+	return true;
+}
+
 export interface RenderRowOptions {
 	tr:              HTMLTableRowElement;
 	rowIdx:          number; // 0 = header, 1+ = data rows (1-based)
@@ -82,12 +111,15 @@ export interface RenderRowOptions {
 	cacheKey?:       string;
 	/** Single-click enters edit immediately; Ctrl/Cmd+click opens the style panel. */
 	getSingleClickEdit?: () => boolean;
+	/** How a closing editor hands control back to keyboard navigation — see the
+	 *  type's own doc comment, and renderer.ts for where 'next'/'prev' resolve. */
+	onEditNavigate?: EditNavigateHandler;
 }
 
 export async function renderRow(options: RenderRowOptions): Promise<void> {
 	const {
 		tr, rowIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader,
-		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
+		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
 	} = options;
 	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
 	let c = 0;
@@ -170,12 +202,12 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		if (isHeader) {
 			renderHeaderCell({
 				el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
+				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
 			});
 		} else {
 			await renderDataCell({
 				el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model,
-				onCellChange, onStructuralOp, cacheKey, getSingleClickEdit,
+				onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
 			});
 		}
 		c++;
@@ -197,12 +229,13 @@ export interface RenderHeaderCellOptions {
 	onStructuralOp?:  StructuralOpHandler;
 	cacheKey?:       string;
 	getSingleClickEdit?: () => boolean;
+	onEditNavigate?: EditNavigateHandler;
 }
 
 function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	const {
 		el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit,
+		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
 	} = options;
 	// An empty header name renders an empty <span>, which — same as an empty data
 	// cell's missing <p> — has no line box and collapses to just its padding,
@@ -302,7 +335,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		bindCellActivation(el, {
 			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
 			delayMs: 200,
-			primaryAction: () => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, undefined, cacheKey); },
+			primaryAction: (_evt, seedChar) => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, undefined, cacheKey, seedChar, onEditNavigate); },
 			panelAction: (evt) => openPanel(evt, true),
 		});
 	}
@@ -313,7 +346,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// draft text was typed, instead of silently reverting to the column's stored name.
 	if (onCellChange && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, 0, colIdx);
-		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, undefined, cacheKey, resume.getDraftText());
+		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, undefined, cacheKey, resume.getDraftText(), onEditNavigate);
 	}
 
 	// Double-click / Ctrl+click → style-and-type panel is wired via bindCellActivation above.
@@ -392,15 +425,16 @@ export interface RenderDataCellOptions {
 	onStructuralOp?: StructuralOpHandler;
 	cacheKey?:       string;
 	getSingleClickEdit?: () => boolean;
+	onEditNavigate?: EditNavigateHandler;
 }
 
 async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
-	const { el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model, onCellChange, onStructuralOp, cacheKey, getSingleClickEdit } = options;
+	const { el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model, onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate } = options;
 	const trimmed = value.trim();
 
 	// Special type: date picker
 	if (col.type === 'date') {
-		renderDateCell(el, trimmed, rowIdx, colIdx, model, component, onCellChange, onStructuralOp, cacheKey, getSingleClickEdit);
+		renderDateCell(el, trimmed, rowIdx, colIdx, model, component, onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate);
 		return;
 	}
 
@@ -447,7 +481,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 						});
 					});
 				}
-				showMenuPinned(menu, evt);
+				showMenuPinned(menu, evt, { row: rowIdx, col: colIdx });
 			};
 
 			const openTypedPanel = () => {
@@ -589,9 +623,9 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 			shouldSkip: (evt) =>
 				!!(evt.target as HTMLElement).closest('.internal-link') ||
 				(evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined,
-			primaryAction: () => {
+			primaryAction: (_evt, seedChar) => {
 				if (!el.isConnected) return;
-				enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey);
+				enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, seedChar, onEditNavigate);
 			},
 			panelAction: () => openDataPanel(),
 		});
@@ -603,7 +637,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	// instead of silently reverting to the cell's actual stored value.
 	if (onCellChange && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
-		if (resume) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, resume.getDraftText());
+		if (resume) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, resume.getDraftText(), onEditNavigate);
 	}
 
 }
@@ -621,6 +655,7 @@ function renderDateCell(
 	onStructuralOp?: StructuralOpHandler,
 	cacheKey?: string,
 	getSingleClickEdit?: () => boolean,
+	onEditNavigate?: EditNavigateHandler,
 ): void {
 	if (value) {
 		try {
@@ -665,7 +700,7 @@ function renderDateCell(
 				(evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined,
 			primaryAction: () => {
 				if (!el.isConnected) return;
-				enterDateEditMode(el, value, rowIdx, colIdx, onCellChange, cacheKey);
+				enterDateEditMode(el, value, rowIdx, colIdx, onCellChange, cacheKey, undefined, onEditNavigate);
 			},
 			panelAction: () => openDatePanel(),
 		});
@@ -674,6 +709,6 @@ function renderDateCell(
 	// Resume: see the matching resume check in renderDataCell / renderEditHandoff.ts.
 	if (onCellChange && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
-		if (resume) enterDateEditMode(el, value, rowIdx, colIdx, onCellChange, cacheKey, resume.getDraftText());
+		if (resume) enterDateEditMode(el, value, rowIdx, colIdx, onCellChange, cacheKey, resume.getDraftText(), onEditNavigate);
 	}
 }

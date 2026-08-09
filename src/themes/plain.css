@@ -172,13 +172,28 @@
 /* No !important: this selector (4 classes) already outweighs the base
  * .bt-table .bt-td.bt-selected rule (3 classes, styles.css) it overrides for
  * outline-color/background, and .bt-selected is an internal plugin class no
- * unrelated theme/snippet would independently target. */
-.bt-theme-plain .bt-table .bt-td.bt-selected,
-.bt-theme-plain .bt-table .bt-th.bt-selected {
-    outline-color: hsl(var(--bt-p-hue), 88%, 68%);
-    background: color-mix(in srgb, hsl(var(--bt-p-hue), 85%, 65%) 22%,
-                          transparent);
+ * unrelated theme/snippet would independently target.
+ *
+ * Only the colours are restated — the base rule owns the outline WIDTH and the
+ * "no fill on the cell being edited" exclusion, so both carry over here.
+ *
+ * background-color rather than the `background` shorthand, and !important, for
+ * the same reason the base selection rule needs them: the base `.bt-table
+ * .bt-td` rule sets background-color !important, which any plain declaration
+ * loses to. A user's own per-cell colour still wins over this, being inline
+ * !important (applyResolvedStyle). */
+.bt-theme-plain .bt-table .bt-td.bt-selected:not(.bt-editing),
+.bt-theme-plain .bt-table .bt-th.bt-selected:not(.bt-editing) {
+    background-color: color-mix(in srgb, hsl(var(--bt-p-hue), 85%, 65%) 22%,
+                                transparent) !important;
     box-shadow: inset 0 0 12px hsl(var(--bt-p-hue), 70%, 65%, 0.22);
+}
+
+.bt-theme-plain .bt-table .bt-td.bt-selected,
+.bt-theme-plain .bt-table .bt-th.bt-selected,
+.bt-theme-plain .bt-table .bt-td.bt-editing,
+.bt-theme-plain .bt-table .bt-th.bt-editing {
+    outline-color: hsl(var(--bt-p-hue), 88%, 68%);
 }
 
 /* ── Choice pills ────────────────────────────────────────────────────── */

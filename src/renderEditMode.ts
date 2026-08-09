@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 import { WikilinkInputSuggest } from './wikilinkInputSuggest';
-import type { CellChangeHandler } from './renderTypes';
+import type { CellChangeHandler, EditNavigateHandler, EditNavigateMove } from './renderTypes';
 import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
 
 /**
@@ -20,6 +20,7 @@ export function enterDateEditMode(
 	onCellChange: CellChangeHandler,
 	cacheKey?: string,
 	initialValue?: string,
+	onEditNavigate?: EditNavigateHandler,
 ): void {
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
 	el.empty();
@@ -34,7 +35,8 @@ export function enterDateEditMode(
 
 	let committed = false;
 
-	const save = () => {
+	/** See enterEditMode's save() for what `move` means. */
+	const save = (move?: EditNavigateMove) => {
 		if (committed) return;
 		// A write-back rebuild tearing down this cell's old DOM detaches this
 		// input while it's still focused, which fires a real `blur` — but the
@@ -53,6 +55,8 @@ export function enterDateEditMode(
 			committed = true;
 			if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
 			el.removeClass('bt-editing');
+			// Before the commit — see the matching comment in enterEditMode's save().
+			if (move) onEditNavigate?.(rowIdx, colIdx, move);
 			if (input.value !== currentValue) {
 				void onCellChange(rowIdx, colIdx, input.value);
 			} else {
@@ -62,20 +66,37 @@ export function enterDateEditMode(
 		});
 	};
 
-	const cancel = () => {
+	/** Wrapper so a FocusEvent is never passed as save()'s `move` argument. */
+	const onBlur = () => save();
+
+	const cancel = (toSelected = false) => {
 		if (committed) return;
 		committed = true;
 		if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
-		input.removeEventListener('blur', save);
+		input.removeEventListener('blur', onBlur);
 		el.removeClass('bt-editing');
 		el.empty();
 		for (const node of savedNodes) el.appendChild(node);
+		// See the matching comment in enterEditMode's cancel().
+		if (toSelected) onEditNavigate?.(rowIdx, colIdx, 'stay');
 	};
 
-	input.addEventListener('blur', save);
+	input.addEventListener('blur', onBlur);
 	input.addEventListener('keydown', (evt: KeyboardEvent) => {
-		if (evt.key === 'Enter') { evt.preventDefault(); input.blur(); }
-		if (evt.key === 'Escape') { evt.preventDefault(); cancel(); }
+		if (evt.key === 'Tab') {
+			// Same commit-then-move contract as the text editor. Arrow keys are NOT
+			// intercepted here at all: a native <input type="date"> already gives
+			// ←/→ (move between the day/month/year segments) and ↑/↓ (step the
+			// focused segment) meanings that are more useful than the text editor's
+			// jump-to-start/end would be, and there is no free-text caret to
+			// preserve either.
+			evt.preventDefault();
+			save(evt.shiftKey ? 'prev' : 'next');
+			input.blur();
+			return;
+		}
+		if (evt.key === 'Enter') { evt.preventDefault(); save('stay'); input.blur(); }
+		if (evt.key === 'Escape') { evt.preventDefault(); cancel(true); }
 	});
 
 	input.focus();
@@ -186,6 +207,7 @@ export function enterEditMode(
 	onPasteGrid?: (values: string[][]) => void,
 	cacheKey?: string,
 	initialText?: string,
+	onEditNavigate?: EditNavigateHandler,
 ): void {
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
 
@@ -211,7 +233,13 @@ export function enterEditMode(
 
 	let committed = false;
 
-	const save = () => {
+	/**
+	 * `move` is what should happen to the keyboard selection once this commit
+	 * lands — 'stay' for Enter (finish editing, keep the cell Selected),
+	 * 'next'/'prev' for Tab/Shift+Tab. Left undefined for a plain blur (clicking
+	 * elsewhere), which shouldn't select anything.
+	 */
+	const save = (move?: EditNavigateMove) => {
 		if (committed) return;
 		// A write-back rebuild tearing down this cell's old DOM detaches this
 		// editor while it's still focused, which fires a real `blur` — but the
@@ -229,7 +257,14 @@ export function enterEditMode(
 			committed = true;
 			if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
 			el.removeClass('bt-editing');
+			// Selection BEFORE the commit, and the order is load-bearing: a value
+			// change queues a write-back, and queueOp reads the selection straight
+			// out of the live DOM (renderSelectionHandoff.ts) synchronously, inside
+			// this very call. Committing first would let it snapshot the selection as
+			// it was before this move, so the rebuilt table would restore the
+			// highlight to the wrong cell — or to none at all.
 			const newValue = editor.textContent ?? '';
+			if (move) onEditNavigate?.(rowIdx, colIdx, move);
 			if (newValue !== rawValue) {
 				void onCellChange(rowIdx, colIdx, newValue);
 			} else {
@@ -238,16 +273,23 @@ export function enterEditMode(
 		});
 	};
 
-	const cancel = () => {
+	/** Wrapper so a FocusEvent is never passed as save()'s `move` argument. */
+	const onBlur = () => save();
+
+	const cancel = (toSelected = false) => {
 		if (committed) return;
 		committed = true;
 		if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
-		editor.removeEventListener('blur', save);
+		editor.removeEventListener('blur', onBlur);
 		el.removeClass('bt-editing');
 		restoreNodes();
+		// Escape leaves the cell Selected rather than deselected — this is the only
+		// way into Selected state, since a plain click enters Editing and its own
+		// mouseup clears the drag range behind it.
+		if (toSelected) onEditNavigate?.(rowIdx, colIdx, 'stay');
 	};
 
-	editor.addEventListener('blur', save);
+	editor.addEventListener('blur', onBlur);
 	if (onPasteGrid) {
 		// Only intercept clipboard content that actually came from a spreadsheet
 		// (Excel/Sheets always emit an HTML <table> alongside the plain text) —
@@ -264,6 +306,24 @@ export function enterEditMode(
 			onPasteGrid(rows.map(r => r.split('\t')));
 		});
 	}
+	/**
+	 * Where the caret sits within the cell's text, or null when there's a
+	 * selection rather than a caret (or the caret isn't in this editor at all).
+	 * Measured in characters of `textContent`, so a `<br>` counts for nothing on
+	 * either side and the two ends line up consistently.
+	 */
+	const caretAtEdge = (): { atStart: boolean; atEnd: boolean } | null => {
+		const s = activeWindow.getSelection();
+		if (!s || s.rangeCount === 0 || !s.isCollapsed) return null;
+		const r = s.getRangeAt(0);
+		if (!editor.contains(r.startContainer)) return null;
+		const before = activeDocument.createRange();
+		before.selectNodeContents(editor);
+		before.setEnd(r.startContainer, r.startOffset);
+		const offset = before.toString().length;
+		return { atStart: offset === 0, atEnd: offset >= (editor.textContent ?? '').length };
+	};
+
 	editor.addEventListener('keydown', (evt: KeyboardEvent) => {
 		// Stop Ctrl/Meta combos from bubbling to Obsidian's CodeMirror handlers.
 		// The browser handles Ctrl+V / Ctrl+Z / Ctrl+A natively for contenteditable,
@@ -271,20 +331,77 @@ export function enterEditMode(
 		// "paste without formatting") from accidentally firing on the code block.
 		if (evt.ctrlKey || evt.metaKey) evt.stopPropagation();
 
-		if (evt.key === 'Enter' && !evt.shiftKey) {
+		if (evt.key === 'ArrowLeft' || evt.key === 'ArrowRight') {
+			// Inside the text, these are ordinary caret movement and are left alone.
+			// AT the first/last character they become cell navigation, taking the same
+			// commit-and-move path as Tab.
+			//
+			// This is not a convenience: left to the browser, an arrow key at the edge
+			// of a contenteditable moves the insertion point OUT of it. In Live
+			// Preview that editor is nested in a CodeMirror widget, so the caret lands
+			// in the surrounding note and the keyboard leaves the table altogether —
+			// behaviour we neither chose nor control, and which differs between
+			// Obsidian's view modes. Claiming the key at the boundary makes it
+			// deterministic and keeps the keyboard in the grid.
+			const edge = caretAtEdge();
+			const leaving = edge && (evt.key === 'ArrowLeft' ? edge.atStart : edge.atEnd);
+			if (!leaving) return;   // still room to move within the text
 			evt.preventDefault();
+			save(evt.key === 'ArrowLeft' ? 'prev' : 'next');
+			editor.blur();
+			return;
+		}
+
+		if (evt.key === 'Tab') {
+			// Commits and moves, same as an arrow key at the text's edge above.
+			evt.preventDefault();
+			save(evt.shiftKey ? 'prev' : 'next');
+			editor.blur();
+		} else if (evt.key === 'Enter' && !evt.shiftKey) {
+			// Commit and stay on this cell as Selected. save() is queued first so its
+			// microtask is the one that sets `committed`; the blur() below then just
+			// drops focus off an editor that's already finished.
+			evt.preventDefault();
+			save('stay');
 			editor.blur();
 		} else if (evt.key === 'Escape') {
 			evt.preventDefault();
-			cancel();
+			cancel(true);
+		} else if (evt.key === 'ArrowUp' || evt.key === 'ArrowDown') {
+			// Same two-stage rule as ←/→, one step coarser: the first press jumps to
+			// the very start / end of the content (rather than the browser's
+			// "previous/next visual line", which does nothing at all on a single-line
+			// cell), and pressing again from there commits and moves to the cell
+			// above / below.
+			const up = evt.key === 'ArrowUp';
+			const edge = caretAtEdge();
+			evt.preventDefault();
+			if (edge && (up ? edge.atStart : edge.atEnd)) {
+				save(up ? 'up' : 'down');
+				editor.blur();
+				return;
+			}
+			const range = activeDocument.createRange();
+			range.selectNodeContents(editor);
+			range.collapse(up);
+			activeWindow.getSelection()?.removeAllRanges();
+			activeWindow.getSelection()?.addRange(range);
 		}
 	});
 
-	// Focus and select all existing text
 	editor.focus();
 	if (activeDocument.contains(editor)) {
 		const range = activeDocument.createRange();
 		range.selectNodeContents(editor);
+		// Select-all vs caret-at-end turns on whether the user has already started
+		// typing. Opening a cell on its stored value (a click, or Enter from the
+		// Selected state) selects it all, so the next keystroke replaces it — the
+		// familiar spreadsheet gesture. But `initialText` means typing is already
+		// underway: either a character typed while the cell was merely Selected,
+		// which seeds the editor with it, or a draft resumed after a rebuild
+		// interrupted the edit (renderEditHandoff.ts). Selecting either of those
+		// would make the very next keystroke wipe what the user just typed.
+		if (initialText !== undefined) range.collapse(false);
 		activeWindow.getSelection()?.removeAllRanges();
 		activeWindow.getSelection()?.addRange(range);
 	}

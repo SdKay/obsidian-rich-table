@@ -19,6 +19,16 @@ import type { Menu } from 'obsidian';
 let openPopupCount = 0;
 const onAllClosedListeners = new Set<() => void>();
 
+/**
+ * The cell whose value-picker menu is currently open, if any. Tracked here
+ * because a `Menu` renders to document.body, outside the table's own subtree —
+ * so unlike a text/date editor there is no `.bt-editing` cell to find it by, and
+ * keyboard navigation (renderer.ts) otherwise has no way to know a cell is
+ * mid-interaction.
+ */
+interface ActiveCellMenu { menu: Menu; row: number; col: number; }
+let activeCellMenu: ActiveCellMenu | null = null;
+
 export function isHoverPinned(): boolean {
 	return openPopupCount > 0;
 }
@@ -51,9 +61,27 @@ export function onHoverUnpinned(fn: () => void): () => void {
 	return () => onAllClosedListeners.delete(fn);
 }
 
-/** Convenience wrapper for the common `new Menu(); ...; menu.showAtMouseEvent(evt)` pattern. */
-export function showMenuPinned(menu: Menu, evt: MouseEvent): void {
+/**
+ * Convenience wrapper for the common `new Menu(); ...; menu.showAtMouseEvent(evt)`
+ * pattern. Passing `cell` additionally records this as that cell's open
+ * value-picker menu (see getActiveCellMenu), so keyboard navigation can tell the
+ * cell is mid-interaction and close the menu before moving on.
+ */
+export function showMenuPinned(menu: Menu, evt: MouseEvent, cell?: { row: number; col: number }): void {
 	const unpin = pinHover();
-	menu.onHide(unpin);
+	if (cell) activeCellMenu = { menu, row: cell.row, col: cell.col };
+	menu.onHide(() => {
+		unpin();
+		// Guarded: by the time this menu hides, a different cell's menu may already
+		// have taken the slot, and clearing it would strand that one as untracked.
+		if (activeCellMenu?.menu === menu) activeCellMenu = null;
+	});
 	menu.showAtMouseEvent(evt);
+}
+
+/** The cell whose value-picker menu is open, plus a way to close it. */
+export function getActiveCellMenu(): { row: number; col: number; close: () => void } | null {
+	if (!activeCellMenu) return null;
+	const { menu, row, col } = activeCellMenu;
+	return { row, col, close: () => menu.hide() };
 }

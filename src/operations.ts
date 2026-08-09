@@ -608,7 +608,7 @@ export function canFreezeCols(model: TableModelV2, count: number): boolean {
 }
 
 /** Finds the merge (if any) whose rectangle currently contains (rowId, colId). */
-function findMergeCoveringCell(model: TableModelV2, rowId: string, colId: string): MergeRangeV2 | undefined {
+export function findMergeCoveringCell(model: TableModelV2, rowId: string, colId: string): MergeRangeV2 | undefined {
 	const rIdx = resolveMergeRowIndex(model, rowId);
 	const cIdx = model.columns.findIndex(c => c.id === colId);
 	if (rIdx === undefined || cIdx < 0) return undefined;

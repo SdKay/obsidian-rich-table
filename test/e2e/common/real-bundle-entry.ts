@@ -16,7 +16,14 @@ export { Component as ShimComponent } from './obsidian-shim';
 // The hover-pin counter, so a test can assert the pin was released rather than
 // inferring it from the strips (which would confuse "released" with "the pointer
 // happens to be away").
-export { isHoverPinned } from '../../../src/renderHoverPin';
+export { isHoverPinned, getActiveCellMenu } from '../../../src/renderHoverPin';
+// The shim's Menu, so a test can see which value-picker menu is open and drive
+// its entries. Note the shim renders no menu chrome and attaches no keyboard
+// handling of its own — enough to assert this plugin's tracking and close-on-Tab
+// wiring, but it cannot tell you whether the REAL Obsidian Menu consumes a
+// keystroke before it reaches a document-level listener. That question is settled
+// by hand in the app.
+export { Menu as ShimMenu } from './obsidian-shim';
 export { buildOccupied, getMergeOrigin } from '../../../src/renderGridHelpers';
 export { canFreezeRows, canFreezeCols } from '../../../src/operations';
 export { cellEffectiveStyle, applyColStyle, applyStyleRulesV2, applyResolvedStyle } from '../../../src/renderCellStyle';

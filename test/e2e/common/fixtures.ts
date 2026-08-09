@@ -21,6 +21,14 @@ export interface TableSpec {
 	 */
 	widths: number[];
 	/**
+	 * Per-column `type`, positional and sparse — `['', 'date']` types only the
+	 * second column. A typed column renders through a completely different branch
+	 * of renderDataCell (a date picker, or a choice pill with its own menu) rather
+	 * than the plain text editor, so anything asserting on cell interaction needs
+	 * to be able to ask for one.
+	 */
+	types?: (string | undefined)[];
+	/**
 	 * One entry per row, mapping column index → cell text. `id` is `r_<index>`.
 	 * A row's omitted columns are empty.
 	 */
@@ -40,9 +48,11 @@ export function tableSource(spec: TableSpec): string {
 	const lines: string[] = ['---', 'version: 2', 'columns:'];
 	spec.widths.forEach((w, i) => {
 		const name = String.fromCharCode(65 + i);
-		lines.push(w > 0
-			? `  - { id: c_${i}, name: ${name}, width: ${w} }`
-			: `  - { id: c_${i}, name: ${name} }`);
+		const parts = [`id: c_${i}`, `name: ${name}`];
+		if (w > 0) parts.push(`width: ${w}`);
+		const type = spec.types?.[i];
+		if (type) parts.push(`type: ${type}`);
+		lines.push(`  - { ${parts.join(', ')} }`);
 	});
 	lines.push('rows:');
 	spec.rows.forEach((cells, i) => {
