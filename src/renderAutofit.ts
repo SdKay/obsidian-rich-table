@@ -68,6 +68,20 @@ export function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number):
 			continue;
 		}
 
+		// 1b. Rendered diagram/embed (e.g. a mermaid/plantuml code block, which
+		//     renders to an inline <svg> with its own width/viewBox — a <canvas>-
+		//     based renderer looks the same to auto-fit). These size themselves
+		//     from their own attributes, not text flow: forcing white-space:nowrap
+		//     on an ancestor (the generic text branch below) does nothing for them,
+		//     and measuring via Range.getBoundingClientRect() is unreliable once the
+		//     range crosses into SVG's separate DOM namespace. Read the element's
+		//     own rendered box directly instead.
+		const media = cell.querySelector<HTMLElement>('svg, canvas');
+		if (media) {
+			max = Math.max(max, media.getBoundingClientRect().width + padH + borderH);
+			continue;
+		}
+
 		// 2. Header cell: measure the inline text span (not the cell itself).
 		//    cell.scrollWidth == clientWidth == current column width for table-cell
 		//    elements — useless. The inline span's offsetWidth is the actual text width —
@@ -135,6 +149,7 @@ export function autoFitAllColWidths(
 	for (const { colIdx, minW } of cols) results.set(colIdx, minW);
 
 	const pills:      { colIdx: number; el: HTMLElement }[] = [];
+	const medias:     { colIdx: number; el: HTMLElement }[] = [];
 	const textSpans:  { colIdx: number; el: HTMLElement }[] = [];
 	const nowrapEls:  { colIdx: number; el: HTMLElement }[] = [];
 
@@ -146,6 +161,12 @@ export function autoFitAllColWidths(
 
 			const pill = cell.querySelector<HTMLElement>('.bt-choice');
 			if (pill) { pills.push({ colIdx, el: pill }); continue; }
+			// Rendered diagram/embed (mermaid/plantuml) — see autoFitColWidth's own
+			// comment for why this needs its own branch instead of the generic
+			// nowrap+Range text path below. No write needed: unlike text, an svg/
+			// canvas's own box isn't affected by white-space, so nothing to toggle.
+			const media = cell.querySelector<HTMLElement>('svg, canvas');
+			if (media) { medias.push({ colIdx, el: media }); continue; }
 			// Force nowrap before reading offsetWidth below — if the column is already too
 			// narrow, the header text is already wrapped, and offsetWidth on a wrapped inline
 			// span reports the widest wrapped line, not the text's true natural width.
@@ -178,6 +199,10 @@ export function autoFitAllColWidths(
 	for (const { colIdx, el } of pills) {
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
 		grow(colIdx, el.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
+	}
+	for (const { colIdx, el } of medias) {
+		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
+		grow(colIdx, el.getBoundingClientRect().width + padH + borderH);
 	}
 	for (const { colIdx, el } of textSpans) {
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
