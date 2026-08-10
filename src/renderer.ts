@@ -12,6 +12,7 @@ import { SEL_TOTAL, AUTOFIT_OFFSET } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
 import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler } from './renderTypes';
 import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue } from './renderGridHelpers';
+import { cellIdsToLabel, rangeIdsToLabel } from './formulaLabel';
 import { moveCell, clampToValidCell, type NavCell } from './cellNav';
 import { takeSelectedCell } from './renderSelectionHandoff';
 import { cellEffectiveStyle } from './renderCellStyle';
@@ -89,6 +90,44 @@ export async function renderTable(
 
 	// Snapshot for rendering; getRegistry used in event handlers for fresh lookups
 	const registry = getRegistry();
+
+	// Shared show/hide hooks for the two hover overlays (edge-add strips + selector
+	// strips). Assigned inside their blocks, much further down this function; driven
+	// by one proximity handler below. Declared here — before any listener/observer
+	// is registered and before the first `await renderRow(...)` — rather than right
+	// next to where they're assigned: a `let` binding is in TDZ until its own
+	// declaration line actually runs, and this function awaits per-cell markdown
+	// rendering for every row, which gives the browser real opportunities to fire a
+	// ResizeObserver callback (registered further below, well before the awaits) or
+	// a drag's pointermove handler mid-await — both call several of these before the
+	// "real" implementations would otherwise have been assigned yet, throwing
+	// "Cannot access '...' before initialization" (reproduced: `viewFrameResizeObs`'s
+	// rAF callback firing while renderTable() was still awaiting an earlier row's
+	// cell render). Declaring the stubs this early guarantees they're always a real,
+	// callable no-op the instant anything could possibly reach for them.
+	//
+	// prepareLayout / restoreLayout are called by the proximity handler BEFORE any
+	// show/hide call so that ALL position calculations see the same, correct layout.
+	// This prevents cascading errors when padding-top changes on root (which shifts
+	// the table and would invalidate any positions computed before the change).
+	let showEdgeStrips    = () => { /* assigned in edge block */ };
+	let hideEdgeStrips    = () => { /* assigned in edge block */ };
+	let showSelectors     = () => { /* assigned in selector block */ };
+	let hideSelectors     = () => { /* assigned in selector block */ };
+	let prepareLayout     = () => { /* assigned in selector block */ };
+	let restoreLayout     = () => { /* assigned in selector block */ };
+	let repositionLockBtn    = () => { /* assigned in lock-button block */ };
+	let repositionAutoFitBtn = () => { /* assigned in auto-fit-button block */ };
+	let repositionCtrlCol    = () => { /* assigned in ctrl-column block */ };
+	// Cheap, rebuild-free repositioning (no visibility toggle, no per-cell
+	// rebuild) — hoisted so the width/height drag-resize handles below can keep
+	// the strips tracking the view's live size during a drag, the same way the
+	// wrapper's own scroll listener already does for scroll (see those call
+	// sites for precedent: they call positionSelectors()/positionEdgeStrips()
+	// directly, never showSelectors()/rebuild(), specifically to stay cheap
+	// enough to run on every event in a fast-firing loop).
+	let repositionSelectorStrips = () => { /* assigned in selector block */ };
+	let repositionEdgeStrips     = () => { /* assigned in edge block */ };
 
 	// Title
 	if (model.title) {
@@ -602,8 +641,53 @@ export async function renderTable(
 
 	const tbody = table.createEl('tbody');
 
+	// Capture-phase: a mousedown+mouseup on another cell still fires a native
+	// `click` afterward, which would otherwise reach THAT cell's own
+	// bindCellActivation listener (registered directly on its <td>, bubble
+	// phase) before bubbling up to anything registered on tbody — by the time
+	// a bubble-phase listener here could see it, the other cell would already
+	// have opened its own editor and stolen focus (reproduced: reference
+	// insertion worked, but focus jumped to the clicked cell). Capturing on
+	// tbody runs BEFORE the target's own bubble listener, so swallowing it
+	// here stops that from ever happening. A click inside the formula
+	// editor's own cell is left alone — that's just normal caret placement.
+	tbody.addEventListener('click', (evt: MouseEvent) => {
+		if (!formulaEdit) return;
+		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
+		evt.preventDefault();
+		evt.stopPropagation();
+	}, { capture: true });
+
 	tbody.addEventListener('mousedown', (evt: MouseEvent) => {
 		if (evt.button !== 0) return;
+		if (formulaEdit) {
+			// A cell is mid-formula-edit — clicking ANOTHER cell inserts a
+			// reference instead of the normal drag-select/open-editor behaviour.
+			// A click inside the editor's OWN cell falls through to native caret
+			// placement (formula text is plain, freely hand-editable).
+			if ((evt.target as HTMLElement).closest('.bt-editing')) return;
+			const td = (evt.target as HTMLElement).closest<HTMLElement>('td[data-row][data-col]');
+			if (!td) return;
+			const row = parseInt(td.dataset.row ?? '-1');
+			const col = parseInt(td.dataset.col ?? '-1');
+			if (row < 1 || col < 0) return;
+			evt.preventDefault();
+			formulaDragStart = { row, col };
+			formulaDragEnd   = { row, col };
+			updateFormulaDragHighlight();
+			const onFormulaMouseUp = () => {
+				if (formulaEdit && formulaDragStart && formulaDragEnd) {
+					const label = formulaRangeLabel(formulaDragStart, formulaDragEnd);
+					if (label) formulaEdit.insertText(label);
+				}
+				formulaDragStart = null;
+				formulaDragEnd   = null;
+				updateFormulaDragHighlight();
+				activeDocument.removeEventListener('mouseup', onFormulaMouseUp);
+			};
+			activeDocument.addEventListener('mouseup', onFormulaMouseUp, { once: true });
+			return;
+		}
 		// Don't interfere when clicking inside an active cell editor —
 		// preventDefault would block the browser from placing the cursor
 		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
@@ -642,6 +726,16 @@ export async function renderTable(
 	});
 
 	tbody.addEventListener('mouseover', (evt: MouseEvent) => {
+		if (formulaEdit && formulaDragStart) {
+			const td = (evt.target as HTMLElement).closest<HTMLElement>('td[data-row][data-col]');
+			if (!td) return;
+			const row = parseInt(td.dataset.row ?? '-1');
+			const col = parseInt(td.dataset.col ?? '-1');
+			if (row < 1 || col < 0) return;
+			formulaDragEnd = { row, col };
+			updateFormulaDragHighlight();
+			return;
+		}
 		if (!sel.dragging) return;
 		const td = (evt.target as HTMLElement).closest<HTMLElement>('td[data-row][data-col]');
 		if (!td) return;
@@ -737,6 +831,16 @@ export async function renderTable(
 	const HOVER_ROW_SHADOW  = 'inset 0 0 0 999px color-mix(in srgb, var(--background-modifier-hover) 50%, transparent)';
 	const hoverShadowBase = new Map<HTMLElement, string>();
 	const setHoverShadow = (el: HTMLElement, layer: string) => {
+		// A cell being actively edited already gets its own outline (see the
+		// selection-highlight CSS) and its editor's own opaque background only
+		// covers its OWN content box, not necessarily the full <td> (a `<td>`'s
+		// height is "auto" — a plain child's `height:100%` doesn't resolve
+		// against a row height some OTHER cell stretched, confirmed by direct
+		// measurement) — so tinting it here left a grey band showing around a
+		// smaller white patch (reported: editing a cell while still hovering it
+		// showed a grey cell with a white rectangle inside). Matches Excel too:
+		// a cell mid-edit doesn't also show a hover tint.
+		if (el.hasClass('bt-editing')) return;
 		if (!hoverShadowBase.has(el)) hoverShadowBase.set(el, el.style.getPropertyValue('box-shadow'));
 		// Combine with whatever's currently cascading (the cell's own inline
 		// value if it has one, else a theme's stylesheet-level box-shadow) —
@@ -881,6 +985,45 @@ export async function renderTable(
 		table.querySelectorAll<HTMLElement>('.bt-col-drop-before').forEach(e => e.removeClass('bt-col-drop-before'));
 	};
 
+	// Formula-mode reference insertion — set while some cell's editor is in
+	// formula mode (renderEditMode.ts's FormulaEditHooks), cleared on exit.
+	// A separate drag-range pair (not `sel`) tracks a click-drag purely for
+	// "which cells to turn into a reference label", independent of the
+	// normal multi-cell selection this table already has.
+	let formulaEdit: { insertText: (label: string) => void } | null = null;
+	let formulaDragStart: { row: number; col: number } | null = null;
+	let formulaDragEnd:   { row: number; col: number } | null = null;
+
+	const formulaRangeLabel = (start: { row: number; col: number }, end: { row: number; col: number }): string | null => {
+		const startRowId = rowId(model, start.row), startColId = colId(model, start.col);
+		const endRowId   = rowId(model, end.row),   endColId   = colId(model, end.col);
+		if (!startRowId || !startColId || !endRowId || !endColId) return null;
+		if (start.row === end.row && start.col === end.col) return cellIdsToLabel(model, startRowId, startColId);
+		return rangeIdsToLabel(model, startRowId, startColId, endRowId, endColId);
+	};
+
+	/** Same `.bt-selected` visual language as the ordinary drag-select (`sel`/
+	 *  `updateHighlights` above) — reused here rather than a new class so a
+	 *  formula-mode range drag looks exactly like any other cell selection the
+	 *  user already recognizes. Reported: dragging to build a range reference
+	 *  showed no highlight at all, so it wasn't obvious anything was selected
+	 *  even though the eventual reference insertion worked correctly. `sel`
+	 *  itself is deliberately untouched — formula mode bypasses it entirely
+	 *  (see the mousedown branch above), so this toggles the same class from
+	 *  its own independent start/end pair instead. */
+	const updateFormulaDragHighlight = () => {
+		table.querySelectorAll<HTMLElement>('[data-row][data-col]').forEach(e => {
+			const row = parseInt(e.dataset.row ?? '-1');
+			const col = parseInt(e.dataset.col ?? '-1');
+			const inRange = !!formulaDragStart && !!formulaDragEnd &&
+				row >= Math.min(formulaDragStart.row, formulaDragEnd.row) &&
+				row <= Math.max(formulaDragStart.row, formulaDragEnd.row) &&
+				col >= Math.min(formulaDragStart.col, formulaDragEnd.col) &&
+				col <= Math.max(formulaDragStart.col, formulaDragEnd.col);
+			e.toggleClass('bt-selected', inRange);
+		});
+	};
+
 	// ── Drag-and-drop row/column reordering ──────────────────────────────────
 	if (onStructuralOp) {
 		// Row reordering: drop on tbody rows
@@ -987,6 +1130,8 @@ export async function renderTable(
 			await renderRow({
 				tr, rowIdx: displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: false,
 				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+				onEnterFormulaMode: (insertText) => { formulaEdit = { insertText }; },
+				onExitFormulaMode: () => { formulaEdit = null; formulaDragStart = null; formulaDragEnd = null; updateFormulaDragHighlight(); },
 			});
 			di++;
 		}
@@ -1009,31 +1154,6 @@ export async function renderTable(
 	// box, horizontal scrollbar included.
 	renderFooter(wrapper);
 
-	// Shared show/hide hooks for the two hover overlays (edge-add strips + selector
-	// strips). Assigned inside their blocks; driven by one proximity handler below.
-	//
-	// prepareLayout / restoreLayout are called by the proximity handler BEFORE any
-	// show/hide call so that ALL position calculations see the same, correct layout.
-	// This prevents cascading errors when padding-top changes on root (which shifts
-	// the table and would invalidate any positions computed before the change).
-	let showEdgeStrips    = () => { /* assigned in edge block */ };
-	let hideEdgeStrips    = () => { /* assigned in edge block */ };
-	let showSelectors     = () => { /* assigned in selector block */ };
-	let hideSelectors     = () => { /* assigned in selector block */ };
-	let prepareLayout     = () => { /* assigned in selector block */ };
-	let restoreLayout     = () => { /* assigned in selector block */ };
-	let repositionLockBtn    = () => { /* assigned in lock-button block */ };
-	let repositionAutoFitBtn = () => { /* assigned in auto-fit-button block */ };
-	let repositionCtrlCol    = () => { /* assigned in ctrl-column block */ };
-	// Cheap, rebuild-free repositioning (no visibility toggle, no per-cell
-	// rebuild) — hoisted so the width/height drag-resize handles below can keep
-	// the strips tracking the view's live size during a drag, the same way the
-	// wrapper's own scroll listener already does for scroll (see those call
-	// sites for precedent: they call positionSelectors()/positionEdgeStrips()
-	// directly, never showSelectors()/rebuild(), specifically to stay cheap
-	// enough to run on every event in a fast-firing loop).
-	let repositionSelectorStrips = () => { /* assigned in selector block */ };
-	let repositionEdgeStrips     = () => { /* assigned in edge block */ };
 	// ── Frozen rows/columns ──────────────────────────────────────────────────
 	// Deliberately NOT gated behind onStructuralOp — freeze is a purely visual
 	// feature and must work in read-only rendering too, unlike the hover-only

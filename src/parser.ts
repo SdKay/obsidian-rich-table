@@ -16,12 +16,15 @@ import type {
 	WorkbookV3,
 } from './model';
 import { genId } from './idGen';
+import { recomputeFormulas } from './formula';
 
 const AGG_TYPES: AggType[] = ['sum', 'avg', 'min', 'max', 'count'];
 
 export function parseTable(source: string): TableModelV2 {
 	const yaml = extractFrontmatter(source);
-	return { version: 2, ...parseModelFields(yaml) };
+	const model: TableModelV2 = { version: 2, ...parseModelFields(yaml) };
+	recomputeFormulas(model);
+	return model;
 }
 
 /**
@@ -119,6 +122,7 @@ function parseSheet(raw: unknown, existingIds: Set<string>): SheetDefV2 | null {
 	if (typeof v.name === 'string') sheet.name = v.name;
 	if (typeof v.tabColor === 'string') sheet.tabColor = v.tabColor;
 	if (typeof v.tabTextColor === 'string') sheet.tabTextColor = v.tabTextColor;
+	recomputeFormulas(sheet);
 	return sheet;
 }
 
@@ -171,6 +175,13 @@ function parseRows(raw: unknown): RowDefV2[] {
 		const row: RowDefV2 = { id: r.id, cells };
 		if (r.hidden === true)          row.hidden = true;
 		if (typeof r.height === 'number' && r.height > 0) row.height = r.height;
+		if (typeof r.formulas === 'object' && r.formulas !== null) {
+			const formulas: Record<string, string> = {};
+			for (const [k, v] of Object.entries(r.formulas as Record<string, unknown>)) {
+				if (typeof v === 'string' && v !== '') formulas[k] = v;
+			}
+			if (Object.keys(formulas).length > 0) row.formulas = formulas;
+		}
 		return row;
 	}).filter((r): r is RowDefV2 => r !== null);
 }

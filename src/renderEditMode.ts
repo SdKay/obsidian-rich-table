@@ -1,7 +1,29 @@
 import type { App } from 'obsidian';
 import { WikilinkInputSuggest } from './wikilinkInputSuggest';
-import type { CellChangeHandler, EditNavigateHandler, EditNavigateMove } from './renderTypes';
+import type { CellChangeHandler, EditNavigateHandler, EditNavigateMove, StructuralOpHandler } from './renderTypes';
 import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
+import type { TableModelV2 } from './model';
+import { labelFormulaToIds } from './formulaLabel';
+
+/**
+ * Bundles everything formula-mode editing needs, so enterEditMode's already-
+ * long parameter list gains exactly one new optional param instead of four.
+ * Only passed for plain untyped columns (renderCell.ts's existing fallthrough
+ * already restricts formula editing to those).
+ */
+export interface FormulaEditHooks {
+	model: TableModelV2;
+	rowId: string;
+	colId: string;
+	onStructuralOp: StructuralOpHandler;
+	/** Fired once when the editor's content becomes formula-mode-eligible —
+	 *  either the content is now exactly "=" (fresh formula being typed) or
+	 *  the cell already held a formula being reopened. The renderer uses
+	 *  `insertText` to wire "click another cell inserts a reference token at
+	 *  the caret" for as long as formula mode stays active. */
+	onEnterFormulaMode: (insertText: (label: string) => void) => void;
+	onExitFormulaMode: () => void;
+}
 
 /**
  * `cacheKey` + `initialValue` are only present when this call is itself a
@@ -25,6 +47,17 @@ export function enterDateEditMode(
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
 	el.empty();
 	el.addClass('bt-editing');
+	// Drops a hover tint the mouseover handler (renderer.ts) already applied
+	// BEFORE this click — the common case, since a click happens with the
+	// mouse already sitting on the cell — as an inline `!important` box-shadow.
+	// `setHoverShadow`'s own `.bt-editing` guard only stops a FUTURE call from
+	// re-applying it; it can't undo one already set, and no fresh `mouseover`
+	// fires here since the pointer never actually moved. Removing it directly
+	// is what actually matches Excel (reported: a grey-tinted cell that's
+	// being edited still showed a "hover" wash mismatched against the editor's
+	// own opaque background). `hoverShadowBase`'s cached pre-hover value is
+	// untouched, so a later real mouseleave still restores it correctly.
+	el.style.removeProperty('box-shadow');
 
 	const input = el.createEl('input', {
 		cls: 'bt-date-input',
@@ -208,6 +241,7 @@ export function enterEditMode(
 	cacheKey?: string,
 	initialText?: string,
 	onEditNavigate?: EditNavigateHandler,
+	formulaHooks?: FormulaEditHooks,
 ): void {
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
 
@@ -218,6 +252,9 @@ export function enterEditMode(
 
 	el.empty();
 	el.addClass('bt-editing');
+	// See the matching comment in enterDateEditMode — drops a hover tint the
+	// mouseover handler may have already applied before this click.
+	el.style.removeProperty('box-shadow');
 
 	// contenteditable div — accepted by AbstractInputSuggest natively
 	const editor = el.createDiv({
@@ -230,6 +267,60 @@ export function enterEditMode(
 	new WikilinkInputSuggest(app, editor, sourcePath);
 
 	if (cacheKey) registerLiveEdit(cacheKey, rowIdx, colIdx, () => editor.textContent ?? '');
+
+	// ── Formula mode ──────────────────────────────────────────────────────
+	let inFormulaMode = false;
+
+	/** Inserts text at the current caret (replacing any live selection) and
+	 *  leaves the caret right after it. Falls back to appending at the end
+	 *  when the current selection isn't inside this editor at all — e.g. the
+	 *  user just clicked ANOTHER cell to insert a reference, which steals
+	 *  focus/selection away from this editor until this function's own
+	 *  editor.focus() call reclaims it. */
+	const insertTextAtCaret = (text: string) => {
+		editor.focus();
+		const sel = activeWindow.getSelection();
+		let range: Range;
+		if (sel && sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+			range = sel.getRangeAt(0);
+		} else {
+			range = activeDocument.createRange();
+			range.selectNodeContents(editor);
+			range.collapse(false);
+		}
+		range.deleteContents();
+		const node = activeDocument.createTextNode(text);
+		range.insertNode(node);
+		range.setStartAfter(node);
+		range.collapse(true);
+		sel?.removeAllRanges();
+		sel?.addRange(range);
+	};
+
+	const enterFormulaMode = () => {
+		if (inFormulaMode || !formulaHooks) return;
+		inFormulaMode = true;
+		formulaHooks.onEnterFormulaMode(insertTextAtCaret);
+	};
+	const exitFormulaMode = () => {
+		if (!inFormulaMode) return;
+		inFormulaMode = false;
+		formulaHooks?.onExitFormulaMode();
+	};
+
+	// Reopening a cell that already holds a formula (initialText/rawValue
+	// already starts with "=", converted to friendly-label form by the
+	// caller) — start in formula mode immediately, don't wait for an input
+	// event that will never fire.
+	if ((initialText ?? rawValue).startsWith('=')) enterFormulaMode();
+
+	// Fresh formula: the FIRST character typed becomes "=". Checking the
+	// input event (not keydown) means this also covers the seedChar path
+	// (typing while Selected) and a manual click-then-type into an empty
+	// cell — both land here as "content is now exactly '='".
+	editor.addEventListener('input', () => {
+		if (!inFormulaMode && editor.textContent === '=') enterFormulaMode();
+	});
 
 	let committed = false;
 
@@ -265,7 +356,23 @@ export function enterEditMode(
 			// highlight to the wrong cell — or to none at all.
 			const newValue = editor.textContent ?? '';
 			if (move) onEditNavigate?.(rowIdx, colIdx, move);
-			if (newValue !== rawValue) {
+			if (inFormulaMode && formulaHooks) {
+				exitFormulaMode();
+				if (newValue.startsWith('=') && newValue !== '=') {
+					const idsFormula = labelFormulaToIds(formulaHooks.model, newValue);
+					void formulaHooks.onStructuralOp({
+						type: 'set-cell-formula', rowId: formulaHooks.rowId, colId: formulaHooks.colId, formula: idsFormula,
+					});
+				} else {
+					// Backspaced down to just "=" (or somehow lost the leading =) —
+					// treat as "no formula here anymore", same as clearing it outright.
+					void formulaHooks.onStructuralOp({
+						type: 'set-cell-formula', rowId: formulaHooks.rowId, colId: formulaHooks.colId, formula: null,
+					});
+					if (newValue !== rawValue) void onCellChange(rowIdx, colIdx, newValue);
+					else restoreNodes();
+				}
+			} else if (newValue !== rawValue) {
 				void onCellChange(rowIdx, colIdx, newValue);
 			} else {
 				restoreNodes();
@@ -279,6 +386,7 @@ export function enterEditMode(
 	const cancel = (toSelected = false) => {
 		if (committed) return;
 		committed = true;
+		exitFormulaMode();
 		if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
 		editor.removeEventListener('blur', onBlur);
 		el.removeClass('bt-editing');

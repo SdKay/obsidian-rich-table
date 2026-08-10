@@ -82,6 +82,12 @@ export interface RowDefV2 {
 	hidden?: boolean;
 	height?: number;
 	cells: Record<string, string>; // colId → cell content (always string)
+	/** Formula source per column, only present for cells that are formulas.
+	 *  `cells[colId]` still holds the cached computed result in the same
+	 *  plain-string shape as a literal value — every existing reader of
+	 *  `cells` (aggregate/chart rows, sort, filter, clipboard, mirror) keeps
+	 *  working unchanged. See src/formula.ts for the evaluator. */
+	formulas?: Record<string, string>;
 }
 
 /** Merge range for v2, referenced by row/col IDs. */

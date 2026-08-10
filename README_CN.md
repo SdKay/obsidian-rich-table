@@ -255,7 +255,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>按值筛选行——每个列标题上的漏斗图标</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>行排序——一次性排序，或实时排序并显示指示器直到取消</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>统计行——对当前可见行求 Sum / Average / Min / Max / Count</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>公式——Excel 风格的 <code>=SUM(A1:B3)</code></td><td align="center">🔜</td><td align="center">P2</td></tr>
+<tr><td>公式——Excel 风格的 <code>=SUM(A1:B3)</code>、四则运算、点击/拖拽插入引用</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>进度条列类型</td><td align="center">🔜</td><td align="center">P1</td></tr>
 <tr><td>把本表数据画成图表</td><td align="center">🔜</td><td align="center">P2</td></tr>
 
@@ -375,6 +375,34 @@ YAML 头部是**唯一的数据来源**。`<!-- Generated … -->` 注释下方�
 | `r_xxx.c_yyy` | 单个数据格 |
 
 > **从 v0.x 升级？** 旧格式表格会自动显示升级提示横幅，点击**转换到新版格式**一键迁移，或点击**继续使用旧版**保持原样只读浏览。
+
+---
+
+## 公式
+
+在普通（无类型）单元格里输入 `=` 即可开始输入公式，与 Excel/Sheets 的习惯一致：
+
+- **四则运算**：`+ - * /`，支持括号，例如 `=(r_aaa.c_bbb+1)*2`。
+- **内置函数**：`SUM`、`AVG`、`MIN`、`MAX`、`COUNT`，对一个范围求值，例如 `=SUM(r_aaa.c_bbb:r_ccc.c_bbb)`。
+- **插入引用**：输入公式的过程中，点击另一个单元格即可插入引用，拖拽可插入一个范围——编辑框里显示的是行/列选择条上那种 `A2` 风格的友好标签，不需要手写 ID。
+- 引用跟随行/列的**ID**，不是位置——插入或调整行列顺序都不会破坏已有公式。删除被引用的行或列会显示 `#REF!`。
+- 每次编辑都会重新计算所有公式，不需要手动"重算"。
+
+| 错误 | 含义 |
+|------|------|
+| `#REF!` | 被引用的行或列已不存在 |
+| `#CIRCULAR!` | 公式直接或间接引用了自己所在的单元格 |
+| `#DIV/0!` | 除以零 |
+| `#VALUE!` | 期望数字的地方出现了非数字内容，或公式语法有误 |
+
+存储上，一个公式单元格同时保留公式本身（行内新增的 `formulas:` 字段，和 `cells:` 是同级）和最近一次算出来的值（`cells:`，格式不变）——所以只读 `cells:` 的下方镜像表格或任何外部工具看到的依然是一个普通、正确的数值：
+
+```yaml
+rows:
+  - id: r_000000
+    cells: { c_000000: "5", c_000001: "6" }
+    formulas: { c_000001: "=r_000000.c_000000+1" }
+```
 
 ---
 

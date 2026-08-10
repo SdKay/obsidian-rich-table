@@ -1379,13 +1379,6 @@
 	width: 100%;
 	min-height: 24px;
 	padding: var(--size-4-2) var(--size-4-3);
-	/* Same weight as a selected cell's outline (see the selection rule) — the two
-	 * are alternative states of the same cell, so a difference in thickness would
-	 * read as one being less "active" than the other. Drawn on the editor rather
-	 * than on the cell because the editor fills the cell and already owns this
-	 * outline; adding a second one to the cell would render two concentric lines. */
-	outline: 3px solid var(--interactive-accent);
-	outline-offset: -3px;
 	background: var(--background-primary);
 	color: var(--text-normal);
 	font-size: var(--font-ui-medium);
@@ -1397,7 +1390,6 @@
 	cursor: text;
 }
 
-
 /* Date cell */
 .bt-date-empty {
 	color: var(--text-faint);
@@ -1408,9 +1400,6 @@
 	height: 100%;
 	padding: var(--size-4-2) var(--size-4-3);
 	border: none;
-	/* Matches .bt-cell-editor — see the note there. */
-	outline: 3px solid var(--interactive-accent);
-	outline-offset: -3px;
 	background: var(--background-primary);
 	color: var(--text-normal);
 	font-size: var(--font-ui-medium);
@@ -1488,9 +1477,19 @@
  *    (renderCellStyle.ts) writes user styles inline with !important, which
  *    outranks any stylesheet rule. Cells with no colour of their own fall back
  *    to this neutral grey rather than an accent tint, which keeps text legible
- *    and stops a large selection from washing the table in colour. */
+ *    and stops a large selection from washing the table in colour.
+ *
+ * `.bt-editing` shares this exact outline (not a separate one on the editor
+ * element itself, which is what this plugin drew before) to match Excel: one
+ * border around the whole cell being edited, not a smaller one nested inside
+ * it. A cell entered via a plain click carries `.bt-editing` without
+ * `.bt-selected` (Selected is reached only via Escape/Enter — see cellNav.ts's
+ * doc comment), so both classes need to be listed for the outline to show in
+ * every case editing can start from. */
 .bt-table .bt-td.bt-selected,
-.bt-table .bt-th.bt-selected {
+.bt-table .bt-th.bt-selected,
+.bt-table .bt-td.bt-editing,
+.bt-table .bt-th.bt-editing {
 	outline: 3px solid var(--interactive-accent);
 	outline-offset: -3px;
 }
@@ -1690,6 +1689,11 @@
 	color: var(--text-error);
 	font-style: normal;
 }
+
+/* Formula error pill — visually identical to .bt-choice-unknown (both are
+ * "this cell's content isn't valid" states), kept as a separate class so a
+ * future visual tweak to one doesn't silently affect the other. */
+.bt-formula-error {}
 
 /* ── Unified cell panel (double-click on any cell) ──────────────────────── */
 .bt-cell-panel {

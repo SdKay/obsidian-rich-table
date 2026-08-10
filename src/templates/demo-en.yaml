@@ -78,6 +78,14 @@ rows:
       c_000002: See yellow cell above
       c_000003: done
       c_bignzu: "2.6"
+  - id: r_o90zk1
+    cells:
+      c_000000: Formulas
+      c_000001: "31.4"
+      c_000002: Type = to start a formula; click/drag another cell to insert a reference
+      c_000003: done
+    formulas:
+      c_000001: "=SUM(r_000000.c_bignzu:r_000007.c_bignzu)"
   - id: r_000008
     cells:
       c_000000: Tips

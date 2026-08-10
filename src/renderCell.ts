@@ -1,6 +1,7 @@
 import { App, Component, MarkdownRenderer, Menu, setIcon } from 'obsidian';
 import { t, sortActiveLabel } from './i18n';
 import type { ColumnDefV2, TableModelV2 } from './model';
+import type { FormulaErrorCode } from './formula';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler } from './renderTypes';
 import { rowId, colId, getMergeOrigin } from './renderGridHelpers';
@@ -9,7 +10,8 @@ import {
 	applyColStyle, applyStyleRulesV2,
 } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
-import { enterDateEditMode, enterEditMode } from './renderEditMode';
+import { enterDateEditMode, enterEditMode, type FormulaEditHooks } from './renderEditMode';
+import { idFormulaToLabel } from './formulaLabel';
 import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel } from './renderPanel';
 import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
@@ -114,12 +116,18 @@ export interface RenderRowOptions {
 	/** How a closing editor hands control back to keyboard navigation — see the
 	 *  type's own doc comment, and renderer.ts for where 'next'/'prev' resolve. */
 	onEditNavigate?: EditNavigateHandler;
+	/** Formula-mode hooks — see FormulaEditHooks's own doc comment. Only
+	 *  meaningful for plain untyped columns; threaded through unconditionally
+	 *  since renderDataCell is what actually gates on `!col.type`. */
+	onEnterFormulaMode?: (insertText: (label: string) => void) => void;
+	onExitFormulaMode?: () => void;
 }
 
 export async function renderRow(options: RenderRowOptions): Promise<void> {
 	const {
 		tr, rowIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader,
 		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		onEnterFormulaMode, onExitFormulaMode,
 	} = options;
 	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
 	let c = 0;
@@ -208,6 +216,7 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 			await renderDataCell({
 				el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model,
 				onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+				onEnterFormulaMode, onExitFormulaMode,
 			});
 		}
 		c++;
@@ -426,10 +435,16 @@ export interface RenderDataCellOptions {
 	cacheKey?:       string;
 	getSingleClickEdit?: () => boolean;
 	onEditNavigate?: EditNavigateHandler;
+	onEnterFormulaMode?: (insertText: (label: string) => void) => void;
+	onExitFormulaMode?: () => void;
 }
 
 async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
-	const { el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model, onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate } = options;
+	const {
+		el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model,
+		onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		onEnterFormulaMode, onExitFormulaMode,
+	} = options;
 	const trimmed = value.trim();
 
 	// Special type: date picker
@@ -539,7 +554,18 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		return;
 	}
 
-	if (trimmed) {
+	const FORMULA_ERROR_CODES: readonly FormulaErrorCode[] = ['#REF!', '#CIRCULAR!', '#DIV/0!', '#VALUE!'];
+	const rowForFormula = model.rows[rowIdx - 1]; // rowIdx is 1-based for data rows
+	const isFormulaError = !!rowForFormula?.formulas?.[col.id]
+		&& (FORMULA_ERROR_CODES as readonly string[]).includes(trimmed);
+
+	if (isFormulaError) {
+		const pill = el.createSpan({ cls: 'bt-choice bt-choice-unknown bt-formula-error' });
+		pill.createSpan({ cls: 'bt-choice-warn-icon', text: '⚠' });
+		pill.createSpan({ text: trimmed });
+		pill.setAttribute('aria-label', `Formula error: ${trimmed}`);
+		pill.setAttribute('data-tooltip-position', 'top');
+	} else if (trimmed) {
 		await MarkdownRenderer.render(app, trimmed, el, sourcePath, component);
 		// A soft line break (a lone \n typed via Shift+Enter, as opposed to a literal
 		// <br> the user typed) is rendered by the markdown engine as "<br>\n" — the
@@ -591,6 +617,27 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		if (anchorRowId && anchorColId) void onStructuralOp({ type: 'paste-values', anchorRowId, anchorColId, values });
 	} : undefined;
 
+	// Formula editing is only offered for plain untyped columns — reaching this
+	// point already means col.type is falsy (the date/choice branches above
+	// both return early), so no separate type check is needed here. Reuses
+	// the same `rowForFormula` lookup the error-pill check above already did.
+	const formulaHooks: FormulaEditHooks | undefined =
+		(onStructuralOp && onEnterFormulaMode && onExitFormulaMode && rowForFormula)
+			? {
+				model, rowId: rowForFormula.id, colId: col.id, onStructuralOp,
+				onEnterFormulaMode, onExitFormulaMode,
+			}
+			: undefined;
+	const existingFormula = rowForFormula?.formulas?.[col.id];
+	// The friendly-label formula text (not `value`, which for a formula cell holds
+	// the cached COMPUTED result) is what a plain open should show and select-all —
+	// passed as `rawValue` itself, not as `initialText`, specifically so a plain
+	// click/Enter reopen keeps select-all: `initialText` being defined means "seed
+	// char or resumed draft, caret at end", and a formula cell reopening with no
+	// seed is neither of those (reported: reopening an existing formula placed the
+	// caret at the end instead of selecting it all, unlike every other cell type).
+	const formulaDisplayValue = existingFormula ? idFormulaToLabel(model, existingFormula) : value;
+
 	const openDataPanel = () => {
 		if (el.hasClass('bt-editing') || !onStructuralOp) return;
 		const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
@@ -625,7 +672,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 				(evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined,
 			primaryAction: (_evt, seedChar) => {
 				if (!el.isConnected) return;
-				enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, seedChar, onEditNavigate);
+				enterEditMode(el, formulaDisplayValue, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, seedChar, onEditNavigate, formulaHooks);
 			},
 			panelAction: () => openDataPanel(),
 		});
@@ -637,7 +684,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	// instead of silently reverting to the cell's actual stored value.
 	if (onCellChange && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
-		if (resume) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, resume.getDraftText(), onEditNavigate);
+		if (resume) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, resume.getDraftText(), onEditNavigate, formulaHooks);
 	}
 
 }

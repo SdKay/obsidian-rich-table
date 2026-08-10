@@ -91,6 +91,7 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 			if (v !== '') cells[col.id] = v;
 		}
 		entry.cells = cells;
+		if (r.formulas && Object.keys(r.formulas).length > 0) entry.formulas = r.formulas;
 		return entry;
 	});
 

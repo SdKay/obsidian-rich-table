@@ -1,6 +1,7 @@
 import type { TableModelV2, ColumnDefV2, RowDefV2, StyleRuleV2, MergeRangeV2, AggType, ViewDefV2 } from './model';
 import { genId } from './idGen';
 import { parseStyleTarget, serializeStyleTarget } from './styleTarget';
+import { recomputeFormulas } from './formula';
 
 /**
  * Structural operations for v2 tables.
@@ -31,6 +32,10 @@ export type StructuralOpV2 =
 	 *  merge for every OTHER row at `colId`. */
 	| { type: 'split-cell-col';  rowId: string; colId: string }
 	| { type: 'set-cell-content'; rowId: string; colId: string; value: string }
+	/** Sets or clears (formula: null) a cell's formula source. The cached
+	 *  computed value in `cells[colId]` is filled in by recomputeFormulas,
+	 *  called at the end of this same reducer — never set directly here. */
+	| { type: 'set-cell-formula'; rowId: string; colId: string; formula: string | null }
 	| { type: 'set-col-name';    colId: string; name: string }
 	| { type: 'set-col-type';    colId: string; colType: string | undefined }
 	| { type: 'set-col-width';   colId: string; width: number }
@@ -154,7 +159,13 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			// reanchorMergesForColumnDeletion's doc comment.
 			reanchorMergesForColumnDeletion(model, op.colId);
 			model.columns.splice(idx, 1); // takes col.filter with it — no separate cleanup needed
-			for (const row of model.rows) delete row.cells[op.colId];
+			for (const row of model.rows) {
+				delete row.cells[op.colId];
+				if (row.formulas) {
+					delete row.formulas[op.colId];
+					if (Object.keys(row.formulas).length === 0) delete row.formulas;
+				}
+			}
 			model.merges = model.merges.filter(m =>
 				!m.anchor.endsWith(`.${op.colId}`) && !m.end.endsWith(`.${op.colId}`));
 			pruneDegenerateMerges(model);
@@ -193,6 +204,19 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			if (!row) break;
 			if (op.value === '') delete row.cells[op.colId];
 			else row.cells[op.colId] = op.value;
+			break;
+		}
+		case 'set-cell-formula': {
+			const row = model.rows.find(r => r.id === op.rowId);
+			if (!row) break;
+			if (op.formula === null) {
+				if (row.formulas) {
+					delete row.formulas[op.colId];
+					if (Object.keys(row.formulas).length === 0) delete row.formulas;
+				}
+			} else {
+				row.formulas = { ...row.formulas, [op.colId]: op.formula };
+			}
 			break;
 		}
 		case 'set-col-name': {
@@ -503,6 +527,7 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 	}
 
 	reconcileFreeze(model);
+	recomputeFormulas(model);
 }
 
 /**
