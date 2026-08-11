@@ -378,29 +378,9 @@ The YAML front-matter is the **only data source**. The pipe table below the `<!-
 
 ## Formulas
 
-Type `=` into a plain (untyped) cell to start a formula — same trigger as Excel/Sheets:
+Type `=` into a plain cell to start a formula — same trigger as Excel/Sheets. Supports arithmetic (`+ - * /`, parentheses) and `SUM` / `AVG` / `MIN` / `MAX` / `COUNT` over a range. While typing, click another cell to insert a reference, or drag to insert a range — no need to type a cell address by hand.
 
-- **Arithmetic**: `+ - * /` with parentheses, e.g. `=(r_aaa.c_bbb+1)*2`.
-- **Functions**: `SUM`, `AVG`, `MIN`, `MAX`, `COUNT` over a range, e.g. `=SUM(r_aaa.c_bbb:r_ccc.c_bbb)`.
-- **Insert a reference**: while typing a formula, click another cell to insert it, or drag to insert a range — the editor shows the friendly `A2`-style label matching the row/column selector strips, so you never have to type an ID by hand.
-- References follow the referenced row/column by **ID**, not position — inserting or reordering rows/columns never breaks a formula. Deleting a referenced row or column shows `#REF!` instead.
-- Every formula recomputes on every edit; there's no manual "recalculate" step.
-
-| Error | Meaning |
-|-------|---------|
-| `#REF!` | The referenced row or column no longer exists |
-| `#CIRCULAR!` | The formula (directly or indirectly) references its own cell |
-| `#DIV/0!` | Division by zero |
-| `#VALUE!` | A non-numeric value where a number was expected, or a syntax error |
-
-Internally, a formula cell stores both its formula (`formulas:`, a sibling of `cells:` on the row) and its last computed value (`cells:`, unchanged) — so the pipe-table mirror and any tool that only reads `cells:` still show a plain, correct value:
-
-```yaml
-rows:
-  - id: r_000000
-    cells: { c_000000: "5", c_000001: "6" }
-    formulas: { c_000001: "=r_000000.c_000000+1" }
-```
+A formula follows the row/column it references, not its position, so inserting or reordering rows/columns never breaks it. A deleted reference shows `#REF!`; other results are `#CIRCULAR!` (self-reference), `#DIV/0!`, and `#VALUE!`.
 
 ---
 
