@@ -615,10 +615,16 @@ test.describe('keyboard-nav — how a selected cell looks', () => {
 
 	test('an open editor is outlined as heavily as a selected cell', async ({ page, renderFull }) => {
 		// Reached by a plain click, which is the case where the cell has NO
-		// `.bt-selected` at all — so the outline has to come from the editor's own
-		// rule. Asserting the two weights match is what keeps them from drifting:
-		// selected and editing are alternative states of one cell, and a thinner
-		// line on one reads as it being less active.
+		// `.bt-selected` at all. Editing and Selected share the exact same
+		// outline rule on the CELL itself (styles.css's `.bt-td.bt-selected,
+		// .bt-td.bt-editing`), not a separate rule on the editor element —
+		// an earlier design drew a second, smaller outline on `.bt-cell-editor`
+		// sized to match, which briefly showed BOTH concentric outlines at once
+		// right after a commit (the editor's own outline is drawn on an element
+		// that lingers in the DOM until the write-back rebuild replaces it, at
+		// the same time `.bt-selected`'s outline gets added to the cell). Now
+		// there is only ever one outline declaration for a cell to draw,
+		// regardless of which of the two classes put it there.
 		await renderFull(SOURCE);
 		const cell = page.locator('[data-row="1"][data-col="0"]');
 
@@ -627,15 +633,14 @@ test.describe('keyboard-nav — how a selected cell looks', () => {
 		expect(await cell.evaluate((e: HTMLElement) => e.classList.contains('bt-selected')),
 			'this path should reach Editing without going through Selected').toBe(false);
 
-		const editorOutline = await page.locator('[data-row="1"][data-col="0"] .bt-cell-editor')
-			.evaluate((e: HTMLElement) => getComputedStyle(e).outlineWidth);
-		expect(parseFloat(editorOutline), 'the editor draws no outline of its own').toBeGreaterThan(0);
+		const editingOutline = await cell.evaluate((e: HTMLElement) => getComputedStyle(e).outlineWidth);
+		expect(parseFloat(editingOutline), 'the editing cell draws its own outline').toBeGreaterThan(0);
 
 		// Now compare against a selected cell's outline in the same table.
 		await page.keyboard.press('Escape');
 		await expect.poll(() => page.locator('[data-row="1"][data-col="0"].bt-selected').count()).toBe(1);
 		const selectedOutline = await cell.evaluate((e: HTMLElement) => getComputedStyle(e).outlineWidth);
-		expect(editorOutline, 'editing and selected outlines drifted apart').toBe(selectedOutline);
+		expect(editingOutline, 'editing and selected outlines drifted apart').toBe(selectedOutline);
 	});
 });
 

@@ -42,6 +42,7 @@ export interface TableSpec {
 	freezeCols?: number;
 	viewWidth?: number;
 	viewHeight?: number;
+	locked?: boolean;
 }
 
 export function tableSource(spec: TableSpec): string {
@@ -71,7 +72,7 @@ export function tableSource(spec: TableSpec): string {
 	}
 	for (const [key, value] of [
 		['theme', spec.theme], ['freezeRows', spec.freezeRows], ['freezeCols', spec.freezeCols],
-		['viewWidth', spec.viewWidth], ['viewHeight', spec.viewHeight],
+		['viewWidth', spec.viewWidth], ['viewHeight', spec.viewHeight], ['locked', spec.locked],
 	] as const) {
 		if (value !== undefined) lines.push(`${key}: ${value}`);
 	}

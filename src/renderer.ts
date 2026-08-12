@@ -465,6 +465,43 @@ export async function renderTable(
 		};
 	};
 
+	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
+	// its container flush-left, leaving no natural margin for the row selector +
+	// ctrl column to sit in on the left. Extracted out of prepareLayout (below,
+	// only assigned a real implementation when onStructuralOp is present, i.e.
+	// selector strips exist) so the CTRL COLUMN — which stays visible while a
+	// table is locked via .is-locked, with no row/col selectors at all in that
+	// state — can still call this on its own. Without it, a wide LOCKED table's
+	// unlock button rendered at a negative left with nothing reserving room for
+	// it, landing permanently off-screen (reported: wide table, once locked,
+	// permanently hides the top-left unlock button — narrow tables have enough
+	// natural margin there regardless, which is why this only ever showed up on
+	// a wide one). Deliberately reserves the SAME amount whether or not the row
+	// selector actually exists (onStructuralOp's own AUTOFIT_OFFSET + SEL_TOTAL
+	// math already covers both) — a locked table wastes a few unused px of left
+	// padding rather than under-reserving.
+	const reserveLeftPad = () => {
+		const wr0 = wrapper.getBoundingClientRect();
+		const rr0 = root.getBoundingClientRect();
+		const leftNeed = SEL_TOTAL + AUTOFIT_OFFSET + 4;
+		// Subtract whatever padding-left this function itself already reserved
+		// (never collapsed back to 0 — same permanent-reservation reasoning as
+		// --bt-sel-pad above) before measuring room, so repeat calls are
+		// idempotent. Without this, wr0.left already includes OUR OWN prior
+		// reservation (wrapper sits inside root, shifted right by root's own
+		// padding) — a second call would measure plenty of "room" (the padding
+		// it's currently sitting in), conclude none is needed, and reset it back
+		// to 0, undoing the first call. Reproduced: the ctrl column (which calls
+		// this from every mouseenter, unlike the selector strips' prepareLayout,
+		// which only ever gets a fresh measurement right after restoreLayout
+		// resets this same property back to 0 on mouseleave) landed correctly on
+		// first paint and then snapped back off-screen the moment the pointer
+		// actually entered the table.
+		const currentPad = parseFloat(root.style.getPropertyValue('--bt-sel-pad-left')) || 0;
+		const leftRoom = (wr0.left - rr0.left) - currentPad;
+		const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
+		root.setCssProps({ '--bt-sel-pad-left': `${leftPad}px` });
+	};
 
 	// <colgroup> for precise column widths (used when table-layout:fixed).
 	// If no column has an explicit width we leave widths unset and let the
@@ -1210,11 +1247,22 @@ export async function renderTable(
 	freezeResizeObs.observe(table);
 	component?.register(() => freezeResizeObs.disconnect());
 
+	// Mark root to activate the padding-reservation + resting-state clip-path
+	// CSS that every left/top/right strip (row/col selectors, edge-add "+"
+	// buttons, AND the ctrl column) depends on — see .bt-render-root.bt-has-
+	// strips in styles.css. Gated on `onStructuralOp || onToggleLock`, not
+	// onStructuralOp alone: the ctrl column exists and needs this too whenever
+	// onToggleLock is present, independent of whether the (onStructuralOp-only)
+	// row/col selectors and edge-add strips also exist — a locked table has the
+	// former but not the latter. Without this class, reserveLeftPad's own
+	// --bt-sel-pad-left has no rule consuming it at all (confirmed: the custom
+	// property was set correctly but padding-left computed to 0 regardless),
+	// which was the second half of the wide-locked-table unlock-button bug —
+	// reserving the padding alone wasn't enough.
+	if (onStructuralOp || onToggleLock) root.addClass('bt-has-strips');
+
 	// ── Edge-hover add strips (CSS Grid cells inside bt-render-root) ──
 	if (onStructuralOp) {
-		// Mark root to activate the CSS Grid layout that hosts the selector and
-		// edge-add strips around the table wrapper.
-		root.addClass('bt-has-strips');
 		// Both add-strips live INSIDE the wrapper now (the actual scroll
 		// container), as normal-flow siblings of <table>, made position:sticky
 		// in CSS instead of JS-positioned root-level overlays. Sticky pins each
@@ -1574,6 +1622,14 @@ export async function renderTable(
 				'--cc-maxh': `${Math.max(g.vh - 4, 0)}px`,
 			});
 		};
+		// A locked table's ctrl column is visible from the very first paint
+		// (.is-locked's permanent opacity:1 in styles.css — no hover needed), so
+		// unlike the general case it can't wait for a first mouseenter to reserve
+		// the left padding it needs on a wide table (see reserveLeftPad's own doc
+		// comment): with no room reserved yet, the initial positionCtrlCol() below
+		// would still compute an off-screen --cc-left. Locked-but-unhovered is
+		// exactly the state the reported bug was stuck in.
+		if (model.locked) reserveLeftPad();
 		window.requestAnimationFrame(positionCtrlCol);
 		table.addEventListener('bt-layout-changed', positionCtrlCol);
 		new ResizeObserver(positionCtrlCol).observe(table);
@@ -1980,32 +2036,17 @@ export async function renderTable(
 		// show/hide so that positionEdgeStrips() and positionSelectors() both see
 		// the same layout (table already shifted by --bt-sel-pad).
 		prepareLayout = () => {
-			// The left strips (row selector + ctrl column) sit to the LEFT of the table.
-			// A centered/narrow table has ample margin room there, but a wide table that
-			// fills the container is flush-left inside root — the strips would land at a
-			// negative left and get clipped off-screen (reported: wide tables show no left
-			// toolbar/row-selector). Measured against the WRAPPER's left (the visible
-			// viewport edge, which — unlike the table's own left — stays put no matter how
-			// far the table is horizontally scrolled): if the gap to root's left edge is
-			// smaller than the widest left element needs (the ctrl column, reaching
-			// SEL_TOTAL + AUTOFIT_OFFSET + 4 px left of the visible edge), reserve the
-			// shortfall as padding-left so the table shifts right just enough to expose them.
-			// Narrow tables measure a large gap → 0 padding → no visible shift.
-			const wr0 = wrapper.getBoundingClientRect();
-			const rr0 = root.getBoundingClientRect();
-			const leftNeed = SEL_TOTAL + AUTOFIT_OFFSET + 4;
-			const leftRoom = wr0.left - rr0.left;
-			const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
+			// Left-padding reservation (row selector + ctrl column sitting flush-left
+			// on a wide table) is shared with the ctrl-column-only, locked-table case —
+			// see reserveLeftPad's own doc comment above computeVisibleGeom.
+			reserveLeftPad();
 			// No right/bottom padding reservation here (there used to be one for each,
 			// --bt-sel-pad-right and --bt-add-pad, for addColBtn/addRowBtn back when
 			// both protruded past root's own edges as absolute overlays) — both now
 			// live inside .bt-table-wrapper as normal-flow sticky elements (addColBtn
 			// via the contentRow flex wrapper, addRowBtn directly), fully contained
 			// within root's own box already, so nothing needs compensating for.
-			root.setCssProps({
-				'--bt-sel-pad': `${SEL_TOTAL}px`,
-				'--bt-sel-pad-left': `${leftPad}px`,
-			});
+			root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px` });
 			// Cancel whatever --bt-title-mb-pull the active theme set (bridged onto titleEl in
 			// tableBlock.ts) so the title sits flush above the col-selector strip on hover
 			// instead of stacking a second gap on top of the theme's own pull-closer value.
@@ -2505,16 +2546,38 @@ export async function renderTable(
 	// ── Show/hide overlays on mouse enter/leave ───────────────────────────────
 	// With CSS Grid, root already includes all strip areas — hovering them fires
 	// enter/leave naturally. No viewport math or rAF throttling needed.
-	if (onStructuralOp) {
+	//
+	// Gated on `onStructuralOp || onToggleLock`, not `onStructuralOp` alone: the
+	// ctrl column (lock/auto-fit/theme icons) stays visible on a LOCKED table via
+	// `.is-locked`'s permanent opacity:1 — bypassing the hover-to-reveal path
+	// entirely — but its own left-edge positioning still depends on
+	// reserveLeftPad/repositionCtrlCol below, which used to run ONLY from this
+	// mouseenter handler. A locked table has no onStructuralOp (row/col selectors
+	// don't exist then, correctly), so the whole block — and the padding
+	// reservation with it — never ran, and a wide locked table's unlock button
+	// rendered off-screen with no room reserved for it (reported: permanently
+	// hidden top-left unlock button on a wide table once locked; a narrow table's
+	// natural margin hid the same underlying gap). showEdgeStrips/showSelectors
+	// stay gated on onStructuralOp specifically — those exist to run editing-only
+	// actions that a locked table shouldn't offer at all.
+	if (onStructuralOp || onToggleLock) {
 		root.addEventListener('mouseenter', () => {
-			// prepareLayout MUST run before any position calculation so all
-			// getBoundingClientRect() calls see the final padded layout.
-			prepareLayout();
+			// Runs unconditionally: needed for the ctrl column's own positioning
+			// even when nothing else in this handler applies (locked table).
+			reserveLeftPad();
 			repositionLockBtn();
 			repositionAutoFitBtn();
 			repositionCtrlCol();
-			showEdgeStrips();
-			showSelectors();
+			if (onStructuralOp) {
+				// prepareLayout MUST run before any position calculation so all
+				// getBoundingClientRect() calls see the final padded layout — it
+				// re-does reserveLeftPad (idempotent) plus the top/title-pull
+				// reservation the selector strips need that reserveLeftPad alone
+				// doesn't cover.
+				prepareLayout();
+				showEdgeStrips();
+				showSelectors();
+			}
 		});
 		// A menu/panel we opened (Menu, cell/filter panel) always renders outside
 		// root's own DOM subtree (appended to document.body), so moving the mouse
@@ -2529,17 +2592,22 @@ export async function renderTable(
 		component?.register(onHoverUnpinned(() => {
 			if (!root.matches(':hover')) { hideEdgeStrips(); hideSelectors(); }
 		}));
-		// Reserve the top strip padding from the very first paint, not just
-		// from the first hover onward, and never collapse it back (see
-		// restoreLayout's own comment) — every table, not only one with a
-		// sheet-tab-bar below it (that was the original, narrower trigger for
-		// this same permanent-reservation treatment; the outer-pane-scrollbar
-		// shift is a second, more general one). Sets --bt-sel-pad directly
-		// rather than calling the full prepareLayout() — that also computes
-		// --bt-sel-pad-left, which stays intentionally hover-only (see
-		// restoreLayout's comment on why that one doesn't need the same fix).
-		root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px` });
-		updateViewFrame();
+		if (onStructuralOp) {
+			// Reserve the top strip padding from the very first paint, not just
+			// from the first hover onward, and never collapse it back (see
+			// restoreLayout's own comment) — every table with selector strips,
+			// not only one with a sheet-tab-bar below it (that was the original,
+			// narrower trigger for this same permanent-reservation treatment; the
+			// outer-pane-scrollbar shift is a second, more general one). A locked
+			// table has no column selector to reserve room for, so this stays
+			// scoped to onStructuralOp specifically, unlike reserveLeftPad above.
+			// Sets --bt-sel-pad directly rather than calling the full
+			// prepareLayout() — that also computes --bt-sel-pad-left, which stays
+			// intentionally hover-only (see restoreLayout's comment on why that
+			// one doesn't need the same fix).
+			root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px` });
+			updateViewFrame();
+		}
 	}
 
 	// ── Cursor-position CSS variables (base layer, usable by any theme) ────────

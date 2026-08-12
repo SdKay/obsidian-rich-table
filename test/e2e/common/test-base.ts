@@ -157,8 +157,15 @@ export const test = base.extend<{
 					{},                       // app — only ever passed through
 					'test.md',
 					component,
-					(op) => { window.__btOps.push(op); },
-					undefined,                // onToggleLock
+					// A locked table has no onStructuralOp in the real app (tableBlock.ts's
+					// render() ternary) — matching that here matters for anything asserting
+					// on locked-table behaviour, not just for realism in general.
+					active.locked ? undefined : (op) => { window.__btOps.push(op); },
+					// onToggleLock, unlike onOp, stays available while locked — you need a
+					// way to unlock a locked table. Pushes the same {type:'toggle-lock'}
+					// shape onOp would have dispatched, so a test can assert on __btOps
+					// either way.
+					() => { window.__btOps.push({ type: 'toggle-lock' }); return Promise.resolve(); },
 					undefined,                // onRootReady
 					undefined,                // isSwapping
 					'test-cache-key',         // cacheKey — needed by the cross-rebuild handoffs
