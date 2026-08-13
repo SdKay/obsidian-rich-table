@@ -65,4 +65,18 @@ test.describe('locked wide table — ctrl column stays reachable', () => {
 		const box = await lockBtnBox(page);
 		expect(box!.x).toBeGreaterThanOrEqual(0);
 	});
+
+	test('unlock button sits close to the table, not reserving room for a nonexistent selector strip', async ({ page, renderFull }) => {
+		// A locked table has no row/col selectors at all (onStructuralOp gates
+		// them off), so the gap the ctrl column needs to clear is just its own
+		// icon width — not the full row-selector-strip-sized gap a table with
+		// selectors reserves. Asserting a small gap here is what would catch a
+		// regression back to the wider, selector-sized reservation.
+		await page.setViewportSize({ width: 340, height: 400 });
+		await renderFull(WIDE_LOCKED);
+		const wrapperLeft = (await page.locator('.bt-table-wrapper').boundingBox())!.x;
+		const box = await lockBtnBox(page);
+		expect(wrapperLeft - box!.x - box!.width, 'unlock button sits further from the table than it needs to')
+			.toBeLessThan(10);
+	});
 });

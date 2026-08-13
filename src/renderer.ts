@@ -8,7 +8,7 @@ import { BUILTIN_THEMES } from './themes/index';
 import type { TableModelV2, AggType } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
-import { SEL_TOTAL, AUTOFIT_OFFSET } from './selectorLayout';
+import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
 import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler } from './renderTypes';
 import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue } from './renderGridHelpers';
@@ -465,6 +465,17 @@ export async function renderTable(
 		};
 	};
 
+	// How far left of the table's visible edge the ctrl column needs to clear.
+	// The full SEL_TOTAL+AUTOFIT_OFFSET amount is sized to sit just left of the
+	// row SELECTOR strip (see AUTOFIT_OFFSET's own doc comment) — irrelevant on
+	// a locked table, which has no selectors at all (onStructuralOp gates them
+	// off) and only ever shows the lock icon itself, SEL_CELL wide. Using the
+	// smaller gap there specifically (not the full one "just to be safe") is
+	// what was asked for once the bug above was fixed: reserving room for a
+	// selector strip that will never exist just pushed the button, and the
+	// whole table, further right than it needed to be.
+	const CTRL_COL_LEFT_GAP = onStructuralOp ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
+
 	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
 	// its container flush-left, leaving no natural margin for the row selector +
 	// ctrl column to sit in on the left. Extracted out of prepareLayout (below,
@@ -476,14 +487,11 @@ export async function renderTable(
 	// it, landing permanently off-screen (reported: wide table, once locked,
 	// permanently hides the top-left unlock button — narrow tables have enough
 	// natural margin there regardless, which is why this only ever showed up on
-	// a wide one). Deliberately reserves the SAME amount whether or not the row
-	// selector actually exists (onStructuralOp's own AUTOFIT_OFFSET + SEL_TOTAL
-	// math already covers both) — a locked table wastes a few unused px of left
-	// padding rather than under-reserving.
+	// a wide one).
 	const reserveLeftPad = () => {
 		const wr0 = wrapper.getBoundingClientRect();
 		const rr0 = root.getBoundingClientRect();
-		const leftNeed = SEL_TOTAL + AUTOFIT_OFFSET + 4;
+		const leftNeed = CTRL_COL_LEFT_GAP;
 		// Subtract whatever padding-left this function itself already reserved
 		// (never collapsed back to 0 — same permanent-reservation reasoning as
 		// --bt-sel-pad above) before measuring room, so repeat calls are
@@ -1599,9 +1607,11 @@ export async function renderTable(
 		}
 
 
-		// Position the column just left of the row selector — anchored to the VISIBLE
-		// left edge (not the table's own left) so it stays on-screen when a wide table
-		// is horizontally scrolled.
+		// Position the column just left of the row selector (or, on a locked table
+		// with no row selector at all, just left of the table itself — see
+		// CTRL_COL_LEFT_GAP above) — anchored to the VISIBLE left edge (not the
+		// table's own left) so it stays on-screen when a wide table is
+		// horizontally scrolled.
 		const positionCtrlCol = () => {
 			const g = computeVisibleGeom();
 			if (g.tr.width === 0) return;
@@ -1618,7 +1628,7 @@ export async function renderTable(
 			// the wrapper instead of scrolling off with the table's top.
 			ctrlCol.setCssProps({
 				'--cc-top':  `${g.vt + 2}px`,
-				'--cc-left': `${g.vl - SEL_TOTAL - AUTOFIT_OFFSET - 4}px`,
+				'--cc-left': `${g.vl - CTRL_COL_LEFT_GAP}px`,
 				'--cc-maxh': `${Math.max(g.vh - 4, 0)}px`,
 			});
 		};
