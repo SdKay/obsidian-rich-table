@@ -508,7 +508,20 @@ export async function renderTable(
 		const currentPad = parseFloat(root.style.getPropertyValue('--bt-sel-pad-left')) || 0;
 		const leftRoom = (wr0.left - rr0.left) - currentPad;
 		const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
+		if (leftPad === currentPad) return;
+		// A manually-set view width (--bt-view-width) is a FIXED, border-box width
+		// on root — reserving padding-left there doesn't grow root, it shrinks the
+		// content area (and therefore wrapper's own clientWidth) by the same
+		// amount. If the user had scrolled wrapper all the way to its right edge,
+		// that shrink silently un-maxes scrollLeft (the max is now
+		// scrollWidth-clientWidth, a bigger number than before) — the table visibly
+		// "retreats" from the edge the user explicitly scrolled to (reported:
+		// dragging to the far right, leaving, then re-hovering the table moved the
+		// scrollbar back). Re-pin to the new max in that case, same idea as a chat
+		// UI keeping its scroll pinned to the bottom across a resize.
+		const wasAtMaxScroll = wrapper.scrollWidth - wrapper.clientWidth - wrapper.scrollLeft < 1;
 		root.setCssProps({ '--bt-sel-pad-left': `${leftPad}px` });
+		if (wasAtMaxScroll) wrapper.scrollLeft = wrapper.scrollWidth - wrapper.clientWidth;
 	};
 
 	// <colgroup> for precise column widths (used when table-layout:fixed).
