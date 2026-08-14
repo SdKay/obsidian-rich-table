@@ -43,10 +43,13 @@ export interface TableSpec {
 	viewWidth?: number;
 	viewHeight?: number;
 	locked?: boolean;
+	title?: string;
 }
 
 export function tableSource(spec: TableSpec): string {
-	const lines: string[] = ['---', 'version: 2', 'columns:'];
+	const lines: string[] = ['---', 'version: 2'];
+	if (spec.title !== undefined) lines.push(`title: ${spec.title}`);
+	lines.push('columns:');
 	spec.widths.forEach((w, i) => {
 		const name = String.fromCharCode(65 + i);
 		const parts = [`id: c_${i}`, `name: ${name}`];

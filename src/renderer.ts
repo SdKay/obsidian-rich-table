@@ -476,6 +476,21 @@ export async function renderTable(
 	// whole table, further right than it needed to be.
 	const CTRL_COL_LEFT_GAP = onStructuralOp ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
 
+	// Obsidian's own block-hover toolbar (the "</>" edit-source button, shown
+	// while hovering ANY code block) floats at a fixed position over the
+	// top-right of the whole rendered block — outside this plugin's control
+	// entirely, since it's Obsidian's own chrome, not something in our DOM. A
+	// title pushes the table down clear of it; without one, the table's own
+	// top edge — where the column-selector strip and its resize handles live —
+	// sits right underneath it (reported with screenshots: the toolbar's own
+	// hit area covered the last column's resize seam, only reachable once the
+	// pointer moved past it). The extra amount is a guess from those
+	// screenshots, not a measurement against the real toolbar — this plugin's
+	// e2e harness has no way to render Obsidian's own chrome to verify against
+	// — so treat this as a starting point that may need retuning after a real
+	// check in the app, not a settled constant.
+	const TOP_STRIP_PAD = SEL_TOTAL + (model.title ? 0 : 28);
+
 	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
 	// its container flush-left, leaving no natural margin for the row selector +
 	// ctrl column to sit in on the left. Extracted out of prepareLayout (below,
@@ -2069,7 +2084,7 @@ export async function renderTable(
 			// live inside .bt-table-wrapper as normal-flow sticky elements (addColBtn
 			// via the contentRow flex wrapper, addRowBtn directly), fully contained
 			// within root's own box already, so nothing needs compensating for.
-			root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px` });
+			root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
 			// Cancel whatever --bt-title-mb-pull the active theme set (bridged onto titleEl in
 			// tableBlock.ts) so the title sits flush above the col-selector strip on hover
 			// instead of stacking a second gap on top of the theme's own pull-closer value.
@@ -2628,7 +2643,7 @@ export async function renderTable(
 			// prepareLayout() — that also computes --bt-sel-pad-left, which stays
 			// intentionally hover-only (see restoreLayout's comment on why that
 			// one doesn't need the same fix).
-			root.setCssProps({ '--bt-sel-pad': `${SEL_TOTAL}px` });
+			root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
 			updateViewFrame();
 		}
 	}
