@@ -154,11 +154,13 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 **16 · Split cell** — double-click a plain cell → split into 2 rows/columns; other cells in that row/column keep their current shape
 
-> 🎬 *Demo GIF coming soon*
+![split-cell](docs/demo-cell-split.gif)
 
 ---
 
 ## Keyboard
+
+![keyboard](docs/demo-switch-cell.gif)
 
 A cell is in one of three states, and every shortcut below follows from which one you're in.
 
@@ -188,6 +190,16 @@ Notes:
 - **The header row takes part** — arrow up from the first data row to reach it; typing there renames the column.
 - **Merged cells** are entered at their anchor, never at a position they cover; **hidden and filtered-out** rows and columns are skipped.
 - **Typed columns** behave per type: a date cell opens the native picker, where the arrow keys step the day/month/year segments instead; a choice cell opens Obsidian's own value menu, which you navigate as any Obsidian menu. `Tab` commits and moves on from either.
+
+---
+
+## Formulas
+
+![键盘操作](docs/demo-formula.gif)
+
+Type `=` into a plain cell to start a formula — same trigger as Excel/Sheets. Supports arithmetic (`+ - * /`, parentheses) and `SUM` / `AVG` / `MIN` / `MAX` / `COUNT` over a range. While typing, click another cell to insert a reference, or drag to insert a range — no need to type a cell address by hand.
+
+A formula follows the row/column it references, not its position, so inserting or reordering rows/columns never breaks it. A deleted reference shows `#REF!`; other results are `#CIRCULAR!` (self-reference), `#DIV/0!`, and `#VALUE!`.
 
 ---
 
@@ -376,13 +388,6 @@ The YAML front-matter is the **only data source**. The pipe table below the `<!-
 
 ---
 
-## Formulas
-
-Type `=` into a plain cell to start a formula — same trigger as Excel/Sheets. Supports arithmetic (`+ - * /`, parentheses) and `SUM` / `AVG` / `MIN` / `MAX` / `COUNT` over a range. While typing, click another cell to insert a reference, or drag to insert a range — no need to type a cell address by hand.
-
-A formula follows the row/column it references, not its position, so inserting or reordering rows/columns never breaks it. A deleted reference shows `#REF!`; other results are `#CIRCULAR!` (self-reference), `#DIV/0!`, and `#VALUE!`.
-
----
 
 ## Themes
 
