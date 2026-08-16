@@ -126,7 +126,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 > 🎬 *Demo GIF coming soon*
 
-**9 · Copy/paste interop with Excel & Markdown** — paste values pasted from Excel/Sheets straight into a cell (detected via clipboard HTML); copy a selection out as an Excel-compatible table or as a Markdown table, from the selection/cell/header menus
+**9 · Copy/paste interop with Excel & Markdown** — paste a range from Excel/Sheets straight into a cell (detected via clipboard HTML), or a standard Markdown/GFM pipe table pasted as plain text (typed by hand, copied from another note, an LLM reply, GitHub, etc.); pasting onto a **header** cell instead converts the whole thing — the pasted header row becomes column names, the rest becomes data, table-format conversion in one paste. Copy a selection out as an Excel-compatible table or as a Markdown table, from the selection/cell/header menus
 
 > 🎬 *Demo GIF coming soon*
 
@@ -250,7 +250,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 </tr>
 <tr><td>Keyboard navigation — arrow keys, Tab, type-to-replace (see <a href="#keyboard">Keyboard</a>)</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Cell, header and selection menus — insert / delete / hide rows &amp; columns, merge, style, column type, alignment</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Excel / Sheets clipboard — paste a range into a cell, copy a selection back out (or as a Markdown table)</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Excel / Sheets / Markdown-table clipboard — paste a range from Excel/Sheets or a pasted/typed Markdown table into a cell (or onto a header cell to convert the whole table's format), copy a selection back out (or as a Markdown table)</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Table title and footer notes — click to edit inline</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Insert a block without typing the fence — command palette (assign your own hotkey), ribbon icon, or editor right-click</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Cell comments</td><td align="center">🔜</td><td align="center">P2</td></tr>

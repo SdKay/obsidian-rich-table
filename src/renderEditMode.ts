@@ -4,6 +4,7 @@ import type { CellChangeHandler, EditNavigateHandler, EditNavigateMove, Structur
 import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
 import type { TableModelV2 } from './model';
 import { labelFormulaToIds } from './formulaLabel';
+import { parseMarkdownPipeTable, parseHtmlTable } from './renderClipboard';
 
 /**
  * Bundles everything formula-mode editing needs, so enterEditMode's already-
@@ -399,19 +400,28 @@ export function enterEditMode(
 
 	editor.addEventListener('blur', onBlur);
 	if (onPasteGrid) {
-		// Only intercept clipboard content that actually came from a spreadsheet
-		// (Excel/Sheets always emit an HTML <table> alongside the plain text) —
-		// otherwise leave ordinary multi-line text paste as native single-cell text.
+		// Two ways clipboard content signals "this is a grid, not plain text":
+		// an HTML <table> (Excel/Sheets, or Obsidian's own "copy a rendered
+		// table") takes priority when present — parsed directly from its DOM
+		// structure rather than assuming the accompanying text/plain is
+		// tab-separated, which isn't true for every <table>-emitting source
+		// (Obsidian's own copy puts the ORIGINAL MARKDOWN SOURCE, pipes and
+		// all, in text/plain — splitting that on '\t' left every line as one
+		// unsplit cell). Otherwise fall back to recognizing a Markdown/GFM
+		// pipe table in the plain text itself (typed by hand, copied from
+		// another note, an LLM reply, GitHub, etc. — none of which emit an
+		// HTML table at all) — see parseMarkdownPipeTable's own comment for
+		// why that detection doesn't false-positive on ordinary prose. Neither
+		// matching leaves the paste as native single-cell text.
 		editor.addEventListener('paste', (evt: ClipboardEvent) => {
 			const html = evt.clipboardData?.getData('text/html') ?? '';
-			if (!/<table[\s>]/i.test(html)) return;
-			const text = evt.clipboardData?.getData('text/plain');
-			if (!text) return;
+			const values = /<table[\s>]/i.test(html)
+				? parseHtmlTable(html)
+				: parseMarkdownPipeTable(evt.clipboardData?.getData('text/plain') ?? '');
+			if (!values) return;
 			evt.preventDefault();
 			cancel();
-			const rows = text.split(/\r\n|\n|\r/);
-			if (rows.length > 1 && rows[rows.length - 1] === '') rows.pop();
-			onPasteGrid(rows.map(r => r.split('\t')));
+			onPasteGrid(values);
 		});
 	}
 	/**

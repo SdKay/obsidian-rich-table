@@ -320,6 +320,16 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		}
 	});
 
+	// Pasting a whole copied/typed table (header row included) onto a header
+	// cell converts it into this table's real columns/rows in one paste —
+	// table-format conversion, not a header rename — instead of the plain
+	// data-cell paste's "fill starting at this exact row", which has no
+	// concept of renaming a column at all.
+	const onPasteGridHeader = onStructuralOp ? (values: string[][]) => {
+		const anchorColId = col.id;
+		void onStructuralOp({ type: 'paste-values-with-header', anchorColId, values });
+	} : undefined;
+
 	if (onCellChange) {
 		el.addClass('bt-th-editable');
 		// Caret placement when clicking *inside* the active editor — the th would
@@ -344,7 +354,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		bindCellActivation(el, {
 			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
 			delayMs: 200,
-			primaryAction: (_evt, seedChar) => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, undefined, cacheKey, seedChar, onEditNavigate); },
+			primaryAction: (_evt, seedChar) => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, seedChar, onEditNavigate); },
 			panelAction: (evt) => openPanel(evt, true),
 		});
 	}
@@ -355,7 +365,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// draft text was typed, instead of silently reverting to the column's stored name.
 	if (onCellChange && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, 0, colIdx);
-		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, undefined, cacheKey, resume.getDraftText(), onEditNavigate);
+		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, resume.getDraftText(), onEditNavigate);
 	}
 
 	// Double-click / Ctrl+click → style-and-type panel is wired via bindCellActivation above.

@@ -72,6 +72,14 @@ export type StructuralOpV2 =
 	 *  fixed initial width (see model.ts). */
 	| { type: 'set-status-bar-scroll-width'; width: number | null }
 	| { type: 'paste-values';   anchorRowId: string; anchorColId: string; values: string[][] }
+	/** Pasting onto a HEADER cell instead of a data cell — table-format
+	 *  conversion (paste a whole copied/typed table, header included, and get
+	 *  it as a real rich-table): values[0] becomes column names starting at
+	 *  anchorColId (growing columns as needed), values[1..] become data rows
+	 *  starting at the very first row (growing rows as needed) — the header-
+	 *  anchored counterpart to paste-values, which only ever targets data
+	 *  cells and never touches column names. */
+	| { type: 'paste-values-with-header'; anchorColId: string; values: string[][] }
 	| { type: 'set-sort';       sort: { colId: string; dir: 'asc' | 'desc' } | null }
 	/** One-time sort: physically commits the given row order to storage — the
 	 *  caller (renderer.ts) computes `rowIds` since it owns the type-aware
@@ -527,6 +535,42 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			for (let r = 0; r < numRows; r++) {
 				const row = model.rows[rowStart + r];
 				const rowValues = values[r];
+				if (!row || !rowValues) continue;
+				for (let c = 0; c < rowValues.length; c++) {
+					const col = model.columns[colStart + c];
+					if (!col) continue;
+					const value = rowValues[c] ?? '';
+					if (value === '') delete row.cells[col.id];
+					else row.cells[col.id] = value;
+				}
+			}
+			break;
+		}
+		case 'paste-values-with-header': {
+			const { anchorColId, values } = op;
+			if (values.length === 0) break;
+			const colStart = model.columns.findIndex(c => c.id === anchorColId);
+			if (colStart < 0) break;
+			const header = values[0] ?? [];
+			const dataRows = values.slice(1);
+			const numCols = Math.max(header.length, dataRows.reduce((max, r) => Math.max(max, r.length), 0));
+
+			const existingColIds = new Set(model.columns.map(c => c.id));
+			while (model.columns.length < colStart + numCols) {
+				model.columns.push({ id: genId('c', existingColIds), name: '' });
+			}
+			for (let c = 0; c < header.length; c++) {
+				const col = model.columns[colStart + c];
+				if (col) col.name = header[c] ?? '';
+			}
+
+			const existingRowIds = new Set(model.rows.map(r => r.id));
+			while (model.rows.length < dataRows.length) {
+				model.rows.push({ id: genId('r', existingRowIds), cells: {} });
+			}
+			for (let r = 0; r < dataRows.length; r++) {
+				const row = model.rows[r];
+				const rowValues = dataRows[r];
 				if (!row || !rowValues) continue;
 				for (let c = 0; c < rowValues.length; c++) {
 					const col = model.columns[colStart + c];
