@@ -22,7 +22,7 @@ const SOURCE = fs.readFileSync(path.join(__dirname, '../freeze-merge-corruption/
 test.describe('freeze-hover-churn', () => {
 	/** Style mutations on one frozen cell, counted from before the first hover. */
 	const countWrites = async (page: import('@playwright/test').Page): Promise<() => Promise<number>> => {
-		await page.evaluate(() => {
+		const cellFound = await page.evaluate(() => {
 			const w = window as unknown as { __btWrites: number };
 			w.__btWrites = 0;
 			const cell = document.querySelector('.bt-frozen-col');
@@ -30,7 +30,9 @@ test.describe('freeze-hover-churn', () => {
 				new MutationObserver(ms => { w.__btWrites += ms.length; })
 					.observe(cell, { attributes: true, attributeFilter: ['style'] });
 			}
+			return cell !== null;
 		});
+		expect(cellFound, 'no frozen cell was found to observe, so this test measures nothing').toBe(true);
 		return () => page.evaluate(() => (window as unknown as { __btWrites: number }).__btWrites);
 	};
 
@@ -39,11 +41,15 @@ test.describe('freeze-hover-churn', () => {
 		const writes = await countWrites(page);
 		const box = (await page.locator('.bt-table').boundingBox())!;
 
-		// Let the first hover settle: revealing the strips genuinely changes layout
-		// (it reserves space for them), so real writes there are expected. Waited on
-		// QUIESCENCE rather than a fixed delay — a fixed one passed alone and failed
-		// under a parallel run, where settling simply takes longer, which would make
-		// this a flake rather than a finding.
+		// Let the first hover settle. Revealing the strips CAN change layout
+		// (reserving space for them), so a write here is not itself wrong — but
+		// with the table-height-growth bug fixed (see table-height-growth.spec.ts),
+		// there's nothing left inside the table's own scroll geometry for a
+		// frozen cell to react to, so settling at exactly 0 is now the expected,
+		// ideal case, not a sign the observer never attached. Waited on
+		// QUIESCENCE rather than a fixed delay — a fixed one passed alone and
+		// failed under a parallel run, where settling simply takes longer, which
+		// would make this a flake rather than a finding.
 		await page.mouse.move(box.x + 40, box.y + box.height / 2);
 		let settled = -1;
 		for (let i = 0; i < 40; i++) {
@@ -52,7 +58,6 @@ test.describe('freeze-hover-churn', () => {
 			if (now === settled) break;
 			settled = now;
 		}
-		expect(settled, 'no frozen cell was found to observe, so this test measures nothing').toBeGreaterThan(0);
 
 		// Now move across every column seam — pointer movement only, no geometry
 		// change, so a correct implementation has nothing to write.

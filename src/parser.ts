@@ -45,6 +45,7 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 	const freezeCols = parseFreezeCount(yaml?.freezeCols);
 	const viewWidth  = parseViewSize(yaml?.viewWidth);
 	const viewHeight = parseViewSize(yaml?.viewHeight);
+	const statusBarScrollWidth = parseViewSize(yaml?.statusBarScrollWidth);
 
 	return {
 		columns,
@@ -63,6 +64,8 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 		...(freezeCols !== undefined ? { freezeCols } : {}),
 		...(viewWidth  !== undefined ? { viewWidth }  : {}),
 		...(viewHeight !== undefined ? { viewHeight } : {}),
+		...(yaml?.statusBarMode === 'pinned' || yaml?.statusBarMode === 'hover' ? { statusBarMode: yaml.statusBarMode } : {}),
+		...(statusBarScrollWidth !== undefined ? { statusBarScrollWidth } : {}),
 		// Only meaningful alongside a matching views[] entry — an activeViewId
 		// pointing nowhere behaves exactly like it being absent (default table).
 		...(typeof yaml?.activeViewId === 'string' && views.some(v => v.id === yaml.activeViewId)

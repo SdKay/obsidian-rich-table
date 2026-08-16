@@ -65,6 +65,12 @@ export type StructuralOpV2 =
 	/** Manual view width/height in px; null resets to auto (see model.ts). */
 	| { type: 'set-view-width';  width: number | null }
 	| { type: 'set-view-height'; height: number | null }
+	/** null resets to the default ('pinned') — see model.ts's own doc comment
+	 *  on why absent means pinned, not hover. */
+	| { type: 'set-status-bar-mode'; mode: 'pinned' | 'hover' | null }
+	/** Width in px of the status bar's scrollbar section; null resets to the
+	 *  fixed initial width (see model.ts). */
+	| { type: 'set-status-bar-scroll-width'; width: number | null }
 	| { type: 'paste-values';   anchorRowId: string; anchorColId: string; values: string[][] }
 	| { type: 'set-sort';       sort: { colId: string; dir: 'asc' | 'desc' } | null }
 	/** One-time sort: physically commits the given row order to storage — the
@@ -424,6 +430,14 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'set-view-height':
 			if (op.height === null || !(op.height > 0)) delete model.viewHeight;
 			else model.viewHeight = Math.round(op.height);
+			break;
+		case 'set-status-bar-mode':
+			if (op.mode === 'pinned' || op.mode === 'hover') model.statusBarMode = op.mode;
+			else delete model.statusBarMode;
+			break;
+		case 'set-status-bar-scroll-width':
+			if (op.width === null || !(op.width > 0)) delete model.statusBarScrollWidth;
+			else model.statusBarScrollWidth = Math.round(op.width);
 			break;
 		case 'set-sort':
 			if (op.sort) model.sort = op.sort; else delete model.sort;

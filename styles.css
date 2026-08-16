@@ -136,6 +136,18 @@
 	height: var(--bt-view-height);
 	max-height: none;
 }
+/* Native horizontal scrollbar hidden — the status bar (below) draws its own,
+ * synced to this element's real scrollLeft/scrollWidth/clientWidth. Actual
+ * wheel/trackpad/keyboard scrolling is untouched; only the native track/thumb
+ * stops painting. `:horizontal` specifically, not the blanket `display:none`
+ * .bt-ctrl-col uses for its own (single-axis) scroll — this wrapper scrolls
+ * on BOTH axes, and the vertical scrollbar stays native. No `scrollbar-width`
+ * override either, for the same reason (Firefox has no per-axis equivalent,
+ * but Obsidian never runs on a Firefox engine, so this is dead code there
+ * either way — left out rather than hiding an axis it shouldn't). */
+.bt-table-wrapper::-webkit-scrollbar:horizontal {
+	display: none;
+}
 /* Manual width: exact (still capped at the container so it can't overflow the
  * pane — horizontal scroll handles a table wider than that). */
 .bt-render-root .bt-table-wrapper.bt-view-fixed-w {
@@ -246,6 +258,18 @@
 .bt-table-content-row > .bt-table,
 .bt-table-content-row > .bt-edge-add-col {
 	flex-shrink: 0;
+	/* Flex's default align-items:stretch would otherwise force <table> to
+	 * contentRow's cross-size on every layout pass — normally a no-op once
+	 * addColBtn's own height (set from the table's LAST measured height,
+	 * see positionEdgeStrips) catches up to match, except stretch applies to
+	 * table's CONTENT-box height while getBoundingClientRect (what feeds the
+	 * next round) reads its BORDER-box height: any border/padding difference
+	 * between the two gets added again on every pass, growing table's
+	 * rendered height without bound. <table>'s own content must govern its
+	 * height, exactly like addColBtn's own comment above already argues for
+	 * addColBtn's height — table needs the identical treatment.
+	 */
+	align-self: flex-start;
 }
 /* Drag-resize handles — bottom edge (height), right edge (width), corner
  * (both). Only shown on hover of the view (like the other overlay affordances)
@@ -277,6 +301,22 @@
 .bt-view-resize-br { right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; }
 .bt-view-resize:hover { background: var(--interactive-accent); opacity: 0.35; }
 .bt-view-resize-br:hover { opacity: 0.55; }
+/* Height handle now lives inside .bt-status-bar (Task 8) — a short dash on
+ * hover marks its middle as the drag point, since a plain background tint
+ * reads ambiguously inside a bar that already has its own background/text. */
+.bt-view-resize-b::after {
+	content: '';
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 24px;
+	height: 2px;
+	background: var(--text-faint);
+	border-radius: 1px;
+	transform: translate(-50%, -50%);
+	opacity: 0;
+}
+.bt-view-resize-b:hover::after { opacity: 1; }
 /* Suppress Obsidian-theme margins and cell borders that bleed into rich-table.
  * Themes control lines via CSS variables (§15: themes only set variables, base sets properties):
  *   --bt-cell-border          shorthand for all four sides  (default: none)
@@ -2448,6 +2488,118 @@
 	max-width: 200px;
 }
 
+/* ── Status bar (FR-017) ──────────────────────────────────────────────────── */
+/* Sibling of .bt-table-wrapper, below the scrollable region — not part of the
+ * scrolling grid, same as Excel's own status bar. Pinned mode (the default —
+ * see model.ts) just leaves this permanently in normal flow; hover mode
+ * reuses the existing bt-strip-visible opacity/visibility toggle other
+ * strips already use (wired up once that mode lands). */
+.bt-status-bar {
+	position: relative; /* containing block for .bt-view-resize-b, its child */
+	display: flex;
+	align-items: stretch;
+	height: 28px;
+	border-top: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	user-select: none;
+}
+/* Hover mode: taken out of flow entirely (position:absolute, --sb-top/left/
+ * width JS-set by positionStatusBar to track the visible table area — see
+ * renderer.ts) instead of toggling height on the in-flow version, which
+ * would reintroduce the exact scroll-jump/document-height-collapse bug class
+ * the hover-strip flicker fixes elsewhere in this file exist to prevent (see
+ * the matching comment at this class's assignment in renderer.ts). Opacity-
+ * only toggle, same bt-strip-visible convention as every other hover strip. */
+.bt-status-bar.bt-status-mode-hover {
+	position: absolute;
+	top: var(--sb-top, 0px);
+	left: var(--sb-left, 0px);
+	width: var(--sb-width, auto);
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	transition: opacity 0.08s;
+	z-index: 10;
+}
+.bt-status-bar.bt-status-mode-hover.bt-strip-visible {
+	opacity: 1;
+	visibility: visible;
+	pointer-events: auto;
+}
+.bt-status-tabs {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+}
+.bt-status-stats {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	padding: 0 var(--size-4-2);
+	white-space: nowrap;
+}
+/* Drag target between the tabs/stats area and the scrollbar section — widens
+ * .bt-status-scroll's reserved width (--bt-status-scroll-w) at the expense
+ * of .bt-status-tabs' flexible space, or the reverse. The visible grip is a
+ * short vertical bar drawn via ::after so the hit target (this element) can
+ * stay wider than the line itself without looking oversized. */
+.bt-status-divider {
+	flex: 0 0 6px;
+	position: relative;
+	cursor: col-resize;
+}
+.bt-status-divider::after {
+	content: '';
+	position: absolute;
+	top: 5px;
+	bottom: 5px;
+	left: 2px;
+	width: 2px;
+	background: var(--background-modifier-border);
+	border-radius: 1px;
+}
+.bt-status-scroll {
+	flex: 0 0 var(--bt-status-scroll-w, 120px);
+	display: flex;
+	align-items: center;
+	padding: 0 var(--size-4-1);
+}
+/* No overflow to scroll — the thumb fills the whole track instead of
+ * disappearing (renderer.ts's syncScrollThumb sets --bt-status-thumb-w to the
+ * track's own width for this state): a hidden control here read as broken
+ * ("看起来像什么都没有") rather than "the whole table is already visible".
+ * Non-interactive since there's nothing to drag to. */
+.bt-status-scroll.bt-status-scroll-empty .bt-status-scroll-thumb {
+	cursor: default;
+	pointer-events: none;
+}
+.bt-status-scroll-track {
+	position: relative;
+	width: 100%;
+	height: 8px;
+	background: var(--background-modifier-border);
+	border-radius: 4px;
+}
+/* Width/left are JS-set (renderer.ts's syncScrollThumb), mirroring the real
+ * wrapper's scrollLeft/scrollWidth/clientWidth — see the status-bar solution
+ * doc for the exact mapping. The width here is just the pre-sync fallback. */
+.bt-status-scroll-thumb {
+	position: absolute;
+	top: 0;
+	left: var(--bt-status-thumb-l, 0px);
+	height: 100%;
+	width: var(--bt-status-thumb-w, 30%);
+	background: var(--text-faint);
+	border-radius: 4px;
+	cursor: pointer;
+}
+.bt-status-scroll-thumb:hover {
+	background: var(--text-muted);
+}
+
 /* ── Sheet tabs (multi-sheet workbooks) ─────────────────────────────────── */
 /* Trying to visually "connect" the tab strip to the table above it (matching
  * borders, zero gap) was attempted and abandoned — the table's own wrapper is
@@ -2550,6 +2702,50 @@
 	color: var(--text-normal);
 }
 .bt-sheet-tab-add svg { width: 13px; height: 13px; }
+
+/* Slim variant — sheet tabs mounted inside the status bar's own row (Task 9;
+ * see .bt-status-tabs in renderer.ts / tableBlock.ts). The
+ * standalone bottom bar's padded "recessed groove" look (margin/background/
+ * box-shadow above) doesn't fit that height without clipping, so this scopes
+ * a flatter look — an underline instead of a raised pill — to exactly that
+ * context, via ancestor selector rather than a second set of classes; every
+ * interaction (drag-reorder, rename, tab-color menu) is the same JS/DOM
+ * `renderSheetTabBar` already produces, only the paint changes here. */
+.bt-status-tabs .bt-sheet-tabbar {
+	margin-top: 0;
+	padding: 0;
+	background: none;
+	border-radius: 0;
+	height: 100%;
+	gap: 10px;
+	/* Without an explicit shrink target a flex item defaults to its content's
+	 * natural width and never engages its own overflow-x:auto — it would just
+	 * push past .bt-status-tabs' edge and get clipped by that ancestor's
+	 * overflow:hidden instead of scrolling. */
+	min-width: 0;
+	max-width: 100%;
+}
+.bt-status-tabs .bt-sheet-tab {
+	padding: 0 2px;
+	height: 100%;
+	border: none;
+	border-bottom: 2px solid transparent;
+	border-radius: 0;
+	background: none;
+}
+.bt-status-tabs .bt-sheet-tab:hover:not(.bt-sheet-tab-active) {
+	background: none;
+	color: var(--text-normal);
+}
+.bt-status-tabs .bt-sheet-tab-active,
+.bt-status-tabs .bt-sheet-tab-active:hover {
+	background: none;
+	box-shadow: none;
+	border-bottom-color: var(--bt-sheet-tab-bg, var(--interactive-accent));
+}
+.bt-status-tabs .bt-sheet-tab-label { max-width: 100px; }
+.bt-status-tabs .bt-sheet-tab-add { width: 18px; height: 18px; }
+.bt-status-tabs .bt-sheet-tab-add svg { width: 11px; height: 11px; }
 
 .bt-sheet-style-panel {
 	position: fixed;

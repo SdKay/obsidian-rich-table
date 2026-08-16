@@ -44,11 +44,15 @@ export interface TableSpec {
 	viewHeight?: number;
 	locked?: boolean;
 	title?: string;
+	footer?: string;
+	statusBarMode?: 'pinned' | 'hover';
+	statusBarScrollWidth?: number;
 }
 
 export function tableSource(spec: TableSpec): string {
 	const lines: string[] = ['---', 'version: 2'];
 	if (spec.title !== undefined) lines.push(`title: ${spec.title}`);
+	if (spec.footer !== undefined) lines.push(`footer: ${spec.footer}`);
 	lines.push('columns:');
 	spec.widths.forEach((w, i) => {
 		const name = String.fromCharCode(65 + i);
@@ -76,6 +80,7 @@ export function tableSource(spec: TableSpec): string {
 	for (const [key, value] of [
 		['theme', spec.theme], ['freezeRows', spec.freezeRows], ['freezeCols', spec.freezeCols],
 		['viewWidth', spec.viewWidth], ['viewHeight', spec.viewHeight], ['locked', spec.locked],
+		['statusBarMode', spec.statusBarMode], ['statusBarScrollWidth', spec.statusBarScrollWidth],
 	] as const) {
 		if (value !== undefined) lines.push(`${key}: ${value}`);
 	}

@@ -2,7 +2,7 @@ import { App, Component, Menu, Notice, setIcon } from 'obsidian';
 import {
 	t, isZh, aggLabel,
 	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
-	collapsedRowsLabel,
+	collapsedRowsLabel, statusBarStatsLabel,
 } from './i18n';
 import { BUILTIN_THEMES } from './themes/index';
 import type { TableModelV2, AggType } from './model';
@@ -30,6 +30,7 @@ import { renderCalendarBoard } from './renderCalendar';
 import { renderViewToolbar, buildViewSwitcherMenu } from './renderViews';
 import { applyFreeze } from './renderFreeze';
 import { canFreezeRows, canFreezeCols } from './operations';
+import { computeSelectionStats } from './renderStatusBar';
 
 export async function renderTable(
 	model: TableModelV2,
@@ -128,6 +129,14 @@ export async function renderTable(
 	// enough to run on every event in a fast-firing loop).
 	let repositionSelectorStrips = () => { /* assigned in selector block */ };
 	let repositionEdgeStrips     = () => { /* assigned in edge block */ };
+	let updateStatusBarStats     = () => { /* assigned in status-bar block */ };
+	// Assigned below (drag-resize-handle block) to the height-resize handle's
+	// mount function — invoked much later, once the status bar exists, since
+	// the handle attaches to ITS bottom edge rather than root's (see Task 8's
+	// comment at the call site). No-op by default so a locked table (no
+	// onStructuralOp) simply never mounts it, matching every other edit-only
+	// handle's existing gate.
+	let mountHeightResizeHandle  = (_container: HTMLElement) => { /* assigned in drag-resize-handle block if editable */ };
 
 	// Title
 	if (model.title) {
@@ -374,8 +383,8 @@ export async function renderTable(
 	// pinned to its edges via CSS; a drag live-applies the size to the wrapper
 	// (the scroll container) and persists it on release.
 	if (onStructuralOp) {
-		const makeHandle = (cls: string, mode: 'h' | 'w' | 'both') => {
-			const handle = root.createDiv({ cls: `bt-view-resize ${cls}` });
+		const makeHandle = (cls: string, mode: 'h' | 'w' | 'both', container: HTMLElement) => {
+			const handle = container.createDiv({ cls: `bt-view-resize ${cls}` });
 			handle.addEventListener('pointerdown', (e: PointerEvent) => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -417,9 +426,12 @@ export async function renderTable(
 				handle.addEventListener('pointerup', onUp);
 			});
 		};
-		makeHandle('bt-view-resize-b', 'h');
-		makeHandle('bt-view-resize-r', 'w');
-		makeHandle('bt-view-resize-br', 'both');
+		// bt-view-resize-b (height) mounts on the status bar's own bottom edge
+		// instead of root's — deferred until that element exists (Task 8; see
+		// mountHeightResizeHandle's own declaration above).
+		mountHeightResizeHandle = (container: HTMLElement) => makeHandle('bt-view-resize-b', 'h', container);
+		makeHandle('bt-view-resize-r', 'w', root);
+		makeHandle('bt-view-resize-br', 'both', root);
 	}
 
 	// contentRow holds <table> and (in edit mode) addColBtn side by side via flex,
@@ -605,6 +617,7 @@ export async function renderTable(
 		sel.start = sel.end = null;
 		sel.hasMoved = false;
 		table.querySelectorAll<HTMLElement>('.bt-selected').forEach(e => e.removeClass('bt-selected'));
+		updateStatusBarStats();
 	};
 
 	const updateHighlights = () => {
@@ -613,6 +626,7 @@ export async function renderTable(
 			const col = parseInt(e.dataset.col ?? '-1');
 			if (row >= 0 && col >= 0) e.toggleClass('bt-selected', inSel(row, col));
 		});
+		updateStatusBarStats();
 	};
 
 	/** Move the single-cell keyboard selection, ignoring a clamped (null) target. */
@@ -1227,6 +1241,178 @@ export async function renderTable(
 	// box, horizontal scrollbar included.
 	renderFooter(wrapper);
 
+	// ── Status bar (FR-017) ───────────────────────────────────────────────────
+	// Sibling of wrapper, not a child of it — the status bar sits below the
+	// scrollable region, not inside it (Excel's own status bar isn't part of
+	// the scrolling grid either). Left section (sheet tabs, wired up once a
+	// workbook exists — see tableBlock.ts) and stats share the space left of
+	// the divider; the divider and the custom scrollbar's track/thumb (wired
+	// up once native scroll hiding + sync land) are pure skeleton for now.
+	//
+	// Absent/'pinned' (the default — see model.ts) keeps it a real in-flow
+	// flex child, permanently occupying its own row height, same as it looks
+	// right now. 'hover' switches it to a position:absolute overlay below the
+	// visible table area (bt-status-mode-hover, positioned by
+	// positionStatusBar below) that only shows via the same bt-strip-visible
+	// opacity toggle every other hover-only strip already uses — deliberately
+	// NOT a height:0↔22px toggle on the in-flow version, which would repeat
+	// the exact scroll-jump/document-height-collapse class of bug the
+	// "Re-render flicker" / hover-strip sections elsewhere in this file were
+	// hard-won fixes for (see CLAUDE.md) — toggling any real layout size on
+	// hover is the thing that caused those, not toggling opacity.
+	const statusBarPinned = model.statusBarMode !== 'hover';
+	const statusBar        = root.createDiv({ cls: 'bt-status-bar' + (statusBarPinned ? '' : ' bt-status-mode-hover') });
+	// The height-resize handle belongs to the status bar's own bottom edge now
+	// (Task 8), not root's — a no-op when the table is locked (no
+	// onStructuralOp), leaving only the read-only stats behind, same as every
+	// other edit-only handle's existing lock behaviour.
+	mountHeightResizeHandle(statusBar);
+	const statusTabs       = statusBar.createDiv({ cls: 'bt-status-tabs' });
+	const statusStats      = statusBar.createDiv({ cls: 'bt-status-stats' });
+	const statusDivider    = statusBar.createDiv({ cls: 'bt-status-divider', attr: { 'aria-hidden': 'true' } });
+	const statusScroll     = statusBar.createDiv({ cls: 'bt-status-scroll' });
+	if (model.statusBarScrollWidth) statusScroll.setCssProps({ '--bt-status-scroll-w': `${model.statusBarScrollWidth}px` });
+	const statusScrollTrack = statusScroll.createDiv({ cls: 'bt-status-scroll-track' });
+	const statusScrollThumb = statusScrollTrack.createDiv({ cls: 'bt-status-scroll-thumb' });
+	// statusTabs: renderTable() never populates this itself — a workbook's
+	// sheet tabs are workbook-level chrome owned by tableBlock.ts, which mounts
+	// renderSheetTabBar() into this exact element (found via querySelector,
+	// see tableBlock.ts's own comment) once this render finishes, when there
+	// are 2+ sheets and the active sheet is in table view (Task 9). A
+	// single-sheet workbook, or a kanban/calendar active view, leaves it
+	// permanently empty — .bt-status-stats' flex layout doesn't shift either
+	// way since the div itself is always present.
+	void statusTabs;
+
+	updateStatusBarStats = () => {
+		const selection = sel.start && sel.end
+			? { r1: sel.start.row, r2: sel.end.row, c1: sel.start.col, c2: sel.end.col }
+			: null;
+		statusStats.setText(statusBarStatsLabel(computeSelectionStats(model, selection)));
+	};
+	updateStatusBarStats();
+
+	// Custom scrollbar synced to wrapper's real scrollLeft/scrollWidth/
+	// clientWidth — the native track/thumb are hidden (see .bt-table-wrapper's
+	// own ::-webkit-scrollbar:horizontal rule), but the underlying scroll
+	// mechanism (wheel/trackpad/keyboard) is untouched; this is a pure
+	// read-and-mirror layer on top of it, not a replacement for it.
+	const syncScrollThumb = () => {
+		const trackWidth = statusScrollTrack.clientWidth;
+		const { scrollWidth, clientWidth, scrollLeft } = wrapper;
+		// Nothing to scroll — a native scrollbar disappears entirely here, but
+		// this control staying in flow while visually empty read as broken
+		// ("看起来像什么都没有") rather than "intentionally nothing to do" — so
+		// instead it fills the whole track, the same "100% visible, nothing more
+		// to scroll" affordance a full progress bar gives.
+		if (scrollWidth <= clientWidth + 1) {
+			statusScroll.addClass('bt-status-scroll-empty');
+			statusScrollThumb.setCssProps({ '--bt-status-thumb-w': `${trackWidth}px`, '--bt-status-thumb-l': '0px' });
+			return;
+		}
+		statusScroll.removeClass('bt-status-scroll-empty');
+		const thumbWidth = Math.max(16, trackWidth * clientWidth / scrollWidth);
+		const maxThumbLeft = trackWidth - thumbWidth;
+		const thumbLeft = maxThumbLeft * scrollLeft / (scrollWidth - clientWidth);
+		statusScrollThumb.setCssProps({
+			'--bt-status-thumb-w': `${thumbWidth}px`,
+			'--bt-status-thumb-l': `${thumbLeft}px`,
+		});
+	};
+	syncScrollThumb();
+
+	let scrollThumbSyncScheduled = false;
+	const scheduleSyncScrollThumb = () => {
+		if (scrollThumbSyncScheduled) return;
+		scrollThumbSyncScheduled = true;
+		window.requestAnimationFrame(() => { scrollThumbSyncScheduled = false; syncScrollThumb(); });
+	};
+	wrapper.addEventListener('scroll', scheduleSyncScrollThumb);
+	// Content width (columns resized/added) and track width (window/pane
+	// resized, or the divider — Task 7 — moved) both invalidate the mapping.
+	const scrollThumbResizeObs = new ResizeObserver(scheduleSyncScrollThumb);
+	scrollThumbResizeObs.observe(table);
+	scrollThumbResizeObs.observe(statusScrollTrack);
+	component?.register(() => scrollThumbResizeObs.disconnect());
+
+	// Dragging the thumb sets wrapper.scrollLeft directly — this is pure local
+	// UI state (like scroll position itself), never written back to the model.
+	statusScrollThumb.addEventListener('pointerdown', (e: PointerEvent) => {
+		e.preventDefault();
+		statusScrollThumb.setPointerCapture(e.pointerId);
+		const trackRect = statusScrollTrack.getBoundingClientRect();
+		const thumbWidth = statusScrollThumb.getBoundingClientRect().width;
+		const startThumbLeft = statusScrollThumb.getBoundingClientRect().left - trackRect.left;
+		const startX = e.clientX;
+		const maxThumbLeft = trackRect.width - thumbWidth;
+		const onMove = (ev: PointerEvent) => {
+			const rawLeft = startThumbLeft + (ev.clientX - startX);
+			const clampedLeft = Math.max(0, Math.min(maxThumbLeft, rawLeft));
+			const scrollRange = wrapper.scrollWidth - wrapper.clientWidth;
+			wrapper.scrollLeft = maxThumbLeft > 0 ? scrollRange * clampedLeft / maxThumbLeft : 0;
+		};
+		const onUp = () => {
+			statusScrollThumb.removeEventListener('pointermove', onMove);
+			statusScrollThumb.removeEventListener('pointerup', onUp);
+		};
+		statusScrollThumb.addEventListener('pointermove', onMove);
+		statusScrollThumb.addEventListener('pointerup', onUp);
+	});
+
+	// Dragging the divider reallocates space between .bt-status-tabs/-stats and
+	// .bt-status-scroll, same "drag only touches CSS, release commits the op"
+	// split as the view-resize handles above — statusBarScrollWidth persists to
+	// the model, current drag position doesn't. Gated on onStructuralOp (no
+	// point letting a locked/read-only table write it back) like every other
+	// handle that ends in an op dispatch.
+	if (onStructuralOp) {
+		const MIN_SCROLL_W = 60;
+		statusDivider.addEventListener('pointerdown', (e: PointerEvent) => {
+			e.preventDefault();
+			statusDivider.setPointerCapture(e.pointerId);
+			const barRect = statusBar.getBoundingClientRect();
+			const maxScrollW = Math.max(MIN_SCROLL_W, barRect.width - 80);
+			let newW = statusScroll.getBoundingClientRect().width;
+			const onMove = (ev: PointerEvent) => {
+				newW = Math.max(MIN_SCROLL_W, Math.min(maxScrollW, barRect.right - ev.clientX));
+				statusScroll.setCssProps({ '--bt-status-scroll-w': `${Math.round(newW)}px` });
+				scheduleSyncScrollThumb();
+			};
+			const onUp = () => {
+				statusDivider.removeEventListener('pointermove', onMove);
+				statusDivider.removeEventListener('pointerup', onUp);
+				void onStructuralOp({ type: 'set-status-bar-scroll-width', width: Math.round(newW) });
+			};
+			statusDivider.addEventListener('pointermove', onMove);
+			statusDivider.addEventListener('pointerup', onUp);
+		});
+	}
+
+	// Hover-mode positioning/show-hide — a no-op pair when pinned (the bar is
+	// already in-flow and always visible, nothing to compute or toggle).
+	let positionStatusBar = () => { /* pinned: nothing to do */ };
+	let showStatusBar     = () => { /* pinned: nothing to do */ };
+	let hideStatusBar     = () => { /* pinned: nothing to do */ };
+	if (!statusBarPinned) {
+		// Anchored to the VISIBLE bottom edge of the table area, mirroring
+		// exactly how the ctrl column anchors to the visible LEFT edge (see its
+		// own comment) — stays just below the table on-screen regardless of
+		// vertical scroll or how far the view has been resized.
+		positionStatusBar = () => {
+			const g = computeVisibleGeom();
+			if (g.tr.width === 0) return;
+			statusBar.setCssProps({
+				'--sb-top':   `${g.vt + g.vh}px`,
+				'--sb-left':  `${g.vl}px`,
+				'--sb-width': `${g.vw}px`,
+			});
+		};
+		showStatusBar = () => { positionStatusBar(); statusBar.addClass('bt-strip-visible'); };
+		hideStatusBar = () => { statusBar.removeClass('bt-strip-visible'); };
+		window.requestAnimationFrame(positionStatusBar);
+		new ResizeObserver(positionStatusBar).observe(table);
+	}
+
 	// ── Frozen rows/columns ──────────────────────────────────────────────────
 	// Deliberately NOT gated behind onStructuralOp — freeze is a purely visual
 	// feature and must work in read-only rendering too, unlike the hover-only
@@ -1356,14 +1542,31 @@ export async function renderTable(
 				return false;
 			}
 			// Double-content guard: root height should never exceed the WRAPPER height by
-			// more than the maximum padding (sel-pad=32px, so 60px is safe). rr.height >>
-			// wrapper height means the DOM contains two stacked roots (cache clone
-			// injection window), producing the anomalous rr.height≈1113 in logs.
-			// Referencing the WRAPPER (not the table) is deliberate: a wide table adds a
-			// horizontal scrollbar (~12-15px) that inflates the wrapper AND root heights
-			// equally — comparing against the table height instead used to trip this guard
-			// on every scrollable table, silently killing both edge-add buttons.
-			if (rr.height > g.wr.height + 60) return false;
+			// more than root's own OTHER real chrome — title, footer, status bar, the
+			// top strip-pad reservation — can plausibly add. rr.height >> wrapper height
+			// means the DOM contains two stacked roots (cache clone injection window),
+			// producing the anomalous rr.height≈1113 in logs. Referencing the WRAPPER
+			// (not the table) is deliberate: a wide table adds a horizontal scrollbar
+			// (~12-15px) that inflates the wrapper AND root heights equally — comparing
+			// against the table height instead used to trip this guard on every
+			// scrollable table, silently killing both edge-add buttons.
+			//
+			// A flat constant here (tried first: 60, sized only for the top strip-pad)
+			// is exactly the failure mode to avoid — it has already needed bumping once
+			// per new chrome element (adding the status bar, Task 4, immediately tripped
+			// it for nearly every editable table, not just a title+footer edge case:
+			// reported as "行列增加按钮没了", the add-row/col buttons just gone — a plain
+			// table with no title/footer was ALREADY sitting exactly at the old ceiling
+			// before that addition). Any FUTURE root-level chrome would silently
+			// reintroduce the same class of bug the same way. 220px is a generous
+			// worst-case budget for everything root can legitimately add today (title +
+			// footer, each up to a few wrapped lines, + the status bar + the strip-pad
+			// reservation) while staying nowhere near the true anomaly's ~1113px, so it
+			// doesn't need retuning for a normal chrome change — but it's still a guess
+			// bounding an open set, not a computed value; if root gains something
+			// legitimately taller than this (e.g. a very long multi-line footer), widen
+			// it rather than re-deriving it from the current chrome list.
+			if (rr.height > g.wr.height + 220) return false;
 			// Table fully scrolled out of the visible viewport (either axis). Uses the
 			// clamped visible width/height, NOT the raw table top — with inner vertical
 			// scroll a negative table top (tt) is normal (table scrolled up under a
@@ -1595,6 +1798,12 @@ export async function renderTable(
 				menu.addItem(i => i.setTitle(t('autoHeight')).setIcon('move-vertical')
 					.setChecked(model.viewHeight === undefined)
 					.onClick(() => void onStructuralOp({ type: 'set-view-height', height: null })));
+				menu.addItem(i => i.setTitle(t('pinStatusBar')).setIcon('panel-bottom-dashed')
+					.setChecked(model.statusBarMode !== 'hover')
+					.onClick(() => void onStructuralOp({
+						type: 'set-status-bar-mode',
+						mode: model.statusBarMode !== 'hover' ? 'hover' : null,
+					})));
 				if (model.title === undefined) {
 					menu.addSeparator();
 					menu.addItem(i => i.setTitle(t('addTitle')).setIcon('heading')
@@ -2606,6 +2815,15 @@ export async function renderTable(
 			repositionLockBtn();
 			repositionAutoFitBtn();
 			repositionCtrlCol();
+			// Unconditional too (not gated on onStructuralOp) — a hover-mode
+			// status bar shows its (read-only) stats on a locked table exactly
+			// like the ctrl column's own lock icon does; only the height-resize
+			// hotspot inside it (Task 8) needs its own separate onStructuralOp
+			// check. A no-op when statusBarMode is pinned (see its own let
+			// assignment above) or absent from this block entirely (neither
+			// onStructuralOp nor onToggleLock — see that limitation noted where
+			// showStatusBar is assigned).
+			showStatusBar();
 			if (onStructuralOp) {
 				// prepareLayout MUST run before any position calculation so all
 				// getBoundingClientRect() calls see the final padded layout — it
@@ -2625,10 +2843,10 @@ export async function renderTable(
 		// moment the mouse comes back — that jump was the reported bad UX.
 		root.addEventListener('mouseleave', () => {
 			if (isHoverPinned()) return;
-			hideEdgeStrips(); hideSelectors();
+			hideEdgeStrips(); hideSelectors(); hideStatusBar();
 		});
 		component?.register(onHoverUnpinned(() => {
-			if (!root.matches(':hover')) { hideEdgeStrips(); hideSelectors(); }
+			if (!root.matches(':hover')) { hideEdgeStrips(); hideSelectors(); hideStatusBar(); }
 		}));
 		if (onStructuralOp) {
 			// Reserve the top strip padding from the very first paint, not just

@@ -134,6 +134,7 @@ const EN = {
 	viewSettings:  'View settings',
 	autoWidth:     'Auto width',
 	autoHeight:    'Auto height',
+	pinStatusBar:  'Pin status bar',
 	addTitle:      'Add title',
 	addFooter:     'Add footer',
 	titlePlaceholder:  'Title',
@@ -249,6 +250,7 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	viewSettings:  '视图设置',
 	autoWidth:     '自动宽度',
 	autoHeight:    '自动高度',
+	pinStatusBar:  '常驻状态栏',
 	addTitle:      '添加标题',
 	addFooter:     '添加页脚',
 	titlePlaceholder:  '标题',
@@ -279,6 +281,25 @@ export function rowRangeLabel(r1: number, r2: number): string {
 export function colRangeLabel(c1: number, c2: number, letter: (i: number) => string): string {
 	if (isZh()) return c1 === c2 ? `${letter(c1)}列` : `${letter(c1)}–${letter(c2)}列`;
 	return c1 === c2 ? 'column' : `cols ${letter(c1)}–${letter(c2)}`;
+}
+
+/** Status bar (FR-017) text — either the table's own totals, or (once
+ *  `selectedRows`/`selectedCols` are present, i.e. a genuine multi-cell
+ *  selection) the selected count plus sum/avg if the selection has any
+ *  numeric cells. Kept as one function, not a handful of `t()` keys, since
+ *  the exact composition (which parts appear, in what order) differs enough
+ *  between languages that word-by-word substitution would read awkwardly. */
+export function statusBarStatsLabel(stats: {
+	totalRows: number; totalCols: number;
+	selectedRows?: number; selectedCols?: number;
+	sum?: string; avg?: string;
+}): string {
+	const zh = isZh();
+	const base = stats.selectedRows !== undefined
+		? (zh ? `已选 ${stats.selectedRows} 行 × ${stats.selectedCols} 列` : `Selected ${stats.selectedRows} × ${stats.selectedCols}`)
+		: (zh ? `${stats.totalRows} 行 × ${stats.totalCols} 列` : `${stats.totalRows} rows × ${stats.totalCols} cols`);
+	if (stats.sum === undefined) return base;
+	return zh ? `${base} · 求和: ${stats.sum} · 平均: ${stats.avg}` : `${base} · Sum: ${stats.sum} · Avg: ${stats.avg}`;
 }
 
 export function hideRowsLabel(r1: number, r2: number): string {

@@ -201,6 +201,17 @@ export interface TableModelV2 {
 	 *  always has a real scroll container to stick against, and a scrollbar
 	 *  appears only when the table can't fully fit). */
 	viewHeight?: number;
+	/** 'pinned' = the status bar always occupies its own row, like Excel's.
+	 *  'hover' = same show/hide behavior as the other selector strips — only
+	 *  visible while the pointer is over the table. Absent = 'pinned' — the
+	 *  one deliberate exception to "a new field never changes an existing
+	 *  table's appearance": the whole point of this feature is the persistent
+	 *  bar, so defaulting to 'hover' would ship it effectively turned off. */
+	statusBarMode?: 'pinned' | 'hover';
+	/** Width in px of the status bar's right-hand section (stats + the custom
+	 *  scrollbar), dragged via the divider between it and the sheet-tabs/stats
+	 *  area on the left. Absent = a fixed initial width. */
+	statusBarScrollWidth?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

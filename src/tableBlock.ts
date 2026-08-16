@@ -307,16 +307,28 @@ export class TableBlock extends MarkdownRenderChild {
 			// renderTable()'s own output (which only ever renders the ONE active
 			// sheet, whatever render mode — table/kanban/calendar — that sheet
 			// itself is showing) so it stays visible regardless of the active
-			// sheet's own view. Bottom placement matches Excel's own tab strip.
-			// Only shown once there are actually 2+ sheets to switch between —
-			// a workbook that's been pared back down to a single sheet (or one
-			// that never needed the bar in the first place) has nothing to
-			// distinguish via tabs, so the bar would just be a single, pointless
-			// pill; the left-toolbar "add sheet" button stays the entry point
-			// for going from 1 sheet back up to 2.
+			// sheet's own view. Only shown once there are actually 2+ sheets to
+			// switch between — a workbook that's been pared back down to a single
+			// sheet (or one that never needed the bar in the first place) has
+			// nothing to distinguish via tabs, so the bar would just be a single,
+			// pointless pill; the left-toolbar "add sheet" button stays the entry
+			// point for going from 1 sheet back up to 2.
+			//
+			// Mount point: when the active sheet is in the default table view,
+			// renderTable() just built a `.bt-status-bar` whose `.bt-status-tabs`
+			// child exists exactly for this (Task 9, see that element's own
+			// comment in renderer.ts) — mounting there instead of appending a
+			// second, separate bar matches Excel's own single-row "tabs + status"
+			// layout and lets the two share the divider-driven width split. A
+			// kanban/calendar active view returns out of renderTable() before
+			// ever creating a status bar (that chrome doesn't apply to a board),
+			// so the query comes back null and this falls back to the original
+			// standalone bottom bar — the only placement that still works when
+			// there's no status bar to share a row with.
 			if (this.workbook && this.workbook.sheets.length > 1) {
+				const statusTabs = tmp.querySelector<HTMLElement>('.bt-status-bar .bt-status-tabs');
 				renderSheetTabBar({
-					container: tmp,
+					container: statusTabs ?? tmp,
 					sheets: this.workbook.sheets,
 					activeSheetId: this.workbook.activeSheetId ?? this.workbook.sheets[0]?.id ?? '',
 					cacheKey: this.cacheKey,

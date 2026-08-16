@@ -156,6 +156,10 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![split-cell](docs/demo-cell-split.gif)
 
+**17 · Status bar** — row/column totals, selection size and sum/average; drag the divider to resize its own scrollbar track; ⚙️ view settings to pin it or show only on hover
+
+> 🎬 *Demo GIF coming soon*
+
 ---
 
 ## Keyboard
@@ -305,11 +309,12 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Tabs — click to switch, double-click to rename, drag to reorder, right-click for color / delete</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="3"><b>Whole table</b></td>
+  <td rowspan="4"><b>Whole table</b></td>
   <td>Lock — 🔒 disables every graphical edit for that table</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; pinned or hover-only</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Back a table with an external <code>.xlsx</code> file and edit it from Obsidian</td><td align="center">🔜</td><td align="center">P3</td></tr>
 
 </tbody>

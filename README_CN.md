@@ -158,6 +158,10 @@
 
 ![单元格拆分](docs/demo-cell-split.gif)
 
+**17 · 状态栏** — 显示行列总数，选中范围时显示其大小和求和/平均值；拖拽分割线调整自带滚动条的占位宽度；⚙️ 视图设置可切换常驻或仅 hover 显示
+
+> 🎬 *演示 GIF 制作中*
+
 ---
 
 ## 键盘操作
@@ -308,11 +312,12 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>标签页——单击切换，双击重命名，拖拽重排，右键设置颜色 / 删除</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="3"><b>整表操作</b></td>
+  <td rowspan="4"><b>整表操作</b></td>
   <td>锁定——🔒 关闭该表格的所有图形化编辑</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>折叠——隐藏表体，保留标题与表头行</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>状态栏——显示行列总数，选中范围时显示大小和求和/平均值；自带滚动条可拖拽调整占位宽度；可设为常驻或仅 hover 显示</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>让表格对应一份外部 <code>.xlsx</code> 文件，并在 Obsidian 里编辑它</td><td align="center">🔜</td><td align="center">P3</td></tr>
 
 </tbody>
