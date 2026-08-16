@@ -94,6 +94,8 @@
 
 **1 · 模板快速开始 — 或插入空白表格**
 
+手动输入 `` ```rich-table ``，或者不想手打：命令面板里运行**插入 Rich Table**（可在 设置→快捷键 里自己绑定快捷键）、点左侧功能栏图标，或者在编辑器里右键从菜单里选——三种方式都会在光标处插入一个空代码块。
+
 空的 `rich-table` 代码块会为每个内置模板显示一个按钮（目前有展示全部功能的**演示表**和**康奈尔笔记**布局），再加上**插入空白表格**，后者会弹出类似 Word/Sheets 的尺寸选择器——鼠标划过 8×6 的网格实时预览、点击确认行列数，也可以直接输入精确数字（超出网格范围时使用）。鼠标悬停任意按钮会在下方实时预览对应内容；不悬停时默认预览第一个模板。模板文件放在 `src/templates/*.yaml` 里自动发现（跟主题系统同一套机制），新增模板不需要改代码。
 
 ![快速开始演示](docs/demo-01-template.gif)
@@ -245,7 +247,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tbody>
 
 <tr>
-  <td rowspan="6"><b>编辑</b></td>
+  <td rowspan="7"><b>编辑</b></td>
   <td>点击任意单元格即可编辑，支持完整 Markdown；输入 <code>[[</code> 触发 Obsidian 原生的文件与标题补全</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
@@ -253,6 +255,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>单元格 / 表头 / 选区菜单——插入、删除、隐藏行列，合并，设置样式，切换列类型与对齐</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>与 Excel / Sheets 互通剪贴板——把一片区域粘进单元格，也可把选区复制回去（或复制为 Markdown 表格）</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>表格标题与页脚注释——点击即可就地编辑</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>不用手打代码块——命令面板（可自己绑快捷键）、左侧功能栏图标，或编辑器右键菜单都能插入</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>单元格批注</td><td align="center">🔜</td><td align="center">P2</td></tr>
 
 <tr>

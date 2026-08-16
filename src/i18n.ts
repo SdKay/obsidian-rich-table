@@ -139,6 +139,10 @@ const EN = {
 	addFooter:     'Add footer',
 	titlePlaceholder:  'Title',
 	footerPlaceholder: 'Footer',
+
+	// Command palette / ribbon / editor context menu — inserting a brand-new
+	// block (as opposed to editing an existing table, everything above)
+	insertRichTableBlock: 'Insert rich-table block',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -255,6 +259,8 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	addFooter:     '添加页脚',
 	titlePlaceholder:  '标题',
 	footerPlaceholder: '页脚',
+
+	insertRichTableBlock: '插入 Rich Table',
 };
 
 export function t(key: keyof typeof EN): string {

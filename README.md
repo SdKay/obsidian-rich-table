@@ -92,6 +92,8 @@ Minimum Obsidian version: **1.8.7**
 > ![Upgrade](docs/demo-00-migration.gif)
 **1 · Quick start from template — or a blank table**
 
+Type `` ```rich-table `` yourself, or skip typing it: run **Insert rich-table block** from the command palette (bind it your own hotkey under Settings → Hotkeys), click the ribbon icon, or right-click in the editor and pick it from the context menu — all three drop an empty block at the cursor.
+
 An empty `rich-table` code block shows one button per built-in template (currently a full-featured **Demo** and a **Cornell Notes** layout) plus **Insert blank table**, which opens a Word/Sheets-style size picker — hover an 8×6 grid to preview and click to confirm a row/column count, or type exact numbers for anything past the visible grid. Hovering any button live-previews that option below; with nothing hovered, the default template previews. Templates are auto-discovered from `src/templates/*.yaml` (same pattern as themes) — no code changes needed to add one.
 
 ![Quick start demo](docs/demo-01-template.gif)
@@ -242,7 +244,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tbody>
 
 <tr>
-  <td rowspan="6"><b>Editing</b></td>
+  <td rowspan="7"><b>Editing</b></td>
   <td>Click any cell to edit — full Markdown, with <code>[[</code> triggering Obsidian's own file &amp; heading autocomplete</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
@@ -250,6 +252,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Cell, header and selection menus — insert / delete / hide rows &amp; columns, merge, style, column type, alignment</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Excel / Sheets clipboard — paste a range into a cell, copy a selection back out (or as a Markdown table)</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Table title and footer notes — click to edit inline</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Insert a block without typing the fence — command palette (assign your own hotkey), ribbon icon, or editor right-click</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Cell comments</td><td align="center">🔜</td><td align="center">P2</td></tr>
 
 <tr>
