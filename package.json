@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-rich-table",
-	"version": "1.3.0",
+	"version": "1.3.1",
 	"description": "Spreadsheet-like tables in a code block: merged cells, typed columns, sort, filter and summary rows, frozen panes, multi-sheet workbooks, and Kanban or calendar views of the same rows — with full Markdown and wikilinks in every cell.",
 	"main": "main.js",
 	"type": "module",
