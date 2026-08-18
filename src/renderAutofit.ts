@@ -60,29 +60,19 @@ export function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number):
 			? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth)
 			: 2;
 
-		// 1. Typed cell: pill is inline-flex with white-space:nowrap;
-		//    offsetWidth is the natural pill width regardless of cell clipping.
-		const pill = cell.querySelector<HTMLElement>('.bt-choice');
-		if (pill) {
-			max = Math.max(max, pill.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
-			continue;
-		}
-
-		// 1b. Rendered diagram/embed (e.g. a mermaid/plantuml code block, which
-		//     renders to an inline <svg> with its own width/viewBox — a <canvas>-
-		//     based renderer looks the same to auto-fit). These size themselves
-		//     from their own attributes, not text flow: forcing white-space:nowrap
-		//     on an ancestor (the generic text branch below) does nothing for them,
-		//     and measuring via Range.getBoundingClientRect() is unreliable once the
-		//     range crosses into SVG's separate DOM namespace. Read the element's
-		//     own rendered box directly instead.
-		const media = cell.querySelector<HTMLElement>('svg, canvas');
-		if (media) {
-			max = Math.max(max, media.getBoundingClientRect().width + padH + borderH);
-			continue;
-		}
-
-		// 2. Header cell: measure the inline text span (not the cell itself).
+		// 1. Header cell: measure the inline text span (not the cell itself), and
+		//    do this BEFORE the pill/media checks below — checked first
+		//    specifically because it's unambiguous (only a header cell ever has
+		//    .bt-th-text) and because a header cell also carries its own SVG
+		//    icons (the filter button, the live-sort indicator), which the
+		//    media check below would otherwise match FIRST and measure instead
+		//    of the header's actual text — reported as double-click auto-fit
+		//    doing nothing on a real column: the filter icon's few px, plus
+		//    padding, never exceeded the column's existing/minimum width, so
+		//    the "fit" came out identical to what was already there. Never
+		//    reproduced in this repo's own e2e suite because its setIcon() shim
+		//    only sets a data-icon attribute, never a real <svg> — see
+		//    obsidian-shim.ts.
 		//    cell.scrollWidth == clientWidth == current column width for table-cell
 		//    elements — useless. The inline span's offsetWidth is the actual text width —
 		//    but only once it's forced to one line first: if the column is already too
@@ -101,6 +91,29 @@ export function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number):
 			const spanStyle = view ? view.getComputedStyle(textSpan) : null;
 			const letterSpacing = spanStyle ? parseFloat(spanStyle.letterSpacing) || 0 : 0;
 			max = Math.max(max, w + letterSpacing + padH + borderH);
+			continue;
+		}
+
+		// 2. Typed cell: pill is inline-flex with white-space:nowrap;
+		//    offsetWidth is the natural pill width regardless of cell clipping.
+		const pill = cell.querySelector<HTMLElement>('.bt-choice');
+		if (pill) {
+			max = Math.max(max, pill.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
+			continue;
+		}
+
+		// 2b. Rendered diagram/embed (e.g. a mermaid/plantuml code block, which
+		//     renders to an inline <svg> with its own width/viewBox — a <canvas>-
+		//     based renderer looks the same to auto-fit). These size themselves
+		//     from their own attributes, not text flow: forcing white-space:nowrap
+		//     on an ancestor (the generic text branch below) does nothing for them,
+		//     and measuring via Range.getBoundingClientRect() is unreliable once the
+		//     range crosses into SVG's separate DOM namespace. Read the element's
+		//     own rendered box directly instead. Data cells only — a header cell
+		//     never reaches here, having already continued above.
+		const media = cell.querySelector<HTMLElement>('svg, canvas');
+		if (media) {
+			max = Math.max(max, media.getBoundingClientRect().width + padH + borderH);
 			continue;
 		}
 
@@ -159,19 +172,27 @@ export function autoFitAllColWidths(
 		for (const cell of cells) {
 			if ((cell.tagName === 'TD' || cell.tagName === 'TH') && (cell as HTMLTableCellElement).colSpan > 1) continue;
 
+			// Header cell text span — checked BEFORE pill/media below, and for the
+			// same reason autoFitColWidth does: a header cell's own SVG icons (the
+			// filter button, the live-sort indicator) would otherwise match the
+			// media check first and get measured instead of the actual header
+			// text, capping the "fit" at whatever tiny width an icon has. Force
+			// nowrap before reading offsetWidth below — if the column is already
+			// too narrow, the header text is already wrapped, and offsetWidth on
+			// a wrapped inline span reports the widest wrapped line, not the
+			// text's true natural width.
+			const textSpan = cell.querySelector<HTMLElement>('.bt-th-text');
+			if (textSpan) { textSpan.addClass('bt-nowrap-measure'); textSpans.push({ colIdx, el: textSpan }); continue; }
 			const pill = cell.querySelector<HTMLElement>('.bt-choice');
 			if (pill) { pills.push({ colIdx, el: pill }); continue; }
 			// Rendered diagram/embed (mermaid/plantuml) — see autoFitColWidth's own
 			// comment for why this needs its own branch instead of the generic
 			// nowrap+Range text path below. No write needed: unlike text, an svg/
 			// canvas's own box isn't affected by white-space, so nothing to toggle.
+			// Data cells only — a header cell never reaches here, having already
+			// continued above.
 			const media = cell.querySelector<HTMLElement>('svg, canvas');
 			if (media) { medias.push({ colIdx, el: media }); continue; }
-			// Force nowrap before reading offsetWidth below — if the column is already too
-			// narrow, the header text is already wrapped, and offsetWidth on a wrapped inline
-			// span reports the widest wrapped line, not the text's true natural width.
-			const textSpan = cell.querySelector<HTMLElement>('.bt-th-text');
-			if (textSpan) { textSpan.addClass('bt-nowrap-measure'); textSpans.push({ colIdx, el: textSpan }); continue; }
 			const text = cell.textContent?.trim() ?? '';
 			if (!text) continue;
 			const pEls = Array.from(cell.querySelectorAll<HTMLElement>('p'));

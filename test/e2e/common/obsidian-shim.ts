@@ -168,11 +168,25 @@ export class Menu {
 }
 
 /**
- * Obsidian injects an SVG. An attribute is enough, and keeps every measured box
- * independent of an icon glyph this harness doesn't have.
+ * Obsidian injects a real <svg> (a Lucide icon, ~16px square by default) — this
+ * used to be just a `data-icon` attribute, on the reasoning that it "keeps
+ * every measured box independent of an icon glyph this harness doesn't have."
+ * That reasoning broke autoFitColWidth's own measurement code, which queries
+ * for `svg, canvas` to detect a rendered diagram/embed in a DATA cell, but
+ * matched a HEADER cell's filter-button icon instead (real Obsidian) while
+ * matching nothing at all here (the old attribute-only stub) — same "unfaithful
+ * shim" pattern already noted elsewhere in this file, just a new instance of
+ * it. A real, appropriately-sized (but glyph-less) <svg> keeps that class of
+ * measurement code exercised here the same way it runs in production.
  */
 export function setIcon(el: HTMLElement, icon: string): void {
 	el.dataset.icon = icon;
+	const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	svg.setAttribute('viewBox', '0 0 24 24');
+	svg.setAttribute('width', '16');
+	svg.setAttribute('height', '16');
+	svg.dataset.icon = icon;
+	el.appendChild(svg);
 }
 
 export class Notice {
