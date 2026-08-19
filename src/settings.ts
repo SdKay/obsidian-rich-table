@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import type BetterTablePlugin from './main';
 import type { BetterTableSettings, ChoiceType } from './model';
+import { t } from './i18n';
 
 export const DEFAULT_SETTINGS: BetterTableSettings = {
 	customChoices: [],
@@ -21,12 +22,8 @@ export class BetterTableSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Allow editing in reading view')
-			.setDesc(
-				'When off (default), all interactive behaviour — hover selector strips, ' +
-				'click-to-edit, double-click panels, choice dropdowns — is disabled in ' +
-				"Obsidian's reading view. Live preview / source mode is always interactive.",
-			)
+			.setName(t('settingAllowReadingViewEditName'))
+			.setDesc(t('settingAllowReadingViewEditDesc'))
 			.addToggle(toggle =>
 				toggle
 					.setValue(this.plugin.settings.allowReadingViewEdit)
@@ -37,13 +34,8 @@ export class BetterTableSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Single-click to edit')
-			.setDesc(
-				'When on, a single click on a cell enters edit mode immediately (no ~200ms delay), ' +
-				'and the style panel opens with Ctrl/Cmd+click instead of double-click. Speeds up ' +
-				'rapid consecutive editing. When off (default), single click enters edit after a short ' +
-				'delay and double click opens the style panel.',
-			)
+			.setName(t('settingSingleClickEditName'))
+			.setDesc(t('settingSingleClickEditDesc'))
 			.addToggle(toggle =>
 				toggle
 					.setValue(this.plugin.settings.singleClickEdit)
@@ -54,14 +46,14 @@ export class BetterTableSettingTab extends PluginSettingTab {
 			);
 
 		// ── Built-in types (informational) ───────────────────────────────────
-		new Setting(containerEl).setName('Built-in types').setHeading();
+		new Setting(containerEl).setName(t('settingBuiltinTypes')).setHeading();
 
 		const builtinInfo = containerEl.createDiv({ cls: 'bt-builtin-info' });
 
 		// Special types (non-choice)
 		const dateRow = builtinInfo.createDiv({ cls: 'bt-builtin-row' });
 		dateRow.createSpan({ cls: 'bt-builtin-id', text: 'date' });
-		dateRow.createSpan({ cls: 'bt-builtin-pills', text: 'Date picker (YYYY-MM-DD)' });
+		dateRow.createSpan({ cls: 'bt-builtin-pills', text: t('settingDatePickerDesc') });
 
 		// Choice types
 		const builtin = this.plugin.choiceRegistry.getAllTypes()
@@ -78,7 +70,7 @@ export class BetterTableSettingTab extends PluginSettingTab {
 		}
 
 		// ── Custom types ──────────────────────────────────────────────────────
-		new Setting(containerEl).setName('Custom types').setHeading();
+		new Setting(containerEl).setName(t('settingCustomTypes')).setHeading();
 
 		const listEl = containerEl.createDiv({ cls: 'bt-custom-types-list' });
 		this.renderList(listEl);
@@ -92,10 +84,10 @@ export class BetterTableSettingTab extends PluginSettingTab {
 		}
 
 		new Setting(listEl).addButton(btn =>
-			btn.setButtonText('Add type').setCta().onClick(async () => {
+			btn.setButtonText(t('settingAddType')).setCta().onClick(async () => {
 				this.plugin.settings.customChoices.push({
 					id: `type-${this.plugin.settings.customChoices.length + 1}`,
-					options: [{ value: 'option-1', label: 'Option 1 (edit me)', color: '#a0c4ff' }],
+					options: [{ value: 'option-1', label: t('settingDefaultOptionLabel'), color: '#a0c4ff' }],
 				});
 				await this.plugin.saveSettings();
 				this.renderList(listEl);
@@ -111,11 +103,11 @@ export class BetterTableSettingTab extends PluginSettingTab {
 
 		// Type ID row
 		new Setting(typeEl)
-			.setName('Type ID')
+			.setName(t('settingTypeId'))
 			.addText(text =>
 				text
 					.setValue(type.id)
-					.setPlaceholder('My-type')
+					.setPlaceholder(t('settingTypeIdPlaceholder'))
 					.onChange(async (v) => {
 						type.id = v;
 						await this.plugin.saveSettings();
@@ -124,7 +116,7 @@ export class BetterTableSettingTab extends PluginSettingTab {
 			.addExtraButton(btn =>
 				btn
 					.setIcon('trash')
-					.setTooltip('Delete type')
+					.setTooltip(t('settingDeleteType'))
 					.onClick(async () => {
 						this.plugin.settings.customChoices.splice(typeIdx, 1);
 						await this.plugin.saveSettings();
@@ -135,7 +127,7 @@ export class BetterTableSettingTab extends PluginSettingTab {
 		// Options header
 		typeEl.createEl('p', {
 			cls: 'bt-options-header',
-			text: 'Options (value · display label · color)',
+			text: t('settingOptionsHeader'),
 		});
 
 		// Options list
@@ -146,7 +138,7 @@ export class BetterTableSettingTab extends PluginSettingTab {
 
 		// Add option button
 		new Setting(typeEl).addButton(btn =>
-			btn.setButtonText('Add option').onClick(async () => {
+			btn.setButtonText(t('settingAddOption')).onClick(async () => {
 				type.options.push({ value: '', label: '', color: '#e0e0e0' });
 				await this.plugin.saveSettings();
 				// Append only the new option row (no full re-render — keeps focus)
@@ -171,7 +163,7 @@ export class BetterTableSettingTab extends PluginSettingTab {
 
 		// Value
 		const valueInput = row.createEl('input', {
-			attr: { type: 'text', placeholder: 'Value', value: opt.value },
+			attr: { type: 'text', placeholder: t('settingOptionValuePlaceholder'), value: opt.value },
 			cls: 'bt-opt-text',
 		});
 		valueInput.addEventListener('change', () => {
@@ -182,7 +174,7 @@ export class BetterTableSettingTab extends PluginSettingTab {
 
 		// Label
 		const labelInput = row.createEl('input', {
-			attr: { type: 'text', placeholder: 'Label', value: opt.label ?? '' },
+			attr: { type: 'text', placeholder: t('settingOptionLabelPlaceholder'), value: opt.label ?? '' },
 			cls: 'bt-opt-text',
 		});
 		labelInput.addEventListener('change', () => {
@@ -204,7 +196,7 @@ export class BetterTableSettingTab extends PluginSettingTab {
 		});
 
 		// Delete option
-		const del = row.createEl('button', { cls: 'bt-opt-delete', attr: { 'aria-label': 'Delete option' } });
+		const del = row.createEl('button', { cls: 'bt-opt-delete', attr: { 'aria-label': t('settingDeleteOption') } });
 		del.setText('×');
 		del.addEventListener('click', () => {
 			this.plugin.settings.customChoices[typeIdx]?.options.splice(optIdx, 1);

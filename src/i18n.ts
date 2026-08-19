@@ -144,6 +144,32 @@ const EN = {
 	// block (as opposed to editing an existing table, everything above)
 	insertRichTableBlock: 'Insert rich-table block',
 	convertToRichTable: 'Convert to rich-table',
+
+	// Settings tab
+	settingAllowReadingViewEditName: 'Allow editing in reading view',
+	settingAllowReadingViewEditDesc:
+		'When off (default), all interactive behaviour — hover selector strips, ' +
+		'click-to-edit, double-click panels, choice dropdowns — is disabled in ' +
+		"Obsidian's reading view. Live preview / source mode is always interactive.",
+	settingSingleClickEditName: 'Single-click to edit',
+	settingSingleClickEditDesc:
+		'When on, a single click on a cell enters edit mode immediately (no ~200ms delay), ' +
+		'and the style panel opens with Ctrl/Cmd+click instead of double-click. Speeds up ' +
+		'rapid consecutive editing. When off (default), single click enters edit after a short ' +
+		'delay and double click opens the style panel.',
+	settingBuiltinTypes:     'Built-in types',
+	settingDatePickerDesc:   'Date picker (YYYY-MM-DD)',
+	settingCustomTypes:      'Custom types',
+	settingAddType:          'Add type',
+	settingTypeId:           'Type ID',
+	settingTypeIdPlaceholder: 'My-type',
+	settingDeleteType:       'Delete type',
+	settingOptionsHeader:    'Options (value · display label · color)',
+	settingAddOption:        'Add option',
+	settingOptionValuePlaceholder: 'Value',
+	settingOptionLabelPlaceholder: 'Label',
+	settingDeleteOption:     'Delete option',
+	settingDefaultOptionLabel: 'Option 1 (edit me)',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -263,6 +289,26 @@ const ZH: { [K in keyof typeof EN]: string } = {
 
 	insertRichTableBlock: '插入 Rich Table',
 	convertToRichTable: '转为 Rich Table',
+
+	settingAllowReadingViewEditName: '允许在阅读模式下编辑',
+	settingAllowReadingViewEditDesc:
+		'关闭时（默认），所有交互行为——悬停选择条、点击编辑、双击面板、下拉选择——在阅读模式下都会被禁用。实时预览/源码模式始终可交互。',
+	settingSingleClickEditName: '单击即可编辑',
+	settingSingleClickEditDesc:
+		'开启后，单击单元格会立即进入编辑(无需区分双击，响应更快)，样式面板通过 Ctrl/Cmd+点击 打开。关闭时（默认），单击进入编辑（稍有迟缓），双击打开样式面板。',
+	settingBuiltinTypes:     '内置类型',
+	settingDatePickerDesc:   '日期选择器（YYYY-MM-DD）',
+	settingCustomTypes:      '自定义类型',
+	settingAddType:          '添加类型',
+	settingTypeId:           '类型 ID',
+	settingTypeIdPlaceholder: '我的类型',
+	settingDeleteType:       '删除类型',
+	settingOptionsHeader:    '选项（值 · 显示标签 · 颜色）',
+	settingAddOption:        '添加选项',
+	settingOptionValuePlaceholder: '值',
+	settingOptionLabelPlaceholder: '标签',
+	settingDeleteOption:     '删除选项',
+	settingDefaultOptionLabel: '选项 1（点击编辑）',
 };
 
 export function t(key: keyof typeof EN): string {
