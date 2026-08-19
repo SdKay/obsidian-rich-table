@@ -53,7 +53,7 @@ export interface TableModel {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// V2 model — ID-based, pipe table is a generated read-only mirror
+// V2 model — ID-based, YAML front-matter is the sole data source
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Aggregate/summary-row statistic types, computed over a column's visible cells. */
@@ -85,8 +85,8 @@ export interface RowDefV2 {
 	/** Formula source per column, only present for cells that are formulas.
 	 *  `cells[colId]` still holds the cached computed result in the same
 	 *  plain-string shape as a literal value — every existing reader of
-	 *  `cells` (aggregate/chart rows, sort, filter, clipboard, mirror) keeps
-	 *  working unchanged. See src/formula.ts for the evaluator. */
+	 *  `cells` (aggregate/chart rows, sort, filter, clipboard) keeps working
+	 *  unchanged. See src/formula.ts for the evaluator. */
 	formulas?: Record<string, string>;
 }
 

@@ -84,9 +84,9 @@ export function tableSource(spec: TableSpec): string {
 	] as const) {
 		if (value !== undefined) lines.push(`${key}: ${value}`);
 	}
-	// The generated mirror below the front matter is never parsed back (see
-	// CLAUDE.md), so a header-only stub is enough — but the delimiter itself is
-	// required, hence this rather than omitting the block.
+	// Anything below the front matter is never parsed back (see CLAUDE.md), so
+	// a header-only stub is enough — but the closing `---` delimiter itself is
+	// required to end the YAML block, hence this rather than omitting it.
 	lines.push('---', `| ${spec.widths.map((_, i) => String.fromCharCode(65 + i)).join(' | ')} |`,
 		`| ${spec.widths.map(() => '---').join(' | ')} |`, '');
 	return lines.join('\n');

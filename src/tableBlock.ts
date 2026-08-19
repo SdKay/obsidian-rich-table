@@ -794,10 +794,10 @@ export class TableBlock extends MarkdownRenderChild {
 	}
 
 	private async insertTemplate(templateId: string): Promise<void> {
-		// The template file's own pipe-table mirror is source-controlled by hand and
-		// easy to forget to update after editing the YAML — regenerate it here via
-		// the same parse→serialize round trip a real write-back uses, instead of
-		// trusting the template file's mirror to already be correct.
+		// Round-trips the hand-authored template through parse→serialize before
+		// inserting — same normalization (canonical field order, recomputed
+		// formulas) a real write-back applies, instead of trusting the template
+		// file's own YAML formatting to already match what the plugin would write.
 		await this.insertBlock(serializeTable(parseTable(getTemplateContent(templateId))));
 	}
 

@@ -1,6 +1,9 @@
 /**
- * v2 parser.  Reads ONLY the YAML front-matter; the pipe table mirror is
- * completely ignored (it is a generated read-only artifact).
+ * v2 parser. Reads ONLY the YAML front-matter — anything after the closing
+ * `---` is ignored. This is what keeps parsing backward compatible with notes
+ * written before the pipe-table mirror was removed: an old note that still
+ * has one below the front-matter keeps parsing exactly as before, and the
+ * next write-back drops it since the serializer no longer regenerates it.
  */
 
 import { parseYaml } from 'obsidian';

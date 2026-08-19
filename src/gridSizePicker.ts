@@ -4,9 +4,8 @@ import { clampPanelToViewport, bindPanelDismiss } from './renderPanel';
 
 const MAX_GRID_ROWS = 6;
 const MAX_GRID_COLS = 8;
-/** Sanity ceiling for the manual row/col inputs — mirrors the pipe-table
- *  mirror's own MIRROR_LIMIT precedent (serializer.ts): a typo like an extra
- *  zero shouldn't be able to make renderTable() build an unresponsive grid. */
+/** Sanity ceiling for the manual row/col inputs: a typo like an extra zero
+ *  shouldn't be able to make renderTable() build an unresponsive grid. */
 const MAX_CUSTOM_SIZE = 50;
 
 export interface GridSizePickerOptions {
