@@ -96,6 +96,8 @@
 
 手动输入 `` ```rich-table ``，或者不想手打：命令面板里运行**插入 Rich Table**（可在 设置→快捷键 里自己绑定快捷键）、点左侧功能栏图标，或者在编辑器里右键从菜单里选——三种方式都会在光标处插入一个空代码块。
 
+已经有一个普通的 Markdown 表格？把光标放在表格里，从命令面板运行**转为 Rich Table**（同样可以自己绑定快捷键），即可原地转换——表头行变为列名，其余行变为数据。编辑器右键菜单里也有这个选项，但 Live Preview 下直接右键表格本身会被 Obsidian 自带的表格编辑控件拦截，此时切到源码模式右键，或直接用命令面板即可。
+
 空的 `rich-table` 代码块会为每个内置模板显示一个按钮（目前有展示全部功能的**演示表**和**康奈尔笔记**布局），再加上**插入空白表格**，后者会弹出类似 Word/Sheets 的尺寸选择器——鼠标划过 8×6 的网格实时预览、点击确认行列数，也可以直接输入精确数字（超出网格范围时使用）。鼠标悬停任意按钮会在下方实时预览对应内容；不悬停时默认预览第一个模板。模板文件放在 `src/templates/*.yaml` 里自动发现（跟主题系统同一套机制），新增模板不需要改代码。
 
 ![快速开始演示](docs/demo-01-template.gif)
@@ -256,6 +258,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>与 Excel / Sheets / Markdown 表格互通剪贴板——把一片区域或一个 Markdown 表格粘进单元格（粘到表头格可转换整表格式），也可把选区复制回去（或复制为 Markdown 表格）</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>表格标题与页脚注释——点击即可就地编辑</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>不用手打代码块——命令面板（可自己绑快捷键）、左侧功能栏图标，或编辑器右键菜单都能插入</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>把已有的普通 Markdown 表格原地转为 rich-table，编辑器右键菜单直接转换</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>单元格批注</td><td align="center">🔜</td><td align="center">P2</td></tr>
 
 <tr>

@@ -143,6 +143,7 @@ const EN = {
 	// Command palette / ribbon / editor context menu — inserting a brand-new
 	// block (as opposed to editing an existing table, everything above)
 	insertRichTableBlock: 'Insert rich-table block',
+	convertToRichTable: 'Convert to rich-table',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -261,6 +262,7 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	footerPlaceholder: '页脚',
 
 	insertRichTableBlock: '插入 Rich Table',
+	convertToRichTable: '转为 Rich Table',
 };
 
 export function t(key: keyof typeof EN): string {

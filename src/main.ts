@@ -4,6 +4,7 @@ import { ChoiceRegistry } from './choiceRegistry';
 import { TableBlock } from './tableBlock';
 import type { BetterTableSettings } from './model';
 import { planRichTableBlockInsertion } from './insertRichTableBlock';
+import { planMarkdownTableConversion, type MarkdownTableConversionPlan } from './convertMarkdownTable';
 import { t } from './i18n';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
@@ -36,11 +37,44 @@ export default class BetterTablePlugin extends Plugin {
 			const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
 			if (editor) this.insertRichTableBlock(editor);
 		});
+		// Command-palette entry point (also assignable a hotkey under Settings →
+		// Hotkeys) is the reliable way to reach this: Obsidian's own Live Preview
+		// renders a plain Markdown table as an interactive widget with its OWN
+		// right-click menu (cut/copy/paste, align, clear/delete cell), which
+		// consumes the event before it ever reaches the 'editor-menu' workspace
+		// hook — the editor-menu item below is added too, for Source Mode and
+		// any other case where that widget isn't in the way, but it can't be
+		// the only entry point. editorCheckCallback greys the command out
+		// (rather than acting as a no-op) when the cursor isn't on a table.
+		this.addCommand({
+			id: 'convert-markdown-table',
+			name: t('convertToRichTable'),
+			editorCheckCallback: (checking, editor) => {
+				const plan = this.planMarkdownTableConversionAt(editor);
+				if (checking) return plan !== null;
+				if (plan) this.applyMarkdownTableConversion(editor, plan);
+				return true;
+			},
+		});
 		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor) => {
 			menu.addItem(item => item
 				.setTitle(t('insertRichTableBlock'))
 				.setIcon('table')
 				.onClick(() => this.insertRichTableBlock(editor)));
+
+			// Only offered when the cursor is actually on a plain Markdown table —
+			// unlike "Insert rich-table block" above, this action has nothing to
+			// do when there's no table there, so it stays out of the menu instead
+			// of appearing as a no-op (see "Evaluating feature requests" in
+			// CLAUDE.md: match how comparable tools only show contextual actions
+			// when they apply).
+			const plan = this.planMarkdownTableConversionAt(editor);
+			if (plan) {
+				menu.addItem(item => item
+					.setTitle(t('convertToRichTable'))
+					.setIcon('table')
+					.onClick(() => this.applyMarkdownTableConversion(editor, plan)));
+			}
 		}));
 	}
 
@@ -52,6 +86,20 @@ export default class BetterTablePlugin extends Plugin {
 		editor.replaceRange(plan.text, cursor);
 		editor.setCursor(plan.cursorAfter);
 		editor.focus();
+	}
+
+	private planMarkdownTableConversionAt(editor: Editor): MarkdownTableConversionPlan | null {
+		const cursor = editor.getCursor();
+		const lines = Array.from({ length: editor.lineCount() }, (_, i) => editor.getLine(i));
+		return planMarkdownTableConversion(lines, cursor.line);
+	}
+
+	private applyMarkdownTableConversion(editor: Editor, plan: MarkdownTableConversionPlan): void {
+		editor.replaceRange(
+			plan.blockText,
+			{ line: plan.startLine, ch: 0 },
+			{ line: plan.endLine, ch: editor.getLine(plan.endLine).length },
+		);
 	}
 
 	async loadSettings(): Promise<void> {
