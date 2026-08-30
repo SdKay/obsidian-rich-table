@@ -73,7 +73,15 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 		// pointing nowhere behaves exactly like it being absent (default table).
 		...(typeof yaml?.activeViewId === 'string' && views.some(v => v.id === yaml.activeViewId)
 			? { activeViewId: yaml.activeViewId } : {}),
+		...(parseXlsxSource(yaml?.xlsxSource) ? { xlsxSource: parseXlsxSource(yaml?.xlsxSource) } : {}),
 	};
+}
+
+function parseXlsxSource(raw: unknown): { path: string; sheet?: string } | undefined {
+	if (typeof raw !== 'object' || raw === null) return undefined;
+	const v = raw as Record<string, unknown>;
+	if (typeof v.path !== 'string' || v.path === '') return undefined;
+	return { path: v.path, ...(typeof v.sheet === 'string' ? { sheet: v.sheet } : {}) };
 }
 
 /**

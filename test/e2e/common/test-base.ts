@@ -54,12 +54,26 @@ export interface RenderBlockResult {
 	/** Re-runs the code-block processor the way Obsidian does after a write:
 	 *  a brand-new instance, a fresh blank container, the updated source. */
 	reprocess: () => Promise<void>;
+	/** Simulate an external tool overwriting an already-seeded binary file's
+	 *  bytes and firing the 'modify' event Obsidian's own file-watcher would
+	 *  — for exercising tableBlock.ts's xlsx auto-refresh. `bytes` is a plain
+	 *  byte array (not ArrayBuffer/Uint8Array — those aren't reliably
+	 *  structured-cloneable across Playwright's page.evaluate boundary). */
+	writeBinaryAndNotify: (path: string, bytes: number[]) => Promise<void>;
+	/** Simulate the vault renaming the file on disk (fires 'rename'). */
+	renameBinaryAndNotify: (oldPath: string, newPath: string) => Promise<void>;
+	/** Simulate the vault deleting the file (fires 'delete'). */
+	deleteBinaryAndNotify: (path: string) => Promise<void>;
 }
 
 export const test = base.extend<{
 	renderReal: (source: string, opts?: { sheetId?: string; scrollLeft?: number; scrollTop?: number }) => Promise<RenderRealResult>;
 	renderFull: (source: string, opts?: RenderFullOpts) => Promise<RenderRealResult>;
-	renderBlock: (blockSource: string) => Promise<RenderBlockResult>;
+	/** `binaryFiles` seeds the fake vault's binary files (vault-relative path
+	 *  → plain byte array) BEFORE the block's first render, for a block whose
+	 *  YAML references an `xlsxSource` — see writeBinaryAndNotify above for
+	 *  why a byte array, not ArrayBuffer/Uint8Array. */
+	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]> }) => Promise<RenderBlockResult>;
 }>({
 	renderReal: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
@@ -199,11 +213,11 @@ export const test = base.extend<{
 	renderBlock: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
 
-		const helper = async (blockSource: string): Promise<RenderBlockResult> => {
+		const helper = async (blockSource: string, opts?: { binaryFiles?: Record<string, number[]> }): Promise<RenderBlockResult> => {
 			await page.goto(`file://${SHELL}`);
 			await page.addScriptTag({ path: BUNDLE });
 
-			await page.evaluate((src) => {
+			await page.evaluate(({ src, binaryFiles }) => {
 				const R = window.RichTableReal;
 				const NOTE = 'note.md';
 				const vault = new R.FakeVault();
@@ -211,34 +225,60 @@ export const test = base.extend<{
 				// non-zero and an off-by-one in the line splice can't pass unnoticed.
 				const header = '# note\n\n';
 				vault.files.set(NOTE, `${header}\`\`\`rich-table\n${src}\`\`\`\n`);
+				// Seeded BEFORE the first mount below — an xlsx-backed block's very
+				// first render() already needs vault.readBinary to resolve.
+				for (const [path, bytes] of Object.entries(binaryFiles ?? {})) {
+					vault.binaryFiles.set(path, new Uint8Array(bytes).buffer);
+				}
 				const w = window as unknown as Record<string, unknown>;
 				w.__btVault = vault;
 				w.__btNote = NOTE;
 				w.__btSource = src;
 				w.__btPlugin = {
-					app: { vault },
+					app: { vault, metadataCache: new R.FakeMetadataCache(vault) },
 					choiceRegistry: new R.ChoiceRegistry([]),
 					settings: { allowReadingViewEdit: true, singleClickEdit: false },
+				};
+				// Recomputes the fence's line range from whatever the note CURRENTLY
+				// holds, rather than freezing lineStart/lineEnd at mount time —
+				// real Obsidian's ctx.getSectionInfo reads the live editor state,
+				// which vault.process keeps in sync with every write, so calling it
+				// again immediately after a write reflects that write's own line-
+				// count change. A frozen pair would still be right for exactly one
+				// write per mount, but production code can fire two structural ops
+				// back to back in the same tick (e.g. a "both" resize sets width AND
+				// height, each its own insertBlock/vault.process call) — the second
+				// call's stale lineEnd would then bound the splice against the
+				// PRE-first-write layout, corrupting whichever write applies second.
+				const findBlockRange = (text: string) => {
+					const lines = text.split('\n');
+					const lineStart = lines.findIndex(l => l.startsWith('```rich-table'));
+					const lineEnd = lines.findIndex((l, i) => i > lineStart && l.startsWith('```'));
+					return { lineStart, lineEnd };
 				};
 				w.__btMount = () => {
 					const host = document.getElementById('root');
 					// Obsidian hands each re-run a brand-new, EMPTY container.
 					const container = host.createDiv();
+					const { lineStart, lineEnd } = findBlockRange(vault.files.get(NOTE) ?? '');
 					const lines = (vault.files.get(NOTE) ?? '').split('\n');
-					const lineStart = lines.findIndex(l => l.startsWith('```rich-table'));
-					const lineEnd = lines.findIndex((l, i) => i > lineStart && l.startsWith('```'));
 					const inner = lines.slice(lineStart + 1, lineEnd).join('\n') + '\n';
-					const ctx = { getSectionInfo: () => ({ lineStart, lineEnd, text: vault.files.get(NOTE) ?? '' }) };
+					const ctx = { getSectionInfo: () => ({ ...findBlockRange(vault.files.get(NOTE) ?? ''), text: vault.files.get(NOTE) ?? '' }) };
 					const block = new R.TableBlock(container, inner, w.__btPlugin, NOTE, ctx, `${NOTE}:${lineStart}`);
 					w.__btBlock = block;
 					block.load();
 					return container;
 				};
 				w.__btMount();
-			}, blockSource);
+			}, { src: blockSource, binaryFiles: opts?.binaryFiles });
 
-			// The first paint is async (a cell at a time), so wait for the table.
-			await page.locator('.bt-table').first().waitFor();
+			// The first paint is async (a cell at a time), so wait for either
+			// outcome — a rendered table, or (an xlsx-backed block whose file
+			// can't be resolved/read) the error banner render() falls back to.
+			await Promise.race([
+				page.locator('.bt-table').first().waitFor(),
+				page.locator('.bt-error').first().waitFor(),
+			]);
 
 			return {
 				noteText: () => page.evaluate(() => {
@@ -257,6 +297,18 @@ export const test = base.extend<{
 						w.__btMount();
 					});
 				},
+				writeBinaryAndNotify: (path, bytes) => page.evaluate(({ path, bytes }) => {
+					const w = window as unknown as { __btVault: { writeBinaryAndNotify(path: string, buf: ArrayBuffer): void } };
+					w.__btVault.writeBinaryAndNotify(path, new Uint8Array(bytes).buffer);
+				}, { path, bytes }),
+				renameBinaryAndNotify: (oldPath, newPath) => page.evaluate(({ oldPath, newPath }) => {
+					const w = window as unknown as { __btVault: { renameBinaryAndNotify(oldPath: string, newPath: string): void } };
+					w.__btVault.renameBinaryAndNotify(oldPath, newPath);
+				}, { oldPath, newPath }),
+				deleteBinaryAndNotify: (path) => page.evaluate((path) => {
+					const w = window as unknown as { __btVault: { deleteBinaryAndNotify(path: string): void } };
+					w.__btVault.deleteBinaryAndNotify(path);
+				}, path),
 			};
 		};
 

@@ -212,6 +212,14 @@ export interface TableModelV2 {
 	 *  scrollbar), dragged via the divider between it and the sheet-tabs/stats
 	 *  area on the left. Absent = a fixed initial width. */
 	statusBarScrollWidth?: number;
+	/** When present, this table's `columns`/`rows`/`merges`/`styles` are NOT the
+	 *  data source — they're read (view-only, phase 1) from an external .xlsx
+	 *  file instead, resolved the same way a wikilink target resolves (relative
+	 *  to the note, via `metadataCache.getFirstLinkpathDest`). See
+	 *  `src/xlsxSource.ts` for the actual conversion; `columns`/`rows` are
+	 *  regenerated fresh on every read and never trusted from what's on disk in
+	 *  the code block for this kind of table — nothing here is written back. */
+	xlsxSource?: { path: string; sheet?: string };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

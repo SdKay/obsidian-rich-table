@@ -320,6 +320,111 @@ statusBarScrollWidth: -5
 	});
 });
 
+describe('xlsxSource round-trip', () => {
+	it('parses path and sheet from front-matter', () => {
+		const model = parseTable(`---
+version: 2
+columns: []
+rows: []
+xlsxSource:
+  path: data/budget.xlsx
+  sheet: Q1
+---
+`);
+		expect(model.xlsxSource).toEqual({ path: 'data/budget.xlsx', sheet: 'Q1' });
+	});
+
+	it('parses path with no sheet (whole-workbook reference)', () => {
+		const model = parseTable(`---
+version: 2
+columns: []
+rows: []
+xlsxSource:
+  path: data/budget.xlsx
+---
+`);
+		expect(model.xlsxSource).toEqual({ path: 'data/budget.xlsx' });
+	});
+
+	it('ignores an xlsxSource with no path at all rather than throwing', () => {
+		const model = parseTable(`---
+version: 2
+columns: []
+rows: []
+xlsxSource:
+  sheet: Q1
+---
+`);
+		expect(model.xlsxSource).toBeUndefined();
+	});
+
+	it('ignores an xlsxSource with an empty-string path', () => {
+		const model = parseTable(`---
+version: 2
+columns: []
+rows: []
+xlsxSource:
+  path: ""
+  sheet: Q1
+---
+`);
+		expect(model.xlsxSource).toBeUndefined();
+	});
+
+	it('leaves xlsxSource undefined when absent, and omits the field on serialize', () => {
+		const model = {
+			version: 2 as const,
+			columns: [{ id: 'c_0', name: 'A' }],
+			rows: [{ id: 'r_0', cells: { c_0: 'x' } }],
+			merges: [],
+			styles: [],
+		};
+		const out = serializeTable(model);
+		expect(out).not.toContain('xlsxSource:');
+		expect(parseTable(out).xlsxSource).toBeUndefined();
+	});
+
+	it('round-trips through serializeTable → parseTable unchanged', () => {
+		const model = {
+			version: 2 as const,
+			columns: [{ id: 'c_0', name: 'A' }],
+			rows: [{ id: 'r_0', cells: { c_0: 'x' } }],
+			merges: [],
+			styles: [],
+			xlsxSource: { path: 'reports/2026.xlsx', sheet: '统计' },
+		};
+		const reparsed = parseTable(serializeTable(model));
+		expect(reparsed.xlsxSource).toEqual({ path: 'reports/2026.xlsx', sheet: '统计' });
+	});
+
+	it('omits the dead columns:/rows: fields entirely when xlsxSource is set — they are never real data', () => {
+		const model = {
+			version: 2 as const,
+			columns: [],
+			rows: [],
+			merges: [],
+			styles: [],
+			xlsxSource: { path: 'reports/2026.xlsx' },
+		};
+		const out = serializeTable(model);
+		expect(out).not.toContain('columns:');
+		expect(out).not.toContain('rows:');
+	});
+
+	it('still writes columns:/rows: as usual for a table with no xlsxSource, even when empty (a real emptied-out sheet)', () => {
+		const model = {
+			version: 2 as const,
+			columns: [],
+			rows: [],
+			merges: [],
+			styles: [],
+		};
+		const out = serializeTable(model);
+		expect(out).toContain('columns:');
+		expect(out).toContain('rows:');
+	});
+});
+
 import { convertTargetV1toV2 } from '../src/migrations/v1_to_v2';
 
 describe('convertTargetV1toV2', () => {

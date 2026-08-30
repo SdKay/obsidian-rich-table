@@ -31,6 +31,7 @@
   <a href="#设置">设置</a> ·
   <a href="#功能与计划">功能</a> ·
   <a href="#格式说明">格式</a> ·
+  <a href="#外部-xlsx">外部 .xlsx</a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -318,13 +319,14 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>标签页——单击切换，双击重命名，拖拽重排，右键设置颜色 / 删除</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="4"><b>整表操作</b></td>
+  <td rowspan="5"><b>整表操作</b></td>
   <td>锁定——🔒 关闭该表格的所有图形化编辑</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>折叠——隐藏表体，保留标题与表头行</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>状态栏——显示行列总数，选中范围时显示大小和求和/平均值；自带滚动条可拖拽调整占位宽度；可设为常驻或仅 hover 显示</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>让表格对应一份外部 <code>.xlsx</code> 文件，并在 Obsidian 里编辑它</td><td align="center">🔜</td><td align="center">P3</td></tr>
+<tr><td>让表格对应一份外部 <code>.xlsx</code> 文件（见<a href="#外部-xlsx">外部 .xlsx</a>）——只读查看，文件在外部被修改会自动刷新，改名/移动也会自动跟踪，一键用默认程序打开或转换为普通表格</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>直接在 Obsidian 里编辑那份外部 <code>.xlsx</code> 文件的单元格，而不只是查看</td><td align="center">🔜</td><td align="center">P3</td></tr>
 
 </tbody>
 </table>
@@ -393,6 +395,35 @@ YAML 头部是**唯一的数据来源**——所有编辑都通过表格界面�
 | `r_xxx.c_yyy` | 单个数据格 |
 
 > **从 v0.x 升级？** 旧格式表格会自动显示升级提示横幅，点击**转换到新版格式**一键迁移，或点击**继续使用旧版**保持原样只读浏览。
+
+---
+
+## 外部 .xlsx
+
+表格可以不使用代码块自身的 `columns`/`rows`，而是指向一份外部 `.xlsx` 文件——适合查看别人维护的表格，而不必把内容复制进笔记里：
+
+````markdown
+```rich-table
+---
+version: 2
+xlsxSource:
+  path: data/budget.xlsx
+---
+```
+````
+
+`path` 的解析方式跟 wikilink 目标一样（相对于当前笔记，或者写完整的 vault 路径）。`sheet` 是可选的——不填就把每个 sheet 都显示出来（如果文件只有一个 sheet 就直接显示那一个）；填了就只显示指定的那个 sheet。
+
+最简单的创建方式：插入一个空的 `rich-table` 代码块，在模板按钮里点**从 .xlsx 导入**，选一个已经在 vault 里的文件。
+
+**目前只支持只读查看**——单元格内容、样式、合并单元格、冻结行列都来自文件本身，渲染效果跟正常表格一样，但没法从表格内部编辑（直接编辑那份外部文件是另一项还没做的计划项，见[功能与计划](#功能与计划)）。除此之外的部分都是全自动、实时联动的：
+
+- **自动刷新**——用 Excel / LibreOffice 等工具改完存盘，大约半秒内表格就会更新，不需要手动刷新。
+- **跟踪改名**——把文件改名或挪动位置，代码块里的 `xlsxSource.path` 会自动同步更新。
+- **删除处理**——文件被删掉之后，表格会显示错误提示，而不是悄悄停留在旧内容上。
+- **用默认应用打开** 和 **转为普通表格**——表格左侧工具栏的两个按钮。前者把文件交给系统关联的默认程序打开（仅支持桌面端）；后者把文件当前的内容原样写进代码块自身的 `columns`/`rows`，并永久去掉 `xlsxSource` 引用——转换之后就是一张普通的、可完全编辑的 rich-table。
+
+已知限制（第一阶段）：主题色/索引色、单元格边框、数字格式不会还原；公式单元格只显示最后一次保存时的计算结果（没有公式引擎）；富文本按 run 分段的格式会被拍扁成纯文本。
 
 ---
 

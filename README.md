@@ -31,6 +31,7 @@
   <a href="#settings">Settings</a> ·
   <a href="#features--roadmap">Features</a> ·
   <a href="#format">Format</a> ·
+  <a href="#external-xlsx">External .xlsx</a> ·
   <a href="README_CN.md">中文</a>
 </p>
 
@@ -315,13 +316,14 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Tabs — click to switch, double-click to rename, drag to reorder, right-click for color / delete</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="4"><b>Whole table</b></td>
+  <td rowspan="5"><b>Whole table</b></td>
   <td>Lock — 🔒 disables every graphical edit for that table</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; pinned or hover-only</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Back a table with an external <code>.xlsx</code> file and edit it from Obsidian</td><td align="center">🔜</td><td align="center">P3</td></tr>
+<tr><td>Back a table with an external <code>.xlsx</code> file (see <a href="#external-xlsx">External .xlsx</a>) — view-only, auto-refreshes on external edits, tracks the file if renamed, one click to open it in Excel/LibreOffice or convert to a plain table</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Edit that external <code>.xlsx</code> file's cells directly from Obsidian, instead of just viewing it</td><td align="center">🔜</td><td align="center">P3</td></tr>
 
 </tbody>
 </table>
@@ -390,6 +392,36 @@ The YAML front-matter is the **only data source** — everything is edited throu
 | `r_xxx.c_yyy` | Single data cell |
 
 > **Upgrading from v0.x?** Tables written in the old format automatically show an upgrade banner. Click **Convert to new format** for one-click migration, or **Keep old format** to continue reading without converting.
+
+---
+
+
+## External .xlsx
+
+A table can be backed by an external `.xlsx` file instead of the block's own `columns`/`rows` — useful for viewing a spreadsheet someone else maintains without duplicating it into the note:
+
+````markdown
+```rich-table
+---
+version: 2
+xlsxSource:
+  path: data/budget.xlsx
+---
+```
+````
+
+`path` is resolved the same way a wikilink target is (relative to the note, or a full vault path). `sheet` is optional — omit it to show every sheet as a workbook (or the single sheet, if the file only has one); name a specific sheet to show just that one.
+
+The easiest way to create one: insert an empty `rich-table` block, then click **Import from .xlsx** among the template buttons and pick a file already in your vault.
+
+**This is currently view-only** — cell content, styles, merges and frozen panes all come from the file and render exactly as usual, but there is no way to edit them from inside the table (editing the real file is a separate, not-yet-built roadmap item — see [Features & Roadmap](#features--roadmap)). Everything else about it stays live and automatic:
+
+- **Auto-refresh** — editing the file in Excel/LibreOffice/etc. and saving updates the table within about half a second, no reload needed.
+- **Follows renames** — moving or renaming the file updates `xlsxSource.path` in the block automatically.
+- **Deleted-file handling** — if the file goes away, the table shows an error instead of silently going stale.
+- **Open in default app** and **Convert to plain table** — two buttons in the table's left toolbar. The first hands the file to whatever your OS associates with `.xlsx` (desktop only). The second snapshots the file's current content into the block itself as ordinary `columns`/`rows`, permanently dropping the `xlsxSource` reference — after that it's a normal, fully-editable rich-table.
+
+Known gaps (phase 1): theme-relative/indexed colors, cell borders and number formats aren't carried over; formula cells show only their last-saved value (no formula engine); rich-text runs are flattened to plain text.
 
 ---
 

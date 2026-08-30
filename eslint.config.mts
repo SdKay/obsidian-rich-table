@@ -23,6 +23,10 @@ export default defineConfig(
 		languageOptions: {
 			globals: {
 				...globals.browser,
+				// tableBlock.ts's openXlsxFileExternally requires('electron')
+				// synchronously (see its own doc comment for why not a dynamic
+				// import) — the only Node-global usage in this codebase so far.
+				...globals.node,
 			},
 			parserOptions: {
 				projectService: {

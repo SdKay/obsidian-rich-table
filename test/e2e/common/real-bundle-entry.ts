@@ -34,4 +34,4 @@ export { cellEffectiveStyle, applyColStyle, applyStyleRulesV2, applyResolvedStyl
 // rewriting the note, and staying visually continuous across the rebuild Obsidian
 // performs afterwards.
 export { TableBlock } from '../../../src/tableBlock';
-export { FakeVault } from './obsidian-shim';
+export { FakeVault, FakeMetadataCache } from './obsidian-shim';

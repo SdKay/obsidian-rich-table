@@ -58,6 +58,30 @@ export async function renderTable(
 	 *  the exact same conditions onStructuralOp itself would be (locked,
 	 *  read-only, etc.) — tableBlock.ts derives both from the same guard. */
 	onCreateSheet?: () => void,
+	/** Left-toolbar "open in default app" button — only meaningful for an
+	 *  xlsx-backed table (see TableModelV2.xlsxSource): the ctrlCol otherwise
+	 *  only appears alongside onStructuralOp/onToggleLock, neither of which an
+	 *  xlsx-backed (view-only) table ever has, so this is its own gate rather
+	 *  than folded into either of those. */
+	onOpenExternalFile?: () => void,
+	/** Left-toolbar "convert to plain table" button — same xlsx-only gate as
+	 *  onOpenExternalFile above. Snapshots the currently-loaded xlsx content
+	 *  into the block's own YAML and drops xlsxSource, turning a view-only
+	 *  reference into a normal, fully-editable rich-table (see
+	 *  tableBlock.ts's detachFromXlsx). */
+	onDetachFromXlsx?: () => void,
+	/** View-outer-edge drag-resize, for an xlsx-backed table specifically —
+	 *  same xlsx-only gate as onOpenExternalFile/onDetachFromXlsx above, and
+	 *  deliberately its OWN pair of callbacks rather than routing through
+	 *  onStructuralOp: onStructuralOp being defined at all turns on every
+	 *  OTHER editing affordance too (cell double-click, row/col drag-resize,
+	 *  right-click menus, …), which an xlsx-backed table must never offer
+	 *  (see tableBlock.ts's isXlsxBacked doc comment) — resizing the VIEW
+	 *  itself is the one edit-shaped action that's actually safe here, since
+	 *  it's shell/view state (like viewWidth/viewHeight always were), not
+	 *  table data. */
+	onSetViewWidth?: (width: number) => void,
+	onSetViewHeight?: (height: number) => void,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
@@ -382,7 +406,7 @@ export async function renderTable(
 	// `root` itself (the outermost element we own, which hugs the block) and are
 	// pinned to its edges via CSS; a drag live-applies the size to the wrapper
 	// (the scroll container) and persists it on release.
-	if (onStructuralOp) {
+	if (onStructuralOp || onSetViewWidth || onSetViewHeight) {
 		const makeHandle = (cls: string, mode: 'h' | 'w' | 'both', container: HTMLElement) => {
 			const handle = container.createDiv({ cls: `bt-view-resize ${cls}` });
 			handle.addEventListener('pointerdown', (e: PointerEvent) => {
@@ -419,8 +443,14 @@ export async function renderTable(
 				const onUp = () => {
 					handle.removeEventListener('pointermove', onMove);
 					handle.removeEventListener('pointerup', onUp);
-					if (mode !== 'h') void onStructuralOp({ type: 'set-view-width', width: Math.round(newW) });
-					if (mode !== 'w') void onStructuralOp({ type: 'set-view-height', height: Math.round(newH) });
+					if (mode !== 'h') {
+						if (onStructuralOp) void onStructuralOp({ type: 'set-view-width', width: Math.round(newW) });
+						else onSetViewWidth?.(Math.round(newW));
+					}
+					if (mode !== 'w') {
+						if (onStructuralOp) void onStructuralOp({ type: 'set-view-height', height: Math.round(newH) });
+						else onSetViewHeight?.(Math.round(newH));
+					}
 				};
 				handle.addEventListener('pointermove', onMove);
 				handle.addEventListener('pointerup', onUp);
@@ -1667,13 +1697,43 @@ export async function renderTable(
 		});
 	}
 
-	// ── Control column: lock · autofit · theme · aggregate · collapse — left of the row-drag strip ──
+	// ── Control column: open-external-file · detach-from-xlsx · lock · autofit · theme · aggregate · collapse — left of the row-drag strip ──
 	// All buttons share a vertical flex column positioned just left of the
-	// row selector. All but lock need onStructuralOp; lock needs onToggleLock.
-	if (onStructuralOp || onToggleLock) {
+	// row selector. All but lock need onStructuralOp; lock needs onToggleLock;
+	// open-external-file/detach-from-xlsx need onOpenExternalFile/
+	// onDetachFromXlsx — see those params' own doc comments for why they're
+	// fully separate gates from the other two.
+	if (onStructuralOp || onToggleLock || onOpenExternalFile || onDetachFromXlsx) {
 		const ctrlCol = root.createDiv({ cls: 'bt-ctrl-col' + (model.locked ? ' is-locked' : '') });
 
-		// Lock button — first in column. Hidden while collapsed: only the expand
+		// Open-in-default-app button — first in column, ahead of lock: for an
+		// xlsx-backed table this is the one action that matters more than
+		// anything else here (everything else in this column is about editing
+		// THIS view, which an xlsx-backed table never offers at all). Not
+		// gated on model.collapsed — collapsing hides the rendered body, but
+		// has nothing to do with the underlying file this button opens.
+		if (onOpenExternalFile) {
+			const openBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('openInDefaultApp'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(openBtn, 'external-link');
+			openBtn.addEventListener('click', () => onOpenExternalFile());
+		}
+
+		// Convert-to-plain-table button — second, right after open-in-default-
+		// app: the other xlsx-only action, so the two sit together ahead of
+		// everything else. Same "not gated on collapsed" reasoning as above.
+		if (onDetachFromXlsx) {
+			const detachBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('detachFromXlsx'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(detachBtn, 'unlink');
+			detachBtn.addEventListener('click', () => onDetachFromXlsx());
+		}
+
+		// Lock button — hidden while collapsed: only the expand
 		// button is shown, since the other buttons act on the now-invisible body.
 		if (onToggleLock && !model.collapsed) {
 			const lockBtn = ctrlCol.createDiv({

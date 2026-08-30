@@ -54,30 +54,39 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 
 	if (m.title)   obj.title   = m.title;
 
-	obj.columns = m.columns.map(c => {
-		const entry: Record<string, unknown> = { id: c.id, name: c.name };
-		if (c.hidden)  entry.hidden = true;
-		if (c.type)    entry.type   = c.type;
-		if (c.width)   entry.width  = c.width;
-		if (c.align)   entry.align  = c.align;
-		if (c.filter && c.filter.length > 0) entry.filter = c.filter;
-		return entry;
-	});
+	// An xlsx-backed table's columns/rows are never the real data — render()
+	// always discards them and rebuilds fresh from the external file (see
+	// TableModelV2.xlsxSource's own doc comment) — so writing them out here
+	// would just be dead YAML nobody ever reads back. Every other model still
+	// writes them unconditionally, even when empty: a real (non-xlsx) table's
+	// columns/rows ARE its actual data, so "empty" there is a real, meaningful
+	// state (e.g. a freshly emptied sheet), not something to omit.
+	if (!m.xlsxSource) {
+		obj.columns = m.columns.map(c => {
+			const entry: Record<string, unknown> = { id: c.id, name: c.name };
+			if (c.hidden)  entry.hidden = true;
+			if (c.type)    entry.type   = c.type;
+			if (c.width)   entry.width  = c.width;
+			if (c.align)   entry.align  = c.align;
+			if (c.filter && c.filter.length > 0) entry.filter = c.filter;
+			return entry;
+		});
 
-	obj.rows = m.rows.map(r => {
-		const entry: Record<string, unknown> = { id: r.id };
-		if (r.hidden)           entry.hidden = true;
-		if (r.height && r.height > 0) entry.height = r.height;
-		// Cells: only store non-empty values (sparse)
-		const cells: Record<string, string> = {};
-		for (const col of m.columns) {
-			const v = r.cells[col.id] ?? '';
-			if (v !== '') cells[col.id] = v;
-		}
-		entry.cells = cells;
-		if (r.formulas && Object.keys(r.formulas).length > 0) entry.formulas = r.formulas;
-		return entry;
-	});
+		obj.rows = m.rows.map(r => {
+			const entry: Record<string, unknown> = { id: r.id };
+			if (r.hidden)           entry.hidden = true;
+			if (r.height && r.height > 0) entry.height = r.height;
+			// Cells: only store non-empty values (sparse)
+			const cells: Record<string, string> = {};
+			for (const col of m.columns) {
+				const v = r.cells[col.id] ?? '';
+				if (v !== '') cells[col.id] = v;
+			}
+			entry.cells = cells;
+			if (r.formulas && Object.keys(r.formulas).length > 0) entry.formulas = r.formulas;
+			return entry;
+		});
+	}
 
 	if (m.merges.length > 0) {
 		obj.merges = m.merges.map(mg => ({ anchor: mg.anchor, end: mg.end }));
@@ -119,6 +128,9 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 		});
 		// Only meaningful alongside the views[] entries above.
 		if (m.activeViewId) obj.activeViewId = m.activeViewId;
+	}
+	if (m.xlsxSource) {
+		obj.xlsxSource = { path: m.xlsxSource.path, ...(m.xlsxSource.sheet ? { sheet: m.xlsxSource.sheet } : {}) };
 	}
 
 	return obj;

@@ -79,7 +79,7 @@ export class Component {
 	register(cb: () => void): void {
 		this._cleanups.push(cb);
 	}
-	registerEvent(): void { /* no event bus here */ }
+	registerEvent(_ref: unknown): void { /* no event bus here */ }
 	registerDomEvent(el: EventTarget, type: string, cb: EventListenerOrEventListenerObject): void {
 		el.addEventListener(type, cb);
 		this.register(() => el.removeEventListener(type, cb));
@@ -199,13 +199,35 @@ export class Notice {
 }
 
 export class App { }
+
+/** Stub, same treatment as Menu/Notice/setIcon above — no e2e test drives its
+ *  real fuzzy-search/open UI, it only needs to exist so xlsxFilePicker.ts's
+ *  import resolves when TableBlock gets bundled here. */
+export class FuzzySuggestModal<T> {
+	constructor(_app: App) { /* stub */ }
+	setPlaceholder(_text: string): void { /* stub */ }
+	open(): void { /* stub */ }
+	close(): void { /* stub */ }
+}
+
+/** Stub — same treatment as FuzzySuggestModal above, no e2e test drives the
+ *  real desktop-vs-mobile branch tableBlock.ts's openXlsxFileExternally
+ *  takes, it only needs to exist so the import resolves. */
+export const Platform = { isDesktopApp: true, isMobile: false };
+
+/** Stub — no e2e test opens a real OS file, this only needs to exist (as an
+ *  `instanceof`-able class) so tableBlock.ts's import resolves. */
+export class FileSystemAdapter {
+	getFullPath(normalizedPath: string): string { return normalizedPath; }
+}
 export class TFile {
 	path = '';
 	basename = '';
 	extension = 'md';
 	constructor(path = '') {
 		this.path = path;
-		this.basename = path.replace(/\.[^.]*$/, '');
+		this.basename = path.replace(/\.[^.]*$/, '').replace(/^.*\//, '');
+		this.extension = /\.([^./]+)$/.exec(path)?.[1] ?? 'md';
 	}
 }
 export class MarkdownView { }
@@ -246,13 +268,43 @@ export class AbstractInputSuggest<T> {
 	close(): void { /* nothing open */ }
 }
 
+/** Faithful (not a stub): tableBlock.ts's xlsx-watch feature (refreshXlsxWatch)
+ *  registers real 'modify'/'rename'/'delete' listeners and expects them to
+ *  actually fire — a no-op stub here would make that whole feature
+ *  untestable. Mirrors real Obsidian's `Events` base class (`Vault extends
+ *  Events`): `on`/`off`/`offref`/`trigger`, with `trigger` public so a test
+ *  can simulate an external file change exactly the way `renderReal`/
+ *  `renderFull` already call other real production functions directly. */
+class FakeEvents {
+	private listeners = new Map<string, Set<(...args: unknown[]) => unknown>>();
+	on(name: string, cb: (...args: unknown[]) => unknown): { name: string; cb: (...args: unknown[]) => unknown } {
+		let set = this.listeners.get(name);
+		if (!set) { set = new Set(); this.listeners.set(name, set); }
+		set.add(cb);
+		return { name, cb };
+	}
+	off(name: string, cb: (...args: unknown[]) => unknown): void {
+		this.listeners.get(name)?.delete(cb);
+	}
+	offref(ref: { name: string; cb: (...args: unknown[]) => unknown }): void {
+		this.listeners.get(ref.name)?.delete(ref.cb);
+	}
+	trigger(name: string, ...args: unknown[]): void {
+		for (const cb of this.listeners.get(name) ?? []) cb(...args);
+	}
+}
+
 /**
  * In-memory stand-in for the slice of the vault the write-back path uses: read a
  * file's text, and rewrite it inside a callback (Obsidian's `process` is an atomic
- * read-modify-write, and the plugin depends on that sequencing).
+ * read-modify-write, and the plugin depends on that sequencing). Also backs the
+ * xlsx-source feature: binary files (readBinary) and the modify/rename/delete
+ * events tableBlock.ts's xlsx-watch feature depends on.
  */
-export class FakeVault {
+export class FakeVault extends FakeEvents {
 	files = new Map<string, string>();
+	/** Binary (.xlsx) files, seeded directly by a test — see readBinary. */
+	binaryFiles = new Map<string, ArrayBuffer>();
 
 	/**
 	 * Returns a real TFile, not a look-alike: the write-back path guards with
@@ -260,15 +312,49 @@ export class FakeVault {
 	 * the right shape makes every write silently do nothing — no error, no clue.
 	 */
 	getAbstractFileByPath(path: string): TFile | null {
-		return this.files.has(path) ? new TFile(path) : null;
+		return this.files.has(path) || this.binaryFiles.has(path) ? new TFile(path) : null;
 	}
 	async read(file: TFile): Promise<string> {
 		return this.files.get(file.path) ?? '';
+	}
+	async readBinary(file: TFile): Promise<ArrayBuffer> {
+		const buf = this.binaryFiles.get(file.path);
+		if (!buf) throw new Error(`FakeVault.readBinary: no binary file at ${file.path}`);
+		return buf;
 	}
 	/** Matches the real signature: the callback receives current content and returns the new content. */
 	async process(file: TFile, fn: (data: string) => string): Promise<string> {
 		const next = fn(this.files.get(file.path) ?? '');
 		this.files.set(file.path, next);
 		return next;
+	}
+	/** Test helper: simulate an external tool overwriting a binary file's bytes,
+	 *  then firing the same 'modify' event Obsidian's own file-watcher would. */
+	writeBinaryAndNotify(path: string, buf: ArrayBuffer): void {
+		this.binaryFiles.set(path, buf);
+		this.trigger('modify', new TFile(path));
+	}
+	/** Test helper: simulate a rename in the file system (move the binary
+	 *  content under a new path, then fire 'rename' the way Obsidian would). */
+	renameBinaryAndNotify(oldPath: string, newPath: string): void {
+		const buf = this.binaryFiles.get(oldPath);
+		if (buf) { this.binaryFiles.delete(oldPath); this.binaryFiles.set(newPath, buf); }
+		this.trigger('rename', new TFile(newPath), oldPath);
+	}
+	/** Test helper: simulate deleting the file, then fire 'delete'. */
+	deleteBinaryAndNotify(path: string): void {
+		this.binaryFiles.delete(path);
+		this.trigger('delete', new TFile(path));
+	}
+}
+
+/** Faithful stand-in for `metadataCache.getFirstLinkpathDest` — resolves a
+ *  vault-relative path exactly (both xlsxSource.path and getFullPath's
+ *  `file.path` in this codebase are always full vault-relative paths, never
+ *  wikilink shorthand needing the real fuzzy/shortest-path resolution). */
+export class FakeMetadataCache {
+	constructor(private readonly vault: FakeVault) { /* stub */ }
+	getFirstLinkpathDest(linkpath: string, _sourcePath: string): TFile | null {
+		return this.vault.getAbstractFileByPath(linkpath);
 	}
 }

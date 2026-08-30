@@ -523,6 +523,14 @@
 	display: block;
 }
 
+/* The "Import from .xlsx" button has no table content to preview before a
+ * file is even chosen — a plain centered hint instead of a rendered table. */
+.bt-template-preview-text {
+	padding: 2em 1em;
+	text-align: center;
+	color: var(--text-muted);
+}
+
 /* ── Grid size picker (Word/Sheets-style "insert table" hover grid) ───────── */
 /* Mounted on document.body, not as a DOM sibling of the "insert blank table"
  * button — CONFIRMED necessary via live diagnostics (see gridSizePicker.ts's
