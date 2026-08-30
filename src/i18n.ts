@@ -53,6 +53,13 @@ const EN = {
 	openInDefaultAppUnsupported: 'Opening in the default app is only supported on desktop',
 	openInDefaultAppFailed: 'Could not open the file',
 	detachFromXlsx:      'Convert to plain table (stop referencing the file)',
+	snapshotButton:      'Snapshot',
+	snapshotCopyPng:     'Copy image',
+	snapshotSavePng:     'Save image (PNG) to vault',
+	snapshotSaveSvg:     'Save vector (SVG) to vault',
+	snapshotCopied:      'Copied to clipboard',
+	snapshotSaved:       'Saved',
+	snapshotFailed:      'Snapshot failed',
 
 	// Editable title / footer
 	clickToEditTitle:  'Click to edit title',
@@ -225,6 +232,13 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	openInDefaultAppUnsupported: '用默认应用打开仅支持桌面端',
 	openInDefaultAppFailed: '无法打开该文件',
 	detachFromXlsx:      '转为普通表格（不再引用该文件）',
+	snapshotButton:      '生成快照',
+	snapshotCopyPng:     '复制图片',
+	snapshotSavePng:     '保存图片（PNG）到 vault',
+	snapshotSaveSvg:     '保存矢量图（SVG）到 vault',
+	snapshotCopied:      '已复制到剪贴板',
+	snapshotSaved:       '已保存',
+	snapshotFailed:      '生成快照失败',
 
 	clickToEditTitle:  '点击编辑标题',
 	clickToEditFooter: '点击编辑备注',

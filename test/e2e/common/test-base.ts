@@ -235,7 +235,7 @@ export const test = base.extend<{
 				w.__btNote = NOTE;
 				w.__btSource = src;
 				w.__btPlugin = {
-					app: { vault, metadataCache: new R.FakeMetadataCache(vault) },
+					app: { vault, metadataCache: new R.FakeMetadataCache(vault), fileManager: new R.FakeFileManager() },
 					choiceRegistry: new R.ChoiceRegistry([]),
 					settings: { allowReadingViewEdit: true, singleClickEdit: false },
 				};

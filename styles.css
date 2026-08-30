@@ -153,6 +153,27 @@
 .bt-render-root .bt-table-wrapper.bt-view-fixed-w {
 	width: var(--bt-view-width);
 }
+/* tableSnapshot.ts's off-screen host for the detached clone it rasterizes —
+ * laid out (not display:none, which most DOM-to-image approaches can't
+ * measure) but far outside the viewport, so nothing ever paints it visibly. */
+.bt-snapshot-host {
+	position: fixed;
+	top: 0;
+	left: -99999px;
+	pointer-events: none;
+}
+/* tableSnapshot.ts applies this to the CLONED .bt-table-wrapper only (never
+ * the live one) so a snapshot captures the table's full natural size, not
+ * whatever's currently scrolled into view — !important since plain source
+ * order can't be relied on to win over .bt-table-wrapper's own same-
+ * specificity rule above once this is appended anywhere else in the file. */
+.bt-snapshot-expanded {
+	overflow: visible !important;
+	max-height: none !important;
+	height: auto !important;
+	width: max-content !important;
+	max-width: none !important;
+}
 /* Corner brackets mark a manual view WIDTH that's narrower than the space
  * actually available (renderer.ts's updateViewFrame — see its own comment
  * for the exact condition and for --vf-l/-t/-r/-b) — like Word's page-

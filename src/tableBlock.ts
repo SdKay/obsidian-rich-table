@@ -19,6 +19,8 @@ import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
 import { readXlsxAsModel } from './xlsxSource';
 import { openXlsxFilePicker } from './xlsxFilePicker';
+import { captureTablePng, captureTableSvg } from './tableSnapshot';
+import type { SnapshotKind } from './renderTypes';
 
 /**
  * Module-level snapshot cache keyed by "sourcePath:lineStart". Each entry is a
@@ -386,6 +388,7 @@ export class TableBlock extends MarkdownRenderChild {
 					this.isXlsxBacked ? () => void this.detachFromXlsx() : undefined,
 					this.isXlsxBacked ? (width: number) => void this.setXlsxViewWidth(width) : undefined,
 					this.isXlsxBacked ? (height: number) => void this.setXlsxViewHeight(height) : undefined,
+					(kind) => void this.captureSnapshot(kind),
 				);
 			}
 
@@ -901,6 +904,39 @@ export class TableBlock extends MarkdownRenderChild {
 		if (!this.isXlsxBacked) return;
 		if (this.workbook) await this.insertBlock(serializeWorkbook(this.workbook));
 		else if (this.model) await this.insertBlock(serializeTable(this.model));
+	}
+
+	/** The left-toolbar snapshot button (renderer.ts's onSnapshot) — the ONE
+	 *  action available on every table regardless of edit/lock/xlsx state.
+	 *  tableSnapshot.ts does the actual DOM→image work (pure, no Obsidian API
+	 *  calls of its own — "renderer.ts never touches the filesystem" extends
+	 *  to this module too); this method is just the Obsidian-facing half:
+	 *  clipboard for the copy action, vault.createBinary/create for the save
+	 *  actions. */
+	private async captureSnapshot(kind: SnapshotKind): Promise<void> {
+		if (!this.renderedRoot) return;
+		try {
+			if (kind === 'copy-png') {
+				const blob = await captureTablePng(this.renderedRoot);
+				await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+				new Notice(t('snapshotCopied'));
+				return;
+			}
+			const base = this.sourcePath.split('/').pop()?.replace(/\.md$/, '') ?? 'table';
+			if (kind === 'save-png') {
+				const blob = await captureTablePng(this.renderedRoot);
+				const path = await this.plugin.app.fileManager.getAvailablePathForAttachment(`${base} table.png`, this.sourcePath);
+				await this.plugin.app.vault.createBinary(path, await blob.arrayBuffer());
+				new Notice(`${t('snapshotSaved')}: ${path}`);
+			} else {
+				const svg = await captureTableSvg(this.renderedRoot);
+				const path = await this.plugin.app.fileManager.getAvailablePathForAttachment(`${base} table.svg`, this.sourcePath);
+				await this.plugin.app.vault.create(path, svg);
+				new Notice(`${t('snapshotSaved')}: ${path}`);
+			}
+		} catch (err) {
+			new Notice(`${t('snapshotFailed')}: ${err instanceof Error ? err.message : String(err)}`);
+		}
 	}
 
 	/** renderer.ts's onSetViewWidth/onSetViewHeight for an xlsx-backed table —

@@ -28,3 +28,8 @@ export type EditNavigateHandler = (rowIdx: number, colIdx: number, move: EditNav
 
 /** Special column types handled with dedicated editors (not choice dropdowns). */
 export const SPECIAL_TYPES = new Set(['date']);
+
+/** The three snapshot actions (renderer.ts's onSnapshot / tableBlock.ts's
+ *  captureSnapshot) — SVG has no clipboard counterpart, since the OS
+ *  clipboard's image slot is raster-only; SVG is save-to-vault only. */
+export type SnapshotKind = 'copy-png' | 'save-png' | 'save-svg';

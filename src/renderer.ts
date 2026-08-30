@@ -10,7 +10,7 @@ import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
 import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
-import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler } from './renderTypes';
+import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler, SnapshotKind } from './renderTypes';
 import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue } from './renderGridHelpers';
 import { cellIdsToLabel, rangeIdsToLabel } from './formulaLabel';
 import { moveCell, clampToValidCell, type NavCell } from './cellNav';
@@ -82,6 +82,10 @@ export async function renderTable(
 	 *  table data. */
 	onSetViewWidth?: (width: number) => void,
 	onSetViewHeight?: (height: number) => void,
+	/** Left-toolbar snapshot button — the ONE ctrlCol entry with no gate at
+	 *  all (see the ctrlCol comment below): capturing an image of a table
+	 *  doesn't depend on whether editing/locking/xlsx-linking apply to it. */
+	onSnapshot?: (kind: SnapshotKind) => void,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
@@ -1697,13 +1701,18 @@ export async function renderTable(
 		});
 	}
 
-	// ── Control column: open-external-file · detach-from-xlsx · lock · autofit · theme · aggregate · collapse — left of the row-drag strip ──
+	// ── Control column: open-external-file · detach-from-xlsx · lock · autofit · theme · aggregate · collapse · views · add-sheet · snapshot — left of the row-drag strip ──
 	// All buttons share a vertical flex column positioned just left of the
 	// row selector. All but lock need onStructuralOp; lock needs onToggleLock;
 	// open-external-file/detach-from-xlsx need onOpenExternalFile/
 	// onDetachFromXlsx — see those params' own doc comments for why they're
-	// fully separate gates from the other two.
-	if (onStructuralOp || onToggleLock || onOpenExternalFile || onDetachFromXlsx) {
+	// fully separate gates from the other two. ctrlCol itself is now
+	// unconditional — snapshotting a table doesn't depend on any of the
+	// above being true, so with only those four gates this column would
+	// still (rarely) be entirely absent, e.g. a locked table viewed in
+	// Reading View with editing off (onStructuralOp AND onToggleLock both
+	// undefined there) — exactly the case that should still offer a snapshot.
+	{
 		const ctrlCol = root.createDiv({ cls: 'bt-ctrl-col' + (model.locked ? ' is-locked' : '') });
 
 		// Open-in-default-app button — first in column, ahead of lock: for an
@@ -1891,9 +1900,9 @@ export async function renderTable(
 		}
 
 		// Add sheet — converts this table into a multi-sheet workbook (or, once
-		// it already is one, appends another sheet). Last in the column; absent
-		// once the table already has its own bottom sheet-tab-bar (that bar's
-		// own "+" takes over — see tableBlock.ts).
+		// it already is one, appends another sheet). Absent once the table
+		// already has its own bottom sheet-tab-bar (that bar's own "+" takes
+		// over — see tableBlock.ts).
 		if (onCreateSheet) {
 			const addSheetBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
@@ -1903,6 +1912,25 @@ export async function renderTable(
 			addSheetBtn.addEventListener('click', () => onCreateSheet());
 		}
 
+		// Snapshot button — last in the column, deliberately: unlike
+		// everything above it, it applies to every table regardless of edit/
+		// lock/xlsx state, so it reads as a step apart from the editing-
+		// focused tools above rather than competing with them for the most
+		// prominent (top) spot.
+		if (onSnapshot) {
+			const snapshotBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('snapshotButton'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(snapshotBtn, 'camera');
+			snapshotBtn.addEventListener('click', (evt: MouseEvent) => {
+				const menu = new Menu();
+				menu.addItem(i => i.setTitle(t('snapshotCopyPng')).setIcon('copy').onClick(() => onSnapshot('copy-png')));
+				menu.addItem(i => i.setTitle(t('snapshotSavePng')).setIcon('image').onClick(() => onSnapshot('save-png')));
+				menu.addItem(i => i.setTitle(t('snapshotSaveSvg')).setIcon('file-code').onClick(() => onSnapshot('save-svg')));
+				showMenuPinned(menu, evt);
+			});
+		}
 
 		// Position the column just left of the row selector (or, on a locked table
 		// with no row selector at all, just left of the table itself — see

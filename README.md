@@ -316,12 +316,13 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Tabs — click to switch, double-click to rename, drag to reorder, right-click for color / delete</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="5"><b>Whole table</b></td>
+  <td rowspan="6"><b>Whole table</b></td>
   <td>Lock — 🔒 disables every graphical edit for that table</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; pinned or hover-only</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Snapshot — export the current table as a sharp PNG (copy to clipboard, or save) or SVG, hover-only chrome excluded and the full table captured even if it's scrolled/bounded</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Back a table with an external <code>.xlsx</code> file (see <a href="#external-xlsx">External .xlsx</a>) — view-only, auto-refreshes on external edits, tracks the file if renamed, one click to open it in Excel/LibreOffice or convert to a plain table</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Edit that external <code>.xlsx</code> file's cells directly from Obsidian, instead of just viewing it</td><td align="center">🔜</td><td align="center">P3</td></tr>
 

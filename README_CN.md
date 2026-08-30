@@ -319,12 +319,13 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>标签页——单击切换，双击重命名，拖拽重排，右键设置颜色 / 删除</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="5"><b>整表操作</b></td>
+  <td rowspan="6"><b>整表操作</b></td>
   <td>锁定——🔒 关闭该表格的所有图形化编辑</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>折叠——隐藏表体，保留标题与表头行</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>状态栏——显示行列总数，选中范围时显示大小和求和/平均值；自带滚动条可拖拽调整占位宽度；可设为常驻或仅 hover 显示</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>生成快照——把当前表格导出成清晰的 PNG（复制到剪贴板或保存）或 SVG，不包含 hover 才显示的界面元素，即便表格被滚动/限高也会导出完整内容</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>让表格对应一份外部 <code>.xlsx</code> 文件（见<a href="#外部-xlsx">外部 .xlsx</a>）——只读查看，文件在外部被修改会自动刷新，改名/移动也会自动跟踪，一键用默认程序打开或转换为普通表格</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>直接在 Obsidian 里编辑那份外部 <code>.xlsx</code> 文件的单元格，而不只是查看</td><td align="center">🔜</td><td align="center">P3</td></tr>
 

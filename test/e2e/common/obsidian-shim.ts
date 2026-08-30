@@ -328,6 +328,16 @@ export class FakeVault extends FakeEvents {
 		this.files.set(file.path, next);
 		return next;
 	}
+	/** Backs tableBlock.ts's captureSnapshot save-png path. */
+	async createBinary(path: string, data: ArrayBuffer): Promise<TFile> {
+		this.binaryFiles.set(path, data);
+		return new TFile(path);
+	}
+	/** Backs tableBlock.ts's captureSnapshot save-svg path. */
+	async create(path: string, data: string): Promise<TFile> {
+		this.files.set(path, data);
+		return new TFile(path);
+	}
 	/** Test helper: simulate an external tool overwriting a binary file's bytes,
 	 *  then firing the same 'modify' event Obsidian's own file-watcher would. */
 	writeBinaryAndNotify(path: string, buf: ArrayBuffer): void {
@@ -356,5 +366,15 @@ export class FakeMetadataCache {
 	constructor(private readonly vault: FakeVault) { /* stub */ }
 	getFirstLinkpathDest(linkpath: string, _sourcePath: string): TFile | null {
 		return this.vault.getAbstractFileByPath(linkpath);
+	}
+}
+
+/** Backs tableBlock.ts's captureSnapshot save actions — no real attachment-
+ *  folder-setting resolution (that's Obsidian's own config, not this
+ *  plugin's concern), just returns the requested filename unchanged since
+ *  the fake vault has no naming collisions to dedupe in these tests. */
+export class FakeFileManager {
+	getAvailablePathForAttachment(filename: string, _sourcePath?: string): Promise<string> {
+		return Promise.resolve(filename);
 	}
 }
