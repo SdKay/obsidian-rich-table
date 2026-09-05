@@ -5,6 +5,38 @@ import type { TableModelV2 } from './model';
 export const rowId = (model: TableModelV2, di: number): string => model.rows[di - 1]?.id ?? '';
 export const colId = (model: TableModelV2, ci: number): string => model.columns[ci]?.id ?? '';
 
+export interface MergeBounds { rowLo: number; rowHi: number; colLo: number; colHi: number }
+
+/**
+ * Resolves every merge in the model to display-row-index (0=header, 1..N data)
+ * / 0-based-column-index bounds, in whichever order anchor/end happen to be —
+ * pure and independent of hidden rows/cols (buildOccupied/getMergeOrigin below
+ * still own the "effective", hidden-row-promoted anchor for rendering; this is
+ * the plain literal resolution shared by callers that just need "does this
+ * merge overlap this rectangle", e.g. copy-range HTML export and drag-select
+ * expansion).
+ */
+export function resolveMergeBounds(model: TableModelV2): MergeBounds[] {
+	const rowIdxOf = (id: string): number | null => {
+		if (id === 'header') return 0;
+		const idx = model.rows.findIndex(r => r.id === id);
+		return idx >= 0 ? idx + 1 : null;
+	};
+	const out: MergeBounds[] = [];
+	for (const m of model.merges) {
+		const dotA = m.anchor.indexOf('.');
+		const dotE = m.end.indexOf('.');
+		if (dotA < 0 || dotE < 0) continue;
+		const r1 = rowIdxOf(m.anchor.slice(0, dotA));
+		const r2 = rowIdxOf(m.end.slice(0, dotE));
+		const c1 = model.columns.findIndex(c => c.id === m.anchor.slice(dotA + 1));
+		const c2 = model.columns.findIndex(c => c.id === m.end.slice(dotE + 1));
+		if (r1 === null || r2 === null || c1 < 0 || c2 < 0) continue;
+		out.push({ rowLo: Math.min(r1, r2), rowHi: Math.max(r1, r2), colLo: Math.min(c1, c2), colHi: Math.max(c1, c2) });
+	}
+	return out;
+}
+
 /** Returns true when displayIdx (1-based, 0=header) should be hidden by active filters. */
 export function isRowFiltered(displayIdx: number, model: TableModelV2): boolean {
 	if (displayIdx === 0) return false;

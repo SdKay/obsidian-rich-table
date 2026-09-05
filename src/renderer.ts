@@ -11,7 +11,7 @@ import { colIndexToLetter } from './utils';
 import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
 import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler, SnapshotKind } from './renderTypes';
-import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue } from './renderGridHelpers';
+import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue, resolveMergeBounds } from './renderGridHelpers';
 import { cellIdsToLabel, rangeIdsToLabel } from './formulaLabel';
 import { moveCell, clampToValidCell, type NavCell } from './cellNav';
 import { takeSelectedCell } from './renderSelectionHandoff';
@@ -638,13 +638,38 @@ export async function renderTable(
 		ctrlHeld: false,
 	};
 
+	/**
+	 * The raw drag rectangle, expanded to fully contain any merge it only
+	 * partly overlaps — matches Excel: touching part of a merged cell selects
+	 * the whole merge, and a rectangular selection can never end up with a
+	 * "notch" missing where a merge's other rows/columns should be. Iterates
+	 * to a fixed point since expanding for one merge can newly overlap another
+	 * (e.g. two merges chained end-to-end).
+	 */
+	const effectiveSelRect = (): { r1: number; r2: number; c1: number; c2: number } | null => {
+		if (!sel.start || !sel.end) return null;
+		let r1 = Math.min(sel.start.row, sel.end.row);
+		let r2 = Math.max(sel.start.row, sel.end.row);
+		let c1 = Math.min(sel.start.col, sel.end.col);
+		let c2 = Math.max(sel.start.col, sel.end.col);
+		let changed = true;
+		while (changed) {
+			changed = false;
+			for (const m of resolveMergeBounds(model)) {
+				if (m.rowHi < r1 || m.rowLo > r2 || m.colHi < c1 || m.colLo > c2) continue; // no overlap
+				if (m.rowLo < r1) { r1 = m.rowLo; changed = true; }
+				if (m.rowHi > r2) { r2 = m.rowHi; changed = true; }
+				if (m.colLo < c1) { c1 = m.colLo; changed = true; }
+				if (m.colHi > c2) { c2 = m.colHi; changed = true; }
+			}
+		}
+		return { r1, r2, c1, c2 };
+	};
+
 	const inSel = (row: number, col: number): boolean => {
-		if (!sel.start || !sel.end) return false;
-		const r1 = Math.min(sel.start.row, sel.end.row);
-		const r2 = Math.max(sel.start.row, sel.end.row);
-		const c1 = Math.min(sel.start.col, sel.end.col);
-		const c2 = Math.max(sel.start.col, sel.end.col);
-		return row >= r1 && row <= r2 && col >= c1 && col <= c2;
+		const rect = effectiveSelRect();
+		if (!rect) return false;
+		return row >= rect.r1 && row <= rect.r2 && col >= rect.c1 && col <= rect.c2;
 	};
 
 	const clearSel = () => {
@@ -692,10 +717,9 @@ export async function renderTable(
 		if (!sel.start || !sel.end || !onStructuralOp) return;
 		removeSelectionPanel();
 
-		const r1 = Math.min(sel.start.row, sel.end.row);
-		const r2 = Math.max(sel.start.row, sel.end.row);
-		const c1 = Math.min(sel.start.col, sel.end.col);
-		const c2 = Math.max(sel.start.col, sel.end.col);
+		const rect = effectiveSelRect();
+		if (!rect) return;
+		const { r1, r2, c1, c2 } = rect;
 
 		const selectedEls = Array.from(
 			table.querySelectorAll<HTMLElement>('[data-row][data-col]'),

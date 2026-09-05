@@ -3,6 +3,7 @@ import type { TableModelV2 } from './model';
 import { t } from './i18n';
 import { formatRow, displayLen } from './serializer';
 import { cellRawValue } from './renderCellStyle';
+import { resolveMergeBounds } from './renderGridHelpers';
 
 export function buildRangeGrid(model: TableModelV2, r1: number, r2: number, c1: number, c2: number): string[][] {
 	const grid: string[][] = [];
@@ -12,35 +13,6 @@ export function buildRangeGrid(model: TableModelV2, r1: number, r2: number, c1: 
 		grid.push(row);
 	}
 	return grid;
-}
-
-interface RangeMerge { rowLo: number; rowHi: number; colLo: number; colHi: number }
-
-/**
- * Resolves every merge to display-row-index (0=header, 1..N data)/0-based-col-index
- * bounds, in whichever order anchor/end happen to be — pure, no hidden-row/col
- * promotion (buildRangeGrid/cellRawValue don't skip hidden rows either, so a copy
- * already includes them verbatim; merges should stay consistent with that).
- */
-function resolveRangeMerges(model: TableModelV2): RangeMerge[] {
-	const rowIdxOf = (id: string): number | null => {
-		if (id === 'header') return 0;
-		const idx = model.rows.findIndex(r => r.id === id);
-		return idx >= 0 ? idx + 1 : null;
-	};
-	const out: RangeMerge[] = [];
-	for (const m of model.merges) {
-		const dotA = m.anchor.indexOf('.');
-		const dotE = m.end.indexOf('.');
-		if (dotA < 0 || dotE < 0) continue;
-		const r1 = rowIdxOf(m.anchor.slice(0, dotA));
-		const r2 = rowIdxOf(m.end.slice(0, dotE));
-		const c1 = model.columns.findIndex(c => c.id === m.anchor.slice(dotA + 1));
-		const c2 = model.columns.findIndex(c => c.id === m.end.slice(dotE + 1));
-		if (r1 === null || r2 === null || c1 < 0 || c2 < 0) continue;
-		out.push({ rowLo: Math.min(r1, r2), rowHi: Math.max(r1, r2), colLo: Math.min(c1, c2), colHi: Math.max(c1, c2) });
-	}
-	return out;
 }
 
 /**
@@ -58,7 +30,7 @@ export function buildRangeHtml(model: TableModelV2, r1: number, r2: number, c1: 
 	const covered = new Set<string>();
 	const spanFor = new Map<string, { rowspan: number; colspan: number }>();
 
-	for (const m of resolveRangeMerges(model)) {
+	for (const m of resolveMergeBounds(model)) {
 		if (m.rowHi < r1 || m.rowLo > r2 || m.colHi < c1 || m.colLo > c2) continue;
 		if (m.rowLo < r1 || m.rowLo > r2 || m.colLo < c1 || m.colLo > c2) continue; // anchor outside range
 		const rowHi = Math.min(m.rowHi, r2);
