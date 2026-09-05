@@ -185,6 +185,13 @@ const EN = {
 	settingOptionLabelPlaceholder: 'Label',
 	settingDeleteOption:     'Delete option',
 	settingDefaultOptionLabel: 'Option 1 (edit me)',
+
+	// Changelog
+	showChangelogCommand: 'Show changelog',
+	changelogTitle:       "What's new in Rich Table",
+	settingChangelogName: 'Changelog',
+	settingChangelogDesc: 'See what changed in recent releases.',
+	settingChangelogButton: 'View changelog',
 } as const;
 
 const ZH: { [K in keyof typeof EN]: string } = {
@@ -339,6 +346,13 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	settingOptionLabelPlaceholder: '标签',
 	settingDeleteOption:     '删除选项',
 	settingDefaultOptionLabel: '选项 1（点击编辑）',
+
+	// Changelog
+	showChangelogCommand: '查看更新日志',
+	changelogTitle:       'Rich Table 更新日志',
+	settingChangelogName: '更新日志',
+	settingChangelogDesc: '查看最近版本的更新内容。',
+	settingChangelogButton: '查看更新日志',
 };
 
 export function t(key: keyof typeof EN): string {

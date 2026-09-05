@@ -17,5 +17,12 @@ export class App {}
 export class Component {}
 export class MarkdownRenderChild {}
 export class TFile {}
+export class Modal {
+	app: App;
+	contentEl: HTMLElement = {} as HTMLElement;
+	constructor(app: App) { this.app = app; }
+	open() {}
+	close() {}
+}
 export function setIcon() {}
 export function MarkdownRenderer() {}

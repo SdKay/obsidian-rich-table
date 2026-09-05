@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import type BetterTablePlugin from './main';
 import type { BetterTableSettings, ChoiceType } from './model';
 import { t } from './i18n';
+import { ChangelogModal } from './changelogModal';
 
 export const DEFAULT_SETTINGS: BetterTableSettings = {
 	customChoices: [],
@@ -20,6 +21,13 @@ export class BetterTableSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+
+		new Setting(containerEl)
+			.setName(t('settingChangelogName'))
+			.setDesc(t('settingChangelogDesc'))
+			.addButton(btn =>
+				btn.setButtonText(t('settingChangelogButton')).onClick(() => new ChangelogModal(this.app).open()),
+			);
 
 		new Setting(containerEl)
 			.setName(t('settingAllowReadingViewEditName'))

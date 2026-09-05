@@ -297,4 +297,8 @@ export interface BetterTableSettings {
 	 * after a 200ms delay, double click opens the style panel.
 	 */
 	singleClickEdit: boolean;
+	/** Last plugin version this install has shown the changelog modal for —
+	 *  absent on a brand-new install, which shows nothing (there's no "update"
+	 *  to summarize yet), just records the current version as the baseline. */
+	lastSeenVersion?: string;
 }

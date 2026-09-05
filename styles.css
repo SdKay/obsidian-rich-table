@@ -2814,6 +2814,18 @@
 	color: var(--text-normal);
 }
 
+/* Changelog modal */
+.bt-changelog-modal .bt-changelog-entry {
+	margin-bottom: var(--size-4-4);
+}
+.bt-changelog-modal h3 {
+	margin-bottom: var(--size-4-1);
+}
+.bt-changelog-modal ul {
+	margin: 0;
+	padding-left: var(--size-4-5);
+}
+
 
 /* ── Built-in themes (auto-generated — do not edit below) ──── */
 /* @theme-label-en: Academic 📐 */

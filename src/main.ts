@@ -5,6 +5,7 @@ import { TableBlock } from './tableBlock';
 import type { BetterTableSettings } from './model';
 import { planRichTableBlockInsertion } from './insertRichTableBlock';
 import { planMarkdownTableConversion, type MarkdownTableConversionPlan } from './convertMarkdownTable';
+import { ChangelogModal, shouldShowChangelog } from './changelogModal';
 import { t } from './i18n';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
@@ -12,6 +13,7 @@ export default class BetterTablePlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		await this.maybeShowChangelog();
 		this.choiceRegistry = new ChoiceRegistry(this.settings.customChoices);
 
 		this.registerMarkdownCodeBlockProcessor('rich-table', (source, el, ctx) => {
@@ -76,6 +78,12 @@ export default class BetterTablePlugin extends Plugin {
 					.onClick(() => this.applyMarkdownTableConversion(editor, plan)));
 			}
 		}));
+
+		this.addCommand({
+			id: 'show-changelog',
+			name: t('showChangelogCommand'),
+			callback: () => new ChangelogModal(this.app).open(),
+		});
 	}
 
 	/** Inserts an empty rich-table block at the cursor — the existing empty-block
@@ -100,6 +108,20 @@ export default class BetterTablePlugin extends Plugin {
 			{ line: plan.startLine, ch: 0 },
 			{ line: plan.endLine, ch: editor.getLine(plan.endLine).length },
 		);
+	}
+
+	/** Shows the full changelog once per version bump — skipped on a brand-new
+	 *  install (nothing to summarize yet), and skipped again until the NEXT
+	 *  version change once shown, by recording the current version as seen
+	 *  either way. */
+	private async maybeShowChangelog(): Promise<void> {
+		const current = this.manifest.version;
+		const seen = this.settings.lastSeenVersion;
+		if (shouldShowChangelog(seen, current)) new ChangelogModal(this.app).open();
+		if (seen !== current) {
+			this.settings.lastSeenVersion = current;
+			await this.saveSettings();
+		}
 	}
 
 	async loadSettings(): Promise<void> {
