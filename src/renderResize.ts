@@ -90,7 +90,17 @@ export function setupColResize(
 		else { colLine = makeColLine(); colLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
 
 		const onMove = (ev: PointerEvent) => {
-			const delta = ev.clientX - startX;
+			// Rounded to a whole pixel — PointerEvent.clientX carries sub-pixel
+			// precision under fractional display scaling (Windows 125%/150%
+			// etc.), and an unrounded delta here flows straight into the
+			// committed width below. A fractional <col> width is invisible at
+			// integer DPR (confirmed: Chromium's own sub-pixel layout renders
+			// it cleanly) but reportedly visibly misaligns real column content
+			// on the reporter's actual (fractionally-scaled) display — same
+			// class of issue as row-resize's own Math.round just below,
+			// applied here for consistency rather than because it was ever
+			// independently re-derived as necessary for THIS code path.
+			const delta = Math.round(ev.clientX - startX);
 			const newW  = Math.max(MIN, startW + delta);
 			thisCol.style.setProperty('width', `${newW}px`);
 			if (nextCol && startNextW !== null) {
@@ -114,7 +124,7 @@ export function setupColResize(
 			handle.removeEventListener('pointermove', onMove);
 			colDragging = false;
 			hideColLine();
-			const delta = ev.clientX - startX;
+			const delta = Math.round(ev.clientX - startX);
 			if (delta === 0) return;
 			void onStructuralOp({ type: 'set-col-width', colId: col.id, width: Math.max(MIN, startW + delta) });
 			if (nextCol && startNextW !== null && nextColIdx >= 0) {
