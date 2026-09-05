@@ -100,6 +100,7 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 			if (s.bold)   e.bold   = true;
 			if (s.italic) e.italic = true;
 			if (s.size)   e.size   = s.size;
+			if (s.align)  e.align  = s.align;
 			return e;
 		});
 	}

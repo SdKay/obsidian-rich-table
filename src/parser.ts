@@ -222,6 +222,7 @@ function parseStyles(raw: unknown): StyleRuleV2[] {
 		if (s.bold   === true)            rule.bold   = true;
 		if (s.italic === true)            rule.italic = true;
 		if (typeof s.size  === 'number')  rule.size  = s.size;
+		if (s.align === 'left' || s.align === 'center' || s.align === 'right') rule.align = s.align;
 		return rule;
 	}).filter((r): r is StyleRuleV2 => r !== null);
 }

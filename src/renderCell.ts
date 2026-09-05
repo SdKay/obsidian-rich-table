@@ -12,7 +12,7 @@ import {
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { enterDateEditMode, enterEditMode, type FormulaEditHooks } from './renderEditMode';
 import { idFormulaToLabel } from './formulaLabel';
-import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel } from './renderPanel';
+import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel, buildAlignCellOp } from './renderPanel';
 import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
 
@@ -254,7 +254,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	el.createSpan({ cls: 'bt-th-text', text: value || ' ' });
 	if (col.type) el.addClass('bt-th-typed');
 
-	const openPanel = (evt: MouseEvent, isDblClick = false) => {
+	const openPanel = (evt: MouseEvent) => {
 		if (!onStructuralOp && !onColTypeChange) return;
 		const ops: CellOpEntry[] = [];
 		if (onStructuralOp) {
@@ -273,15 +273,16 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 				{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColId: col.id }) },
 				{ icon: 'eye-off',     label: t('hideColumn'),      action: () => void onStructuralOp({ type: 'hide-col', colId: col.id }) },
 				{ icon: 'trash',       label: t('deleteColumn'), danger: true, action: () => void onStructuralOp({ type: 'delete-col', colId: col.id }) },
+				{ divider: true },
+				// The header's own align only ever affects the header cell — the
+				// column-wide default (which also covers the header, as a
+				// fallback) lives on the column-selector strip's menu instead
+				// (renderer.ts's endDrag('col')), via set-col-align.
+				buildAlignCellOp(
+					cellEffectiveStyle(model, 0, colIdx).align,
+					(align) => void onStructuralOp({ type: 'set-align', target: `header.${col.id}`, align }),
+				),
 			);
-			// Alignment only in the double-click panel, not in right-click or selection menus
-			if (isDblClick) {
-				ops.push(
-					{ icon: 'align-left',   label: t('alignLeft'),   action: () => void onStructuralOp({ type: 'set-col-align', colId: col.id, align: 'left' }) },
-					{ icon: 'align-center', label: t('alignCenter'), action: () => void onStructuralOp({ type: 'set-col-align', colId: col.id, align: 'center' }) },
-					{ icon: 'align-right',  label: t('alignRight'),  action: () => void onStructuralOp({ type: 'set-col-align', colId: col.id, align: 'right' }) },
-				);
-			}
 			ops.push(
 				{ divider: true },
 				{ icon: 'copy', label: t('copyToExcel'),
@@ -311,7 +312,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		});
 	};
 
-	el.addEventListener('contextmenu', (evt: MouseEvent) => { evt.preventDefault(); openPanel(evt, false); });
+	el.addEventListener('contextmenu', (evt: MouseEvent) => { evt.preventDefault(); openPanel(evt); });
 	el.addEventListener('keydown', (evt: KeyboardEvent) => {
 		if (evt.key === 'Enter' || evt.key === ' ') {
 			evt.preventDefault();
@@ -355,7 +356,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
 			delayMs: 200,
 			primaryAction: (_evt, seedChar) => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, seedChar, onEditNavigate); },
-			panelAction: (evt) => openPanel(evt, true),
+			panelAction: (evt) => openPanel(evt),
 		});
 	}
 

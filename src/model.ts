@@ -112,6 +112,12 @@ export interface StyleRuleV2 {
 	bold?: boolean;
 	italic?: boolean;
 	size?: number;
+	/** Overrides the column's whole-column default (`ColumnDefV2.align`) for
+	 *  whatever this target covers — a header cell, a single data cell, or a
+	 *  range. See resolveStylesV2/resolveHeaderStylesV2 (styleTarget.ts) for
+	 *  the fallback: no matching rule sets align → falls back to the column's
+	 *  own `align` field, not left unset. */
+	align?: 'left' | 'center' | 'right';
 }
 
 /**

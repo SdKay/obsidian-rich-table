@@ -157,6 +157,7 @@ export interface ResolvedStyleV2 {
 	bold?: boolean;
 	italic?: boolean;
 	size?: number;
+	align?: 'left' | 'center' | 'right';
 }
 
 /**
@@ -187,6 +188,14 @@ export function resolveStylesV2(
 		if (rule.bold)   result.bold   = rule.bold;
 		if (rule.italic) result.italic = rule.italic;
 		if (rule.size)   result.size   = rule.size;
+		if (rule.align)  result.align  = rule.align;
+	}
+	// No style rule set an explicit align for this cell — fall back to the
+	// column's own whole-column default, so a plain new row/cell keeps
+	// tracking that default automatically with no per-cell bookkeeping.
+	if (result.align === undefined) {
+		const col = model.columns.find(c => c.id === colId);
+		if (col?.align) result.align = col.align;
 	}
 	return result;
 }
@@ -198,6 +207,7 @@ export function resolveStylesV2(
 export function resolveHeaderStylesV2(
 	styles: StyleRuleV2[],
 	colId: string,
+	model: TableModelV2,
 ): ResolvedStyleV2 {
 	const matching: { priority: number; rule: StyleRuleV2 }[] = [];
 	for (const rule of styles) {
@@ -213,6 +223,15 @@ export function resolveHeaderStylesV2(
 		if (rule.bold)   result.bold   = rule.bold;
 		if (rule.italic) result.italic = rule.italic;
 		if (rule.size)   result.size   = rule.size;
+		if (rule.align)  result.align  = rule.align;
+	}
+	// Same column-default fallback as resolveStylesV2 — the header cell is
+	// row 1 of that column and follows its default unless overridden on
+	// "header"/"header.colId" specifically (matchesHeaderCell already lets a
+	// whole-column rule apply here too, at the lowest priority tier).
+	if (result.align === undefined) {
+		const col = model.columns.find(c => c.id === colId);
+		if (col?.align) result.align = col.align;
 	}
 	return result;
 }

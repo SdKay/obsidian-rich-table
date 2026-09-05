@@ -5,6 +5,7 @@ import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
 import { SPECIAL_TYPES, type ColTypeChangeHandler, type StructuralOpHandler } from './renderTypes';
 import { rowId, colId, getMergeOrigin } from './renderGridHelpers';
+import { cellEffectiveStyle } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { pinHover, showMenuPinned } from './renderHoverPin';
 
@@ -23,6 +24,43 @@ export interface CellOpDivider {
 }
 
 export type CellOpEntry = CellOpDef | CellOpDivider;
+
+/**
+ * A "Align" trigger item that opens a second-level native Menu (Left/Center/
+ * Right + Clear) instead of acting immediately — same "chevron-right icon as
+ * a flyout indicator" convention already used by the column-selector's own
+ * aggregate "More statistics" entry (renderer.ts). Callers own what op the
+ * pick actually dispatches (`onPick`), since a whole-column pick goes through
+ * the existing per-column set-col-align while every other scope (header
+ * cell, a data cell/range) goes through the newer, target-string-based
+ * set-align — this only builds the menu, not the op.
+ */
+export function buildAlignCellOp(
+	currentAlign: 'left' | 'center' | 'right' | undefined,
+	onPick: (align: 'left' | 'center' | 'right' | null) => void,
+): CellOpDef {
+	return {
+		icon: 'chevron-right',
+		label: t('align'),
+		action: (evt: MouseEvent) => {
+			const menu = new Menu();
+			(['left', 'center', 'right'] as const).forEach(a => {
+				menu.addItem(item => {
+					item.setTitle(t(a === 'left' ? 'alignLeft' : a === 'center' ? 'alignCenter' : 'alignRight'));
+					item.setIcon(`align-${a}`);
+					if (currentAlign === a) item.setChecked(true);
+					item.onClick(() => onPick(a));
+				});
+			});
+			menu.addSeparator();
+			menu.addItem(item => {
+				item.setTitle(t('alignClear'));
+				item.onClick(() => onPick(null));
+			});
+			showMenuPinned(menu, evt);
+		},
+	};
+}
 
 export interface CellPanelConfig {
 	component:       Component;
@@ -88,6 +126,16 @@ export function dataCellOps(
 			action: () => { for (let r = r2; r >= r1; r--) { const id = rowId(model, r); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
 		{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
 			action: () => { for (let c = c2; c >= c1; c--) { const id = colId(model, c); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
+		{ divider: true },
+		buildAlignCellOp(
+			cellEffectiveStyle(model, rowIdx, colIdx).align,
+			(align) => {
+				const target = (r1 === r2 && c1 === c2)
+					? `${rowId(model, r1)}.${colId(model, c1)}`
+					: `${rowId(model, r1)}.${colId(model, c1)}:${rowId(model, r2)}.${colId(model, c2)}`;
+				void onStructuralOp({ type: 'set-align', target, align });
+			},
+		),
 		{ divider: true },
 		{ icon: 'copy', label: t('copyToExcel'),
 			action: () => copyRangeToClipboard(model, r1, r2, c1, c2) },

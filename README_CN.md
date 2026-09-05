@@ -256,7 +256,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>键盘操作——方向键、Tab、直接打字替换内容（详见<a href="#键盘操作">键盘操作</a>）</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>单元格 / 表头 / 选区菜单——插入、删除、隐藏行列，合并，设置样式，切换列类型与对齐</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>单元格 / 表头 / 选区菜单——插入、删除、隐藏行列，合并，设置样式，切换列类型。对齐分层生效：列选择器条带的菜单设置整列默认对齐（未来新增行也遵循）；表头单元格或某个数据单元格/选区可以从同一个"对齐"二级菜单单独覆盖，只影响自己</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>与 Excel / Sheets / Markdown 表格互通剪贴板——把一片区域或一个 Markdown 表格粘进单元格（粘到表头格可转换整表格式），也可把选区复制回去（或复制为 Markdown 表格）</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>表格标题与页脚注释——点击即可就地编辑</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>不用手打代码块——命令面板（可自己绑快捷键）、左侧功能栏图标，或编辑器右键菜单都能插入</td><td align="center">✅</td><td align="center">—</td></tr>

@@ -21,7 +21,7 @@ import { enterLineEdit } from './renderEditMode';
 import { colMinWidth, autoFitAllColWidths, autoFitRowHeight } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
 import { scrollContentOffset } from './renderGeometry';
-import { type CellOpEntry, openCellPanel } from './renderPanel';
+import { type CellOpEntry, openCellPanel, buildAlignCellOp } from './renderPanel';
 import { renderRow, triggerPrimaryAction } from './renderCell';
 import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
 import { isHoverPinned, onHoverUnpinned, showMenuPinned, getActiveCellMenu } from './renderHoverPin';
@@ -763,6 +763,8 @@ export async function renderTable(
 					action: () => { for (let ci = c1; ci <= c2; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
 				{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
 					action: () => { for (let ci = c2; ci >= c1; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
+				{ divider: true },
+				buildAlignCellOp(existingStyle.align, (align) => void onStructuralOp({ type: 'set-align', target: rangeTarget, align })),
 				{ divider: true },
 				{ icon: 'copy', label: t('copyToExcel'),
 					action: () => copyRangeToClipboard(model, r1, r2, c1, c2) },
@@ -2649,6 +2651,17 @@ export async function renderTable(
 					action: () => { for (let ci = lo; ci <= hi; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
 				{ icon: 'trash',   label: deleteColsLabel(lo, hi, colIndexToLetter), danger: true,
 					action: () => { for (let ci = hi; ci >= lo; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
+				{ divider: true },
+				// Whole-column default — covers every row in the column, including
+				// ones added later (applyColStyle/resolveStylesV2's fallback), unlike
+				// the header cell's own align (renderCell.ts) or a data cell/range's
+				// own align, which only override this default for their own scope.
+				buildAlignCellOp(model.columns[lo]?.align, (align) => {
+					for (let ci = lo; ci <= hi; ci++) {
+						const id = colId(model, ci);
+						if (id) void onStructuralOp({ type: 'set-col-align', colId: id, align });
+					}
+				}),
 				...(sortOps.length > 0 ? [{ divider: true } as CellOpEntry, ...sortOps] : []),
 				...(aggOps.length > 0 ? [{ divider: true } as CellOpEntry, ...aggOps] : []),
 				{ divider: true },

@@ -61,6 +61,7 @@ styles:
     bold: true
   - target: r_000000.c_000000
     bold: true
+    align: right
 footer: 测试
 sort:
   colId: c_000000
@@ -151,6 +152,14 @@ describe('v2 round-trip stability', () => {
 			expect(serialized1).toBe(serialized2);
 		});
 	}
+});
+
+describe('align survives parse/serialize', () => {
+	it('a style rule\'s align field is actually parsed and re-emitted, not just consistently dropped', () => {
+		const model = parseTable(FIXTURES[1]!.source);
+		expect(model.styles.find(s => s.target === 'r_000000.c_000000')?.align).toBe('right');
+		expect(serializeTable(model)).toContain('align: right');
+	});
 });
 
 describe('pipe-table mirror removal (backward compatibility)', () => {

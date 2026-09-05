@@ -27,6 +27,11 @@ export function applyResolvedStyle(el: HTMLElement, rs: ResolvedStyleV2): void {
 	}
 	if (rs.bold)   el.addClass('bt-bold');
 	if (rs.italic) el.addClass('bt-italic');
+	// !important here specifically also has to outrank applyColStyle's own
+	// `bt-align-*` class (a plain stylesheet rule, no !important) — that class
+	// still reflects only the column-wide default, so a cell/header-cell
+	// override resolved here must win over it the same way it wins over a theme.
+	if (rs.align) el.style.setProperty('text-align', rs.align, 'important');
 }
 
 /** Effective style of a cell, using v2 priority cascade. */
@@ -35,7 +40,7 @@ export function cellEffectiveStyle(
 ): ResolvedStyleV2 {
 	const col = model.columns[colIdx];
 	if (!col) return {};
-	if (rowIdx === 0) return resolveHeaderStylesV2(model.styles, col.id);
+	if (rowIdx === 0) return resolveHeaderStylesV2(model.styles, col.id, model);
 	const row = model.rows[rowIdx - 1];
 	if (!row) return {};
 	return resolveStylesV2(model.styles, row.id, col.id, model);
@@ -57,7 +62,7 @@ export function cellInheritedStyle(
 	})();
 	const target = exactTarget ?? defaultExact;
 	const filtered = model.styles.filter(s => s.target !== target);
-	if (rowIdx === 0) return resolveHeaderStylesV2(filtered, col.id);
+	if (rowIdx === 0) return resolveHeaderStylesV2(filtered, col.id, model);
 	const row = model.rows[rowIdx - 1];
 	if (!row) return {};
 	return resolveStylesV2(filtered, row.id, col.id, model);
@@ -131,7 +136,7 @@ export function applyStyleRulesV2(el: HTMLElement, rowIdx: number, colIdx: numbe
 	if (!col) return;
 	let rs: ResolvedStyleV2;
 	if (rowIdx === 0) {
-		rs = resolveHeaderStylesV2(model.styles, col.id);
+		rs = resolveHeaderStylesV2(model.styles, col.id, model);
 	} else {
 		const row = model.rows[rowIdx - 1];
 		if (!row) return;

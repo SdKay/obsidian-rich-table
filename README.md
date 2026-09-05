@@ -253,7 +253,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>Keyboard navigation — arrow keys, Tab, type-to-replace (see <a href="#keyboard">Keyboard</a>)</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Cell, header and selection menus — insert / delete / hide rows &amp; columns, merge, style, column type, alignment</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Cell, header and selection menus — insert / delete / hide rows &amp; columns, merge, style, column type. Alignment is layered: the column-selector strip's own menu sets a column's default (covers future rows too); a header cell or a data cell/range can override it just for itself, from the same "Align" flyout</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Excel / Sheets / Markdown-table clipboard — paste a range from Excel/Sheets or a pasted/typed Markdown table into a cell (or onto a header cell to convert the whole table's format), copy a selection back out (or as a Markdown table)</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Table title and footer notes — click to edit inline</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Insert a block without typing the fence — command palette (assign your own hotkey), ribbon icon, or editor right-click</td><td align="center">✅</td><td align="center">—</td></tr>

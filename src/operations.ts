@@ -44,6 +44,13 @@ export type StructuralOpV2 =
 	| { type: 'set-cell-style';  rowId: string; colId: string; bg: string | null; color: string | null; size: number | null; bold: boolean | null; italic: boolean | null }
 	| { type: 'set-range-style'; target: string; bg: string | null; color: string | null; size: number | null; bold: boolean | null; italic: boolean | null }
 	| { type: 'split-range-style'; rangeTarget: string; excludeRowId: string; excludeColId: string }
+	/** Sets (or clears, align: null) JUST the align property of whatever
+	 *  StyleRuleV2 already exists for `target` (any v2 target string — a
+	 *  single cell, a header cell, or a range) — independent of set-cell-style/
+	 *  set-range-style's bg/color/etc, which this never touches, since the
+	 *  align submenu is its own immediate action, not part of the style
+	 *  panel's Apply/Clear form. */
+	| { type: 'set-align';       target: string; align: 'left' | 'center' | 'right' | null }
 	| { type: 'set-title';       title: string | undefined }
 	| { type: 'set-footer';      footer: string | string[] | undefined }
 	| { type: 'set-filter';      colId: string; values: string[] | null }
@@ -110,7 +117,23 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			const idx = op.afterRowId === null
 				? 0
 				: model.rows.findIndex(r => r.id === op.afterRowId) + 1;
-			model.rows.splice(Math.max(0, idx), 0, newRow);
+			const finalIdx = Math.max(0, idx);
+			model.rows.splice(finalIdx, 0, newRow);
+			// A new row picks up whatever explicit PER-CELL align override the
+			// row directly above it has, column by column — not bg/color/etc
+			// (only alignment was asked for), and not a column-wide default
+			// (the new row already tracks that automatically via the normal
+			// style cascade's fallback, with no bookkeeping needed here). Only
+			// an outlier the row above set for itself, so a freshly inserted
+			// row visually matches its nearest neighbor instead of reverting
+			// to the column default.
+			const prevRow = finalIdx > 0 ? model.rows[finalIdx - 1] : undefined;
+			if (prevRow) {
+				for (const col of model.columns) {
+					const prevRule = model.styles.find(s => s.target === `${prevRow.id}.${col.id}`);
+					if (prevRule?.align) model.styles.push({ target: `${newRow.id}.${col.id}`, align: prevRule.align });
+				}
+			}
 			break;
 		}
 		case 'delete-row': {
@@ -351,6 +374,16 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		}
 		case 'split-range-style': {
 			splitRangeStyleV2(model, op.rangeTarget, op.excludeRowId, op.excludeColId);
+			break;
+		}
+		case 'set-align': {
+			let rule = model.styles.find(s => s.target === op.target);
+			if (op.align === null) {
+				if (rule) { delete rule.align; pruneStyleRuleIfEmptyV2(model, rule); }
+				break;
+			}
+			if (!rule) { rule = { target: op.target }; model.styles.push(rule); }
+			rule.align = op.align;
 			break;
 		}
 
@@ -1088,8 +1121,23 @@ function applyStylePropsV2(
 	if (size !== null) rule.size = size; else delete rule.size;
 	if (bold) rule.bold = true; else delete rule.bold;
 	if (italic) rule.italic = true; else delete rule.italic;
-	if (!rule.bg && !rule.color && !rule.bold && !rule.italic && !rule.size)
-		model.styles = model.styles.filter(s => s.target !== target);
+	pruneStyleRuleIfEmptyV2(model, rule);
+}
+
+/**
+ * Drops `rule` from `model.styles` once every property on it is unset —
+ * shared by applyStylePropsV2 and set-align's own clear path so the two
+ * independent "editors" of the same rule object (the style panel's bg/color/
+ * size/bold/italic form, and the separate align submenu) agree on what
+ * "empty" means. Missing `align` here was a real bug: applyStylePropsV2's
+ * emptiness check only looked at its own five properties, so clearing just
+ * bg/color/etc on a cell that ALSO had an align set (from the unrelated align
+ * submenu) silently deleted the align too, as a side effect of an action that
+ * never touched it.
+ */
+function pruneStyleRuleIfEmptyV2(model: TableModelV2, rule: StyleRuleV2): void {
+	if (!rule.bg && !rule.color && !rule.bold && !rule.italic && !rule.size && !rule.align)
+		model.styles = model.styles.filter(s => s !== rule);
 }
 
 /**
