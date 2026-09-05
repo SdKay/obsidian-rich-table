@@ -79,3 +79,19 @@ body {
 	border: 1px solid var(--background-modifier-border);
 	padding: 4px 8px;
 }
+/* Confirmed live via the real app's own matched-CSSRules (a table's first-column
+ * cells rendered visibly off-center — getComputedStyle showed padding-left/right
+ * literally unequal despite identical authored CSS on our own rule). This exact
+ * selector — an unrelated ".markdown-preview-view td:first-child" rule trimming
+ * a row's edge cells to sit flush with surrounding note text — was the one
+ * actually winning, on specificity alone (2 classes + a pseudo-class + an
+ * element selector), not load order. Added here so that conflict exists in this
+ * harness too, instead of only in a real vault. */
+.markdown-preview-view td:first-child,
+.markdown-preview-view th:first-child {
+	padding-inline-start: 0px;
+}
+.markdown-preview-view td:last-child,
+.markdown-preview-view th:last-child {
+	padding-inline-end: 0px;
+}

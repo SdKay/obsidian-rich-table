@@ -1194,6 +1194,35 @@
 	 */
 	min-height: 1.4em;
 }
+/* Obsidian's own reading-view/live-preview table CSS trims a row's first cell's
+ * leading padding (and, by the same convention, the last cell's trailing padding)
+ * to sit flush with the surrounding note text — via
+ * ".markdown-preview-view td:first-child { padding-inline-start: ... }", confirmed
+ * live via the browser's own matched-rules inspection (this exact selector, from
+ * Obsidian's injected stylesheet, was the one actually winning). Its specificity
+ * (2 classes + a pseudo-class + an element selector) already beats the base rule
+ * above (2 classes only) on its own — no !important, no load-order luck involved.
+ * Reported: a table's own first-column cells rendered visibly off-center — the
+ * text itself was correctly centered WITHIN that half-trimmed padding box, so
+ * nothing about alignment resolution was wrong, only the box it was centered in.
+ * Fixed by out-specificity-ing Obsidian's rule instead of overriding with
+ * !important (Obsidian's developer policy discourages it): repeating .bt-table
+ * adds one more class to this selector's own count, for a plain, order-independent
+ * specificity win — same padding-inline-start/-end vocabulary Obsidian's own rule
+ * uses, not the physical padding-left/-right shorthand, so this stays correct
+ * under RTL too. Never reproducible in this plugin's own e2e harness:
+ * obsidian-vars.css deliberately stubs only the competing declarations earlier
+ * bugs needed (border-collapse), not this one — confirmed solely via the
+ * reporter's own live DOM (getComputedStyle + a matched-CSSRules dump).
+ */
+.bt-table.bt-table .bt-td:first-child,
+.bt-table.bt-table .bt-th:first-child {
+	padding-inline-start: var(--size-4-3);
+}
+.bt-table.bt-table .bt-td:last-child,
+.bt-table.bt-table .bt-th:last-child {
+	padding-inline-end: var(--size-4-3);
+}
 
 /* !important: Obsidian's own reading-view table CSS styles bare <tr>/<td>
  * elements directly (zebra striping, native hover) — without this, that
