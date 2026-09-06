@@ -613,7 +613,13 @@ export async function renderTable(
 		const colEl = colgroup.createEl('col');
 		colEl.dataset.col = String(ci);
 		if (hasExplicitWidths) {
-			const w = Math.max(colMinWidth(col, registry), col.width ?? 120);
+			// A column with no explicit width yet (e.g. one just inserted by
+			// split-cell-col/insert-col) has nothing to Math.max against — falling
+			// back to a flat 120 there rendered it far wider than its narrow,
+			// explicitly-sized neighbors and its own (empty) content. colMinWidth
+			// alone IS "auto-fit to this column's current content" for a plain
+			// empty column (its 40px floor), so that's the right fallback, not 120.
+			const w = col.width != null ? Math.max(colMinWidth(col, registry), col.width) : colMinWidth(col, registry);
 			colEl.style.setProperty('width', `${w}px`);
 			totalWidth += w;
 		}

@@ -81,10 +81,13 @@ export function setupColResize(
 		colDragging = true;
 
 		const startX     = e.clientX;
-		const startW     = parseInt(thisCol.style.width) || (col.width ?? 120);
-		const startNextW = nextCol ? (parseInt(nextCol.style.width) || 120) : null;
-		const nextColIdx = nextCol ? parseInt(nextCol.dataset.col ?? '-1') : -1;
 		const MIN        = colMinWidth(col, getRegistry());
+		const startW     = parseInt(thisCol.style.width) || col.width || MIN;
+		const nextColIdx = nextCol ? parseInt(nextCol.dataset.col ?? '-1') : -1;
+		const nextColDefStart = nextColIdx >= 0 ? model.columns[nextColIdx] : undefined;
+		const startNextW = nextCol
+			? (parseInt(nextCol.style.width) || (nextColDefStart ? colMinWidth(nextColDefStart, getRegistry()) : 40))
+			: null;
 
 		if (colLine) colLine.setCssProps({ '--bt-ri-opacity': '0.75' });
 		else { colLine = makeColLine(); colLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
