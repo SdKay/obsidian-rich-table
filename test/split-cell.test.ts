@@ -83,6 +83,77 @@ describe('split-cell-row', () => {
 	});
 });
 
+describe('split-cell-row on the header (header can now merge downward into data rows)', () => {
+	it('inserts the new row at the very top and wraps every other header column in a new 2-row merge', () => {
+		const model = baseModel();
+		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'header', colId: 'c_1' });
+
+		// New row lands BEFORE every existing data row — same position as
+		// insert-row's afterRowId: null.
+		expect(model.rows.map(r => r.id)).toEqual([expect.any(String), 'r_0', 'r_1', 'r_2']);
+		const newRowId = model.rows[0]!.id;
+
+		// Target column: header keeps its own name, no merge on itself.
+		expect(model.merges.some(m => m.anchor === 'header.c_1')).toBe(false);
+
+		// Every OTHER header column got a fresh 2-row merge covering header + new row.
+		expect(model.merges).toContainEqual({ anchor: 'header.c_0', end: `${newRowId}.c_0` });
+		expect(model.merges).toContainEqual({ anchor: 'header.c_2', end: `${newRowId}.c_2` });
+	});
+
+	it('a vertical header merge already spanning into a data row is auto-absorbed, unchanged, since the new row always lands INSIDE its ID-resolved span', () => {
+		const model = baseModel();
+		model.merges.push({ anchor: 'header.c_0', end: 'r_0.c_0' }); // c_0 already spans header..r_0
+		const mergesBefore = JSON.stringify(model.merges);
+		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'header', colId: 'c_1' });
+
+		// header can never itself be a merge's literal `end` (nothing sits above
+		// it), so this merge's end is never rewritten — but the new row is
+		// inserted BETWEEN header and r_0, i.e. still inside this merge's span
+		// once r_0 shifts down a position, so it's covered for free.
+		expect(JSON.stringify(model.merges.filter(m => m.anchor === 'header.c_0'))).toBe(mergesBefore);
+		const newRowId = model.rows[0]!.id;
+		expect(model.rows.map(r => r.id)).toEqual([newRowId, 'r_0', 'r_1', 'r_2']);
+	});
+
+	it('a horizontal-only header merge on an unrelated column extends downward to cover the new row too', () => {
+		const model = baseModel();
+		// c_0 has its own separate horizontal header merge with... itself only possible
+		// across columns, so use c_2 merged with a 4th column to keep it independent of
+		// the split target (c_1).
+		model.columns.push({ id: 'c_3', name: 'D' });
+		model.rows.forEach(r => { r.cells.c_3 = ''; });
+		model.merges.push({ anchor: 'header.c_2', end: 'header.c_3' }); // header-only, no vertical extent
+		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'header', colId: 'c_1' });
+
+		// Its end WAS literally 'header' (both cells share the split target's row),
+		// so it explicitly grows to a rectangle covering the new row too — the
+		// header merge is now as tall as header+newRow, same as any other
+		// previously-plain header column.
+		const newRowId = model.rows[0]!.id;
+		expect(model.merges).toContainEqual({ anchor: 'header.c_2', end: `${newRowId}.c_3` });
+	});
+
+	it('leaves a header merge that already extends further down past the split point untouched (auto-absorbed by ID resolution)', () => {
+		const model = baseModel();
+		model.merges.push({ anchor: 'header.c_0', end: 'r_1.c_0' }); // c_0 spans header..r_1, past the split point
+		const mergesBefore = JSON.stringify(model.merges);
+		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'header', colId: 'c_1' });
+
+		expect(JSON.stringify(model.merges.filter(m => m.anchor === 'header.c_0'))).toBe(mergesBefore);
+		const newRowId = model.rows[0]!.id;
+		expect(model.rows.map(r => r.id)).toEqual([newRowId, 'r_0', 'r_1', 'r_2']);
+	});
+
+	it('no-ops when the header cell targeted is already part of a merge', () => {
+		const model = baseModel();
+		model.merges.push({ anchor: 'header.c_1', end: 'header.c_2' });
+		const before = JSON.parse(JSON.stringify(model));
+		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'header', colId: 'c_1' });
+		expect(model).toEqual(before);
+	});
+});
+
 describe('split-cell-col', () => {
 	it('inserts a column and wraps every other plain row — including the header — in a new 2-col merge', () => {
 		const model = baseModel();

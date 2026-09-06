@@ -258,11 +258,14 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		if (!onStructuralOp && !onColTypeChange) return;
 		const ops: CellOpEntry[] = [];
 		if (onStructuralOp) {
-			// A header cell can itself be a merge anchor (header-only column-range merges,
-			// e.g. from split-cell-col preserving the header's shape) — offer the same
-			// unmerge action dataCellOps gives data cells, or a merge could never be undone.
+			// A header cell can itself be a merge anchor — either a header-only
+			// column-range merge (e.g. from split-cell-col preserving the
+			// header's shape) or, now that a header cell can merge downward
+			// into data rows, a vertical/rectangular one too — offer the same
+			// unmerge action dataCellOps gives data cells for either shape, or
+			// a merge could never be undone.
 			const merge = getMergeOrigin(0, colIdx, model);
-			if (merge && merge.endCol > merge.startCol) {
+			if (merge && (merge.endCol > merge.startCol || merge.endRow > merge.startRow)) {
 				ops.push({ icon: 'table-2', label: t('unmergeCells'),
 					action: () => void onStructuralOp({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
 			}
@@ -273,6 +276,18 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 				{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColId: col.id }) },
 				{ icon: 'eye-off',     label: t('hideColumn'),      action: () => void onStructuralOp({ type: 'hide-col', colId: col.id }) },
 				{ icon: 'trash',       label: t('deleteColumn'), danger: true, action: () => void onStructuralOp({ type: 'delete-col', colId: col.id }) },
+				{ divider: true },
+				// Same gating as dataCellOps: a vertical-only merge can only split
+				// into columns (each keeping its own copy of the row-span), a
+				// horizontal-only merge only into rows, and a plain cell either way.
+				...((!merge || (merge.endRow === merge.startRow && merge.endCol > merge.startCol)) ? [
+					{ icon: 'rows-2', label: t('splitCellRow'),
+						action: () => void onStructuralOp({ type: 'split-cell-row', rowId: 'header', colId: col.id }) },
+				] as CellOpEntry[] : []),
+				...((!merge || (merge.endCol === merge.startCol && merge.endRow > merge.startRow)) ? [
+					{ icon: 'columns-2', label: t('splitCellCol'),
+						action: () => void onStructuralOp({ type: 'split-cell-col', rowId: 'header', colId: col.id }) },
+				] as CellOpEntry[] : []),
 				{ divider: true },
 				// The header's own align only ever affects the header cell — the
 				// column-wide default (which also covers the header, as a

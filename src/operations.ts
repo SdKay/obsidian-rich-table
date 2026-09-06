@@ -292,8 +292,15 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'split-cell-row': {
 			const covering0 = findMergeCoveringCell(model, op.rowId, op.colId);
 			if (covering0) { splitMergedCellIntoRows(model, covering0); break; }
-			const rowIdx = model.rows.findIndex(r => r.id === op.rowId);
-			if (rowIdx < 0) break;
+			// The header has no entry in model.rows at all (it's derived from
+			// column.name, not a row) — splitting it inserts the new row at the
+			// very top, same position as insert-row's afterRowId: null. Every
+			// other line below already treats op.rowId as an opaque ID string
+			// (used to build target strings / look up merges/styles), so
+			// 'header' flows through those unchanged — this index lookup was
+			// the only place assuming a real row.
+			const rowIdx = op.rowId === 'header' ? -1 : model.rows.findIndex(r => r.id === op.rowId);
+			if (op.rowId !== 'header' && rowIdx < 0) break;
 			const existingIds = new Set(model.rows.map(r => r.id));
 			const newRow: RowDefV2 = { id: genId('r', existingIds), cells: {} };
 			model.rows.splice(rowIdx + 1, 0, newRow);

@@ -37,6 +37,34 @@ export function resolveMergeBounds(model: TableModelV2): MergeBounds[] {
 	return out;
 }
 
+/**
+ * How many LEADING display rows (the header itself, plus any data rows a
+ * header-anchored merge reaches down into) must physically live inside
+ * `<thead>` rather than `<tbody>` for their merges to render correctly.
+ *
+ * `rowspan` cannot cross a `<thead>`/`<tbody>` boundary — confirmed by direct
+ * measurement: an identical merge entirely within `<tbody>` gets its full
+ * height, one anchored at the header but reaching into `<tbody>` gets
+ * silently clipped to just the header's own row height, because `<thead>`
+ * and `<tbody>` are independent row groups as far as the table layout
+ * algorithm is concerned. The fix isn't a CSS trick — it's hosting whichever
+ * data rows a header merge reaches into inside `<thead>` too, so the merge
+ * never actually crosses a row-group boundary in the first place. Those rows
+ * stay completely normal otherwise (real `model.rows[]` entries, `.bt-td`
+ * cells, sortable/filterable/formula-referenceable) — only their DOM parent
+ * changes, purely so native `rowspan` has something that works.
+ *
+ * Returns 1 when nothing is merged into the header (the header is always at
+ * least its own one row).
+ */
+export function computeHeaderRowSpan(model: TableModelV2): number {
+	let maxRowHi = 0;
+	for (const b of resolveMergeBounds(model)) {
+		if (b.rowLo === 0) maxRowHi = Math.max(maxRowHi, b.rowHi);
+	}
+	return maxRowHi + 1;
+}
+
 /** Returns true when displayIdx (1-based, 0=header) should be hidden by active filters. */
 export function isRowFiltered(displayIdx: number, model: TableModelV2): boolean {
 	if (displayIdx === 0) return false;

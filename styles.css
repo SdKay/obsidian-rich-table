@@ -1248,6 +1248,20 @@
 	font-weight: var(--font-semibold);
 }
 
+/* A row a header split absorbs into <thead> (see computeHeaderRowSpan in
+ * renderGridHelpers.ts) stays a real .bt-td data cell — sortable/editable/
+ * filterable exactly like any other row — but the user sees it as a second
+ * header line, so it should still look like one. Without this, such a row
+ * fell back to the plain .bt-td rule above (transparent/--bt-cell-bg)
+ * instead of matching row 1's header background, even though no explicit
+ * per-cell style was ever involved on either side. Higher specificity
+ * (.bt-table.bt-table, the same doubling used for :first-child/:last-child
+ * padding above) wins over the plain .bt-td rule regardless of source order. */
+.bt-table.bt-table thead .bt-td {
+	background-color: var(--bt-header-bg, var(--background-secondary)) !important;
+	font-weight: var(--font-semibold);
+}
+
 /* The <tr> itself never gets a background of its own — Obsidian's reading-
  * view CSS otherwise paints one directly (zebra striping, row hover), which
  * would show through any cell whose own background resolves to transparent.

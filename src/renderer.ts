@@ -11,7 +11,7 @@ import { colIndexToLetter } from './utils';
 import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
 import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler, SnapshotKind } from './renderTypes';
-import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue, resolveMergeBounds } from './renderGridHelpers';
+import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue, resolveMergeBounds, computeHeaderRowSpan } from './renderGridHelpers';
 import { cellIdsToLabel, rangeIdsToLabel } from './formulaLabel';
 import { moveCell, clampToValidCell, type NavCell } from './cellNav';
 import { takeSelectedCell } from './renderSelectionHandoff';
@@ -788,35 +788,50 @@ export async function renderTable(
 
 	const tbody = table.createEl('tbody');
 
+	// ── Cell drag-select ─────────────────────────────────────────────────────
+	// Unified across header AND data cells, attached at the table level rather
+	// than separately to thead/tbody: a header-anchored merge can now reach
+	// down into real data rows, and those rows are hosted in <thead> (see
+	// computeHeaderRowSpan) purely so their rowspan renders correctly — a
+	// thead/tbody-split pair of listeners would silently miss such a row
+	// entirely (thead's old version only matched <th>, tbody's only fired for
+	// descendants of <tbody>). Matching `[data-row][data-col]` regardless of
+	// tag or physical parent means "is this the header" is decided purely by
+	// the row VALUE (0), never by which element happened to contain it.
+	const CELL_SELECTOR = 'td[data-row][data-col], th[data-row][data-col]';
+
 	// Capture-phase: a mousedown+mouseup on another cell still fires a native
 	// `click` afterward, which would otherwise reach THAT cell's own
 	// bindCellActivation listener (registered directly on its <td>, bubble
-	// phase) before bubbling up to anything registered on tbody — by the time
-	// a bubble-phase listener here could see it, the other cell would already
+	// phase) before bubbling up to anything registered here — by the time a
+	// bubble-phase listener here could see it, the other cell would already
 	// have opened its own editor and stolen focus (reproduced: reference
 	// insertion worked, but focus jumped to the clicked cell). Capturing on
-	// tbody runs BEFORE the target's own bubble listener, so swallowing it
+	// table runs BEFORE the target's own bubble listener, so swallowing it
 	// here stops that from ever happening. A click inside the formula
 	// editor's own cell is left alone — that's just normal caret placement.
-	tbody.addEventListener('click', (evt: MouseEvent) => {
+	table.addEventListener('click', (evt: MouseEvent) => {
 		if (!formulaEdit) return;
 		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
 		evt.preventDefault();
 		evt.stopPropagation();
 	}, { capture: true });
 
-	tbody.addEventListener('mousedown', (evt: MouseEvent) => {
+	table.addEventListener('mousedown', (evt: MouseEvent) => {
 		if (evt.button !== 0) return;
 		if (formulaEdit) {
 			// A cell is mid-formula-edit — clicking ANOTHER cell inserts a
 			// reference instead of the normal drag-select/open-editor behaviour.
 			// A click inside the editor's OWN cell falls through to native caret
-			// placement (formula text is plain, freely hand-editable).
+			// placement (formula text is plain, freely hand-editable). The
+			// header can't be referenced by a formula at all, so a header click
+			// here is simply a no-op, same as it always was for any other
+			// non-referenceable target.
 			if ((evt.target as HTMLElement).closest('.bt-editing')) return;
-			const td = (evt.target as HTMLElement).closest<HTMLElement>('td[data-row][data-col]');
-			if (!td) return;
-			const row = parseInt(td.dataset.row ?? '-1');
-			const col = parseInt(td.dataset.col ?? '-1');
+			const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
+			if (!cell) return;
+			const row = parseInt(cell.dataset.row ?? '-1');
+			const col = parseInt(cell.dataset.col ?? '-1');
 			if (row < 1 || col < 0) return;
 			evt.preventDefault();
 			formulaDragStart = { row, col };
@@ -838,11 +853,11 @@ export async function renderTable(
 		// Don't interfere when clicking inside an active cell editor —
 		// preventDefault would block the browser from placing the cursor
 		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
-		const td = (evt.target as HTMLElement).closest<HTMLElement>('td[data-row][data-col]');
-		if (!td) return;
-		const row = parseInt(td.dataset.row ?? '-1');
-		const col = parseInt(td.dataset.col ?? '-1');
-		if (row < 1 || col < 0) return; // data rows only
+		const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
+		if (!cell) return;
+		const row = parseInt(cell.dataset.row ?? '-1');
+		const col = parseInt(cell.dataset.col ?? '-1');
+		if (row < 0 || col < 0) return; // any real cell, header (row 0) included
 		sel.ctrlHeld = evt.ctrlKey || evt.metaKey;
 		removeSelectionPanel();
 		sel.start    = { row, col };
@@ -872,68 +887,27 @@ export async function renderTable(
 		}, { once: true });
 	});
 
-	tbody.addEventListener('mouseover', (evt: MouseEvent) => {
+	table.addEventListener('mouseover', (evt: MouseEvent) => {
 		if (formulaEdit && formulaDragStart) {
-			const td = (evt.target as HTMLElement).closest<HTMLElement>('td[data-row][data-col]');
-			if (!td) return;
-			const row = parseInt(td.dataset.row ?? '-1');
-			const col = parseInt(td.dataset.col ?? '-1');
+			const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
+			if (!cell) return;
+			const row = parseInt(cell.dataset.row ?? '-1');
+			const col = parseInt(cell.dataset.col ?? '-1');
 			if (row < 1 || col < 0) return;
 			formulaDragEnd = { row, col };
 			updateFormulaDragHighlight();
 			return;
 		}
 		if (!sel.dragging) return;
-		const td = (evt.target as HTMLElement).closest<HTMLElement>('td[data-row][data-col]');
-		if (!td) return;
-		const row = parseInt(td.dataset.row ?? '-1');
-		const col = parseInt(td.dataset.col ?? '-1');
-		if (row < 1 || col < 0) return;
+		const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
+		if (!cell) return;
+		const row = parseInt(cell.dataset.row ?? '-1');
+		const col = parseInt(cell.dataset.col ?? '-1');
+		if (row < 0 || col < 0) return;
 		if (row !== sel.end?.row || col !== sel.end?.col) {
 			sel.end = { row, col };
 			sel.hasMoved = true;
 			table.dataset.wasDragged = ''; // only set on actual movement, not every click
-			updateHighlights();
-		}
-	});
-
-	// ── Header row drag-to-select (for merging header cells) ────────────────
-	thead.addEventListener('mousedown', (evt: MouseEvent) => {
-		if (evt.button !== 0) return;
-		const th = (evt.target as HTMLElement).closest<HTMLElement>('th[data-row][data-col]');
-		if (!th) return;
-		const col = parseInt(th.dataset.col ?? '-1');
-		if (col < 0) return;
-		removeSelectionPanel();
-		sel.ctrlHeld = evt.ctrlKey || evt.metaKey;
-		sel.start    = { row: 0, col };
-		sel.end      = { row: 0, col };
-		sel.dragging = true;
-		sel.hasMoved = false;
-		updateHighlights();
-		evt.preventDefault();
-
-		activeDocument.addEventListener('mouseup', () => {
-			sel.dragging = false;
-			if (sel.hasMoved && sel.start && sel.end && sel.start.col !== sel.end.col) {
-				if (!sel.ctrlHeld) showSelectionPanel();
-			} else {
-				clearSel();
-			}
-			window.setTimeout(() => { sel.hasMoved = false; delete table.dataset.wasDragged; }, 0);
-		}, { once: true });
-	});
-
-	thead.addEventListener('mouseover', (evt: MouseEvent) => {
-		if (!sel.dragging || sel.start?.row !== 0) return;
-		const th = (evt.target as HTMLElement).closest<HTMLElement>('th[data-row][data-col]');
-		if (!th) return;
-		const col = parseInt(th.dataset.col ?? '-1');
-		if (col < 0) return;
-		if (col !== sel.end?.col) {
-			sel.end = { row: 0, col };
-			sel.hasMoved = true;
-			table.dataset.wasDragged = '';
 			updateHighlights();
 		}
 	});
@@ -1173,8 +1147,10 @@ export async function renderTable(
 
 	// ── Drag-and-drop row/column reordering ──────────────────────────────────
 	if (onStructuralOp) {
-		// Row reordering: drop on tbody rows
-		tbody.addEventListener('dragover', (evt: DragEvent) => {
+		// Row reordering: drop on a row's <tr>, wherever it's physically
+		// parented — attached to `table`, not `tbody`, since a row a header
+		// merge reaches into is hosted in <thead> (see computeHeaderRowSpan).
+		table.addEventListener('dragover', (evt: DragEvent) => {
 			if (!evt.dataTransfer?.types.includes('bt-drag-row')) return;
 			evt.preventDefault();
 			const tr = (evt.target as HTMLElement).closest<HTMLElement>('tr');
@@ -1186,7 +1162,7 @@ export async function renderTable(
 			tr.addClass('bt-drop-before');
 		});
 
-		tbody.addEventListener('drop', (evt: DragEvent) => {
+		table.addEventListener('drop', (evt: DragEvent) => {
 			evt.preventDefault();
 			clearDropIndicators();
 			const fromStr = evt.dataTransfer?.getData('bt-drag-row');
@@ -1228,6 +1204,10 @@ export async function renderTable(
 		});
 	}
 	const visibleCellCount = countVisibleCells(model);
+	// How many leading display rows a header-anchored merge reaches into —
+	// those rows' <tr> must be hosted in thead too (see computeHeaderRowSpan's
+	// own doc comment for why rowspan needs this).
+	const headerRowSpan = computeHeaderRowSpan(model);
 	if (model.collapsed) {
 		// Collapsed: skip every data row and render one clickable indicator instead —
 		// makes the collapsed state obvious at a glance (same pattern as a hidden-row
@@ -1273,7 +1253,11 @@ export async function renderTable(
 			}
 			const displayIdx = di + 1; // 1-based: 0 = header
 			if (isRowFiltered(displayIdx, model)) { di++; continue; }
-			const tr = tbody.createEl('tr');
+			// A row a header-anchored merge reaches into is hosted in thead
+			// instead — everything about it (model data, sort/filter/formula
+			// eligibility, event handling below) stays completely normal; only
+			// its DOM parent changes, so rowspan never has to cross into tbody.
+			const tr = displayIdx < headerRowSpan ? thead.createEl('tr') : tbody.createEl('tr');
 			await renderRow({
 				tr, rowIdx: displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: false,
 				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
@@ -2772,7 +2756,9 @@ export async function renderTable(
 			if (toIdx >= 1 && toIdx !== dragOverRow) {
 				clearDropIndicators();
 				dragOverRow = toIdx;
-				tbody.querySelector<HTMLElement>(`tr:has([data-row="${toIdx}"])`)?.addClass('bt-drop-before');
+				// table, not tbody: the target row may be one a header merge
+				// reaches into, hosted in <thead> (see computeHeaderRowSpan).
+				table.querySelector<HTMLElement>(`tr:has([data-row="${toIdx}"])`)?.addClass('bt-drop-before');
 			}
 		});
 		rowSel.addEventListener('drop', (evt: DragEvent) => {

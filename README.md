@@ -157,7 +157,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![主题切换](docs/demo-15-theme.gif)
 
-**16 · Split cell** — double-click a plain cell → split into 2 rows/columns; other cells in that row/column keep their current shape
+**16 · Split cell** — double-click a plain cell → split into 2 rows/columns; other cells in that row/column keep their current shape. The header row can split too, and merge downward into data rows, from the same panel
 
 ![split-cell](docs/demo-cell-split.gif)
 
@@ -292,7 +292,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 
 <tr>
   <td rowspan="7"><b>Structure</b></td>
-  <td>Merge cells, and split a plain cell into two rows or columns</td>
+  <td>Merge cells, and split a plain cell into two rows or columns — including the header row, which can split and merge downward into data rows</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>Drag to reorder rows / columns; drag to resize; double-click or ⊞ to auto-fit</td><td align="center">✅</td><td align="center">—</td></tr>

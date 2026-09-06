@@ -159,7 +159,7 @@
 
 ![主题切换](docs/demo-15-theme.gif)
 
-**16 · 拆分单元格** — 双击一个未合并的普通格 → 拆分为两行/两列，同行/列其他格保持原有外形
+**16 · 拆分单元格** — 双击一个未合并的普通格 → 拆分为两行/两列，同行/列其他格保持原有外形。表头行同样支持拆分，并可向下与数据行合并，入口在同一个面板里
 
 ![单元格拆分](docs/demo-cell-split.gif)
 
@@ -295,7 +295,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 
 <tr>
   <td rowspan="7"><b>表格结构</b></td>
-  <td>合并单元格，以及把普通单元格拆成两行或两列</td>
+  <td>合并单元格，以及把普通单元格拆成两行或两列——表头行也可以拆分，并向下与数据行合并</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>拖拽重排行列；拖拽调整宽高；双击或 ⊞ 一键自适应</td><td align="center">✅</td><td align="center">—</td></tr>
