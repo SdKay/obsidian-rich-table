@@ -167,6 +167,10 @@
 
 > 🎬 *演示 GIF 制作中*
 
+**18 · 行列转置** — 左侧控制列的翻转图标一键交换行列；列类型、公式、排序、视图无法跟随，会被丢弃
+
+> 🎬 *演示 GIF 制作中*
+
 ---
 
 ## 键盘操作
@@ -301,8 +305,8 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>拖拽重排行列；拖拽调整宽高；双击或 ⊞ 一键自适应</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>插入、隐藏、删除行列；悬停边缘出现 <b>+</b> 快捷条</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>冻结表头及前 N 行 / 前 N 列</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>一键转置——交换行与列</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>转置起始模板——行、列表头内容一致</td><td align="center">🔜</td><td align="center">P1</td></tr>
-<tr><td>一键转置——交换行与列</td><td align="center">🔜</td><td align="center">P2</td></tr>
 <tr><td>行分组——可折叠分组</td><td align="center">🔜</td><td align="center">P3</td></tr>
 
 <tr>

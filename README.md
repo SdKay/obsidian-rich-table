@@ -165,6 +165,10 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 > 🎬 *Demo GIF coming soon*
 
+**18 · Transpose** — flip icon in the left control column swaps rows and columns; column type, formulas, sort and views don't carry across and are dropped
+
+> 🎬 *Demo GIF coming soon*
+
 ---
 
 ## Keyboard
@@ -298,8 +302,8 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Drag to reorder rows / columns; drag to resize; double-click or ⊞ to auto-fit</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Insert, hide and delete rows / columns; hover an edge for <b>+</b> strips</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Freeze the header plus the first N rows / columns</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Transpose in place — swap rows and columns</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Transposed starting template — row and column headers the same</td><td align="center">🔜</td><td align="center">P1</td></tr>
-<tr><td>Transpose in place — swap rows and columns</td><td align="center">🔜</td><td align="center">P2</td></tr>
 <tr><td>Row grouping — collapsible groups</td><td align="center">🔜</td><td align="center">P3</td></tr>
 
 <tr>

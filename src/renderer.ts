@@ -1800,6 +1800,23 @@ export async function renderTable(
 			repositionAutoFitBtn = () => { /* positioning handled by ctrlCol */ };
 		}
 
+		// Transpose button — swaps rows and columns wholesale (see
+		// transposeModel, operations.ts). Column type/formulas/sort/views can't
+		// carry across a transpose (no row-shaped equivalent, or keyed to an old
+		// column identity that stops existing) — a one-shot structural rewrite
+		// same as every other button here, not a reversible "view", so an
+		// unwanted transpose is undone the same way any other structural op is
+		// (Obsidian's own file history), not a second click. Hidden while
+		// collapsed (see lock button above).
+		if (onStructuralOp && !model.collapsed) {
+			const transposeBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('transposeTable'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(transposeBtn, 'flip-horizontal-2');
+			transposeBtn.addEventListener('click', () => void onStructuralOp({ type: 'transpose' }));
+		}
+
 		// Theme picker button — third in column. Hidden while collapsed (see lock button above).
 		if (onStructuralOp && !model.collapsed) {
 			const THEMES: { id: string | null; label: string }[] = [

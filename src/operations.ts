@@ -105,7 +105,11 @@ export type StructuralOpV2 =
 	/** Changes a calendar view's date column — a no-op for a non-calendar view. */
 	| { type: 'set-view-date-col'; viewId: string; dateColId: string }
 	/** null/absent-matching id = switch back to the default Table view. */
-	| { type: 'set-active-view'; viewId: string | null };
+	| { type: 'set-active-view'; viewId: string | null }
+	/** Swaps rows and columns wholesale — see transposeModel for the exact
+	 *  mapping (old header row becomes a new label column; old columns
+	 *  become new rows, named from what used to be their header text). */
+	| { type: 'transpose' };
 
 export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): void {
 	switch (op.type) {
@@ -553,6 +557,11 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			break;
 		}
 
+		case 'transpose': {
+			transposeModel(model);
+			break;
+		}
+
 		// ── Paste (from Excel/clipboard) ────────────────────────────────────────
 		case 'paste-values': {
 			const { anchorRowId, anchorColId, values } = op;
@@ -728,6 +737,220 @@ export function canFreezeCols(model: TableModelV2, count: number): boolean {
 		if (lo < count && hi >= count) return false;
 	}
 	return true;
+}
+
+/**
+ * Swaps rows and columns wholesale, mutating `model` in place — a literal
+ * transpose of the WHOLE display grid, header included, then the result's
+ * own first column is promoted to be the new header (there is nowhere else
+ * for old header text to go; the new table needs a header of its own, and
+ * the old first column's values are exactly what lines up with it):
+ *
+ *   - Old column 0 becomes the new table's header: new column m's name is
+ *     old column 0's value at old row-axis position (m - 1) — m = 0 is the
+ *     header itself, so new column 0 is named after old column 0's own name.
+ *   - Every OTHER old column (1..C-1) becomes one new row, holding what used
+ *     to be that column's own values (including its old name, which lands in
+ *     the new row's column-0 cell).
+ *
+ * The two axes are exact duals of each other: the old header (old row-axis
+ * position -1) becomes new column 0, and old column 0 (old column-axis
+ * position 0) becomes the new header — same relationship, same direction,
+ * just the other axis. `colForOldRowPos`/`rowForOldColPos` below apply that
+ * symmetrically to every merge and style target, including ones with a
+ * corner still inside old column 0 (which lands on the new header, via the
+ * `'header'` sentinel, rather than having nowhere to go) — nothing is
+ * dropped for touching that column specifically. Only things keyed to a
+ * specific old COLUMN identity that genuinely has no row-or-header shape at
+ * all — `type`/`filter`, row `formulas`, `sort`, `views`, `aggregate` — are
+ * dropped, same as before.
+ *
+ * This is genuinely a transpose, not an approximation of one: apply it twice
+ * and every value returns to its original cell, because both axes shrink
+ * back exactly as far as they grew.
+ */
+function transposeModel(model: TableModelV2): void {
+	const oldColumns = model.columns;
+	const oldRows = model.rows;
+	const R = oldRows.length;
+	const C = oldColumns.length;
+	const oldCol0 = oldColumns[0];
+
+	const colIds = new Set<string>();
+	const rowIds = new Set<string>();
+	// newColIds[m]: m = 0 is the new header itself; m = i + 1 is old row i.
+	const newColIds: string[] = [];
+	for (let m = 0; m <= R; m++) newColIds.push(genId('c', colIds));
+	// newRowIds[k]: old column (k + 1) — old column 0 became the header, so
+	// it isn't one of these.
+	const newRowIds: string[] = [];
+	for (let k = 0; k < C - 1; k++) newRowIds.push(genId('r', rowIds));
+
+	// Old row-axis position (-1 = header, 0..R-1 = a real row) → new column id.
+	const colForOldRowPos = (pos: number): string => newColIds[pos + 1]!;
+	// Old column position (0..C-1) → new row id, or the literal 'header'
+	// sentinel for position 0 — the exact mirror of colForOldRowPos(-1).
+	const rowForOldColPos = (pos: number): string => (pos === 0 ? 'header' : newRowIds[pos - 1]!);
+	const oldColPos = (colId: string): number => oldColumns.findIndex(c => c.id === colId);
+	// Old row-axis position -1..R-1 → old column 0's own value there (the
+	// text that becomes a new column's name).
+	const oldCol0ValueAt = (oldRowPos: number): string =>
+		oldRowPos === -1 ? (oldCol0?.name ?? '') : (oldCol0 ? (oldRows[oldRowPos]?.cells[oldCol0.id] ?? '') : '');
+	// A resolved row — real id or 'header' — as the correct StyleTargetV2 kind
+	// for "this whole row" / "this one cell", since 'row'/'cell' can't hold
+	// the literal 'header' id themselves (that's what 'header'/'header-cell' are for).
+	const rowStyleTarget = (rowId: string): string =>
+		serializeStyleTarget(rowId === 'header' ? { kind: 'header' } : { kind: 'row', rowId });
+	const cellStyleTarget = (rowId: string, colId: string): string =>
+		serializeStyleTarget(rowId === 'header' ? { kind: 'header-cell', colId } : { kind: 'cell', rowId, colId });
+
+	const newColumns: ColumnDefV2[] = newColIds.map((id, m) => {
+		const col: ColumnDefV2 = { id, name: oldCol0ValueAt(m - 1) };
+		if (m > 0 && oldRows[m - 1]?.hidden) col.hidden = true;
+		return col;
+	});
+
+	const newRows: RowDefV2[] = newRowIds.map((id, k) => {
+		const oldCol = oldColumns[k + 1];
+		const cells: Record<string, string> = {};
+		if (oldCol) {
+			const headerVal = oldCol.name ?? '';
+			if (headerVal !== '') cells[newColIds[0]!] = headerVal;
+			for (let i = 0; i < R; i++) {
+				const v = oldRows[i]?.cells[oldCol.id] ?? '';
+				if (v !== '') cells[newColIds[i + 1]!] = v;
+			}
+		}
+		const row: RowDefV2 = { id, cells };
+		if (oldCol?.hidden) row.hidden = true;
+		return row;
+	});
+
+	const newMerges: MergeRangeV2[] = [];
+	for (const m of model.merges) {
+		const [aR, aC] = splitAnchor(m.anchor);
+		const [eR, eC] = splitAnchor(m.end);
+		const aRowPos = resolveMergeRowIndex(model, aR);
+		const eRowPos = resolveMergeRowIndex(model, eR);
+		const aColPos = oldColPos(aC);
+		const eColPos = oldColPos(eC);
+		if (aRowPos === undefined || eRowPos === undefined || aColPos < 0 || eColPos < 0) continue;
+		const newAnchorRow = rowForOldColPos(aColPos);
+		const newAnchorCol = colForOldRowPos(aRowPos);
+		const newEndRow = rowForOldColPos(eColPos);
+		const newEndCol = colForOldRowPos(eRowPos);
+		newMerges.push({ anchor: `${newAnchorRow}.${newAnchorCol}`, end: `${newEndRow}.${newEndCol}` });
+	}
+
+	const newStyles: StyleRuleV2[] = [];
+	for (const rule of model.styles) {
+		const t = parseStyleTarget(rule.target);
+		if (!t) continue;
+		let newTarget: string | undefined;
+		switch (t.kind) {
+			// Whole header row (every column, including column 0) → new column 0,
+			// every row including the new header (a 'col' rule covers both) —
+			// no split needed since 'col' already spans the header uniformly.
+			case 'header':
+				newTarget = serializeStyleTarget({ kind: 'col', colId: colForOldRowPos(-1) });
+				break;
+			// Single header cell (col j) → (row for old column j, new column 0) — a cell.
+			case 'header-cell': {
+				const cp = oldColPos(t.colId);
+				if (cp >= 0) newTarget = cellStyleTarget(rowForOldColPos(cp), colForOldRowPos(-1));
+				break;
+			}
+			// Whole data row (every column, including column 0) → new column
+			// (i+1), every row including the new header — same "no split needed"
+			// reasoning as 'header' above.
+			case 'row': {
+				const rp = resolveMergeRowIndex(model, t.rowId);
+				if (rp !== undefined) newTarget = serializeStyleTarget({ kind: 'col', colId: colForOldRowPos(rp) });
+				break;
+			}
+			// Whole column j (every old row, including the header) → the row for
+			// old column j, every new column — a whole new ROW style (or, if j
+			// is old column 0 itself, the new HEADER row, via rowStyleTarget).
+			case 'col': {
+				const cp = oldColPos(t.colId);
+				if (cp >= 0) newTarget = rowStyleTarget(rowForOldColPos(cp));
+				break;
+			}
+			case 'row-range': {
+				const sp = resolveMergeRowIndex(model, t.startRowId);
+				const ep = resolveMergeRowIndex(model, t.endRowId);
+				if (sp !== undefined && ep !== undefined) {
+					newTarget = serializeStyleTarget({ kind: 'col-range', startColId: colForOldRowPos(sp), endColId: colForOldRowPos(ep) });
+				}
+				break;
+			}
+			// A col-range never covers the header (matchesHeaderCell doesn't
+			// allow it), so it only ever spans real old rows — those become new
+			// columns 1..R (never new column 0). If the range's low end is old
+			// column 0, that end becomes the new HEADER instead of a new row —
+			// split into a 'header' rule (for that one column) plus a
+			// 'row-range' for the rest, rather than dropping either half.
+			case 'col-range': {
+				const sp = oldColPos(t.startColId);
+				const ep = oldColPos(t.endColId);
+				if (sp >= 0 && ep >= 0) {
+					const lo = Math.min(sp, ep), hi = Math.max(sp, ep);
+					if (lo === 0) newStyles.push({ ...rule, target: serializeStyleTarget({ kind: 'header' }) });
+					const rowLo = lo === 0 ? lo + 1 : lo;
+					if (rowLo <= hi) {
+						newTarget = serializeStyleTarget({ kind: 'row-range', startRowId: rowForOldColPos(rowLo), endRowId: rowForOldColPos(hi) });
+					}
+				}
+				break;
+			}
+			case 'cell': {
+				const rp = resolveMergeRowIndex(model, t.rowId);
+				const cp = oldColPos(t.colId);
+				if (rp !== undefined && cp >= 0) newTarget = cellStyleTarget(rowForOldColPos(cp), colForOldRowPos(rp));
+				break;
+			}
+			case 'rect': {
+				const sRp = resolveMergeRowIndex(model, t.startRowId);
+				const eRp = resolveMergeRowIndex(model, t.endRowId);
+				const sCp = oldColPos(t.startColId);
+				const eCp = oldColPos(t.endColId);
+				if (sRp !== undefined && eRp !== undefined && sCp >= 0 && eCp >= 0) {
+					newTarget = serializeStyleTarget({
+						kind: 'rect',
+						startRowId: rowForOldColPos(sCp), startColId: colForOldRowPos(sRp),
+						endRowId: rowForOldColPos(eCp), endColId: colForOldRowPos(eRp),
+					});
+				}
+				break;
+			}
+		}
+		if (newTarget) newStyles.push({ ...rule, target: newTarget });
+	}
+
+	model.columns = newColumns;
+	model.rows = newRows;
+	model.merges = newMerges;
+	model.styles = newStyles;
+
+	// freezeRows = k means old row-axis positions -1..k-1 (header + k rows)
+	// are frozen, i.e. new column-axis positions 0..k (via colForOldRowPos) —
+	// freeze the first k+1 new columns. freezeCols = m means old columns
+	// 0..m-1 are frozen; column 0 became the header (always "frozen" in the
+	// sense that a header never scrolls out of view on its own axis) and
+	// columns 1..m-1 became new rows 0..m-2 — freeze the first m-1 new rows.
+	const oldFreezeRows = model.freezeRows;
+	const oldFreezeCols = model.freezeCols;
+	model.freezeCols = oldFreezeRows !== undefined ? oldFreezeRows + 1 : undefined;
+	model.freezeRows = oldFreezeCols !== undefined ? Math.max(0, oldFreezeCols - 1) : undefined;
+
+	// Table-wide sort and kanban/calendar views reference a specific old
+	// column id that no longer exists after this — dropped rather than left
+	// dangling. Aggregate is reset too: it was computed per (old) column, and
+	// every column is a different axis entirely now.
+	model.sort = undefined;
+	model.views = undefined;
+	model.activeViewId = undefined;
+	model.aggregate = undefined;
 }
 
 /** Finds the merge (if any) whose rectangle currently contains (rowId, colId). */

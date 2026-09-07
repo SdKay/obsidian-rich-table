@@ -97,6 +97,9 @@ const EN = {
 	// Auto-fit all
 	autoFitAll: 'Auto-fit all column widths and row heights',
 
+	// Transpose
+	transposeTable: 'Transpose rows and columns',
+
 	// Theme picker (individual theme names live in @theme-label-en/zh CSS comments)
 	changeTheme:      'Change table theme',
 	themeDefault:     'Default',
@@ -276,6 +279,8 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	unlockTable: '解锁表格（启用图形化编辑）',
 
 	autoFitAll: '自动调整所有列宽和行高',
+
+	transposeTable: '行列转置',
 
 	changeTheme:      '切换表格主题',
 	themeDefault:     '默认',
