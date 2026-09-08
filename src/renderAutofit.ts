@@ -1,6 +1,4 @@
-import type { ColumnDefV2 } from './model';
-import type { ChoiceRegistry } from './choiceRegistry';
-import { SPECIAL_TYPES } from './renderTypes';
+import type { StructuralOpHandler } from './renderTypes';
 
 /**
  * Extra headroom added on top of a choice pill's measured `offsetWidth`. The
@@ -17,17 +15,48 @@ import { SPECIAL_TYPES } from './renderTypes';
 const PILL_MEASURE_BUFFER = 2;
 
 /**
- * Minimum column width based on content.
- * For typed columns the widest option label determines the minimum so choice
- * pills are never cut off.  Uses ~8px per character + 24px padding/chrome.
+ * Minimum column width any column may render at.
+ *
+ * A typed column used to reserve enough width for its WIDEST POSSIBLE option
+ * label up front (~8px/char + 24px), regardless of what's actually shown —
+ * reported as wasted, distracting padding around a short actual value (e.g.
+ * "Done") in a column pre-sized for its type's longest label ("In
+ * Progress"). Dropped in favor of starting every column at this same plain
+ * floor and growing it reactively when a cell's value actually needs more
+ * (see growColForChoiceValue below, called right where a choice cell's value
+ * changes) — content that's actually there drives the width, not a
+ * hypothetical worst case that may never occur in this table.
  */
-export function colMinWidth(col: ColumnDefV2, registry: ChoiceRegistry): number {
-	const base = 40;
-	if (!col.type || SPECIAL_TYPES.has(col.type)) return base;
-	const ct = registry.get(col.type);
-	if (!ct || ct.options.length === 0) return base;
-	const maxLen = Math.max(...ct.options.map(o => (o.label ?? o.value).length));
-	return Math.max(base, maxLen * 8 + 24);
+export function colMinWidth(): number {
+	return 40;
+}
+
+/**
+ * Grows a choice column to fit the value a user just picked, if it's wider
+ * than the column's current width — never shrinks. Called right after a
+ * choice cell's pill is updated (renderCell.ts's menu `onClick`), reading
+ * the pill's own already-updated `offsetWidth` synchronously (no need to
+ * wait for the write-back/re-render round trip). Same measurement math as
+ * autoFitColWidth's own pill branch, so a value that would trigger a wider
+ * fit there triggers the same width here, just reactively instead of on an
+ * explicit auto-fit action.
+ */
+export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: HTMLElement, onStructuralOp: StructuralOpHandler): void {
+	const table = cellEl.closest('table');
+	const colIdxAttr = cellEl.dataset.col;
+	if (!table || colIdxAttr === undefined) return;
+	const colEl = table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`);
+	if (!colEl) return;
+
+	const currentWidth = parseInt(colEl.style.width) || cellEl.getBoundingClientRect().width;
+	const view = activeDocument.defaultView;
+	const style = view ? view.getComputedStyle(cellEl) : null;
+	const padH = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24;
+	const borderH = style ? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) : 2;
+	const needed = Math.ceil(pill.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
+	if (needed > currentWidth) {
+		onStructuralOp({ type: 'set-col-width', colId, width: needed });
+	}
 }
 
 /**

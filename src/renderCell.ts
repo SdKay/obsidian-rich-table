@@ -1,5 +1,5 @@
 import { App, Component, MarkdownRenderer, Menu, setIcon } from 'obsidian';
-import { t, sortActiveLabel } from './i18n';
+import { t, sortActiveLabel, typeLabel } from './i18n';
 import type { ColumnDefV2, TableModelV2 } from './model';
 import type { FormulaErrorCode } from './formula';
 import type { ChoiceRegistry } from './choiceRegistry';
@@ -15,6 +15,7 @@ import { idFormulaToLabel } from './formulaLabel';
 import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel, buildAlignCellOp } from './renderPanel';
 import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
+import { growColForChoiceValue } from './renderAutofit';
 
 /**
  * Single source of truth for a cell's click→primary-action / panel-action wiring,
@@ -251,8 +252,23 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// making the header row visibly shorter than data rows. Most tables never hit
 	// this (some column has a name), but a freshly-inserted blank table has EVERY
 	// header empty at once, making it obvious. Same U+00A0 fix as renderDataCell.
-	el.createSpan({ cls: 'bt-th-text', text: value || ' ' });
-	if (col.type) el.addClass('bt-th-typed');
+	const textSpan = el.createSpan({ cls: 'bt-th-text' });
+	// The type icon lives INSIDE .bt-th-text (not a corner overlay, unlike
+	// filter/sort) so it always sits immediately next to the header's own
+	// name, regardless of the column's alignment/width — a corner-pinned badge
+	// was tried and visibly drifted away from center-aligned text on any but a
+	// narrow column. Placed first so auto-fit's own .bt-th-text.offsetWidth
+	// measurement (renderAutofit.ts) naturally includes its width. Purely
+	// decorative — no click handler — since there's no dedicated action to
+	// wire up: the type-switch panel is already one right-click/double-click away.
+	if (col.type) {
+		textSpan.addClass('bt-th-typed');
+		const typeIcon = textSpan.createSpan({ cls: 'bt-th-type-icon' });
+		setIcon(typeIcon, 'tag');
+		typeIcon.setAttribute('aria-label', typeLabel(col.type));
+		typeIcon.setAttribute('data-tooltip-position', 'top');
+	}
+	textSpan.appendText(value || ' ');
 
 	const openPanel = (evt: MouseEvent) => {
 		if (!onStructuralOp && !onColTypeChange) return;
@@ -389,8 +405,8 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// Filter button — bottom-right corner of the header cell. (The sort MENU
 	// lives in the column-selector's popup instead of a second always-hoverable
 	// header icon — filter is used more often and keeps the hover-reveal spot.
-	// A live sort's ACTIVE-state indicator still surfaces here though, directly
-	// above the filter button, so it's never silently forgotten — see below.)
+	// A live sort's ACTIVE-state indicator still surfaces in the header too,
+	// in its own bottom-left corner, so it's never silently forgotten — see below.)
 	if (onStructuralOp) {
 		const activeValues = col.filter;
 		const filterBtn = el.createDiv({
@@ -405,13 +421,20 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		});
 	}
 
-	// Live-sort active indicator — stacks directly above the filter button (same
-	// corner) so a column that's both filtered and live-sorted shows both at
-	// once instead of one covering the other. Only rendered for the one column
-	// currently driving a live sort. Click opens a small menu (same pattern as
-	// the filter button opening its panel) to switch direction or clear.
+	// Live-sort active indicator — top-right corner, diagonally opposite the
+	// filter button (bottom-right), so a column that's both filtered and
+	// live-sorted shows both at once instead of one covering the other. A
+	// top-anchored and a bottom-anchored 16px icon each need 3+16=19px of
+	// their own corner's edge, which together (38px) exceeds a normal single-
+	// line header's own height (~32px) — see the bt-th-tall-icons rule this
+	// adds below for the fix, rather than moving the icon to a corner that
+	// fits without it (tried first; rejected — top-right is where sort
+	// belongs). Only rendered for the one column currently driving a live
+	// sort. Click opens a small menu (same pattern as the filter button
+	// opening its panel) to switch direction or clear.
 	if (onStructuralOp && model.sort?.colId === col.id) {
 		const dir = model.sort.dir;
+		el.addClass('bt-th-tall-icons');
 		const sortIndicatorBtn = el.createDiv({
 			cls: 'bt-sort-active-btn',
 			attr: {
@@ -442,6 +465,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 			showMenuPinned(menu, e);
 		});
 	}
+
 	// Column resize is handled by the selector-strip handles (works with merges too)
 }
 
@@ -519,7 +543,12 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 							if (opt.color) pill.setCssProps({ '--bt-choice-bg': opt.color });
 							pill.setText(opt.label ?? opt.value);
 							void onCellChange(rowIdx, colIdx, opt.value);
-						});
+							// Columns no longer reserve width for their type's longest
+							// possible label up front (colMinWidth) — grow reactively
+							// instead, right when a value that actually needs more room
+							// is picked. Never shrinks.
+							if (onStructuralOp) growColForChoiceValue(el, col.id, pill, onStructuralOp);
+								});
 					});
 				}
 				showMenuPinned(menu, evt, { row: rowIdx, col: colIdx });

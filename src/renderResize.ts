@@ -69,7 +69,7 @@ export function setupColResize(
 		e.stopPropagation();
 		e.preventDefault();
 		hideColLine();
-		const fit = autoFitColWidth(tbl, colIdx, colMinWidth(col, getRegistry()));
+		const fit = autoFitColWidth(tbl, colIdx, colMinWidth());
 		void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fit });
 	});
 
@@ -81,12 +81,11 @@ export function setupColResize(
 		colDragging = true;
 
 		const startX     = e.clientX;
-		const MIN        = colMinWidth(col, getRegistry());
+		const MIN        = colMinWidth();
 		const startW     = parseInt(thisCol.style.width) || col.width || MIN;
 		const nextColIdx = nextCol ? parseInt(nextCol.dataset.col ?? '-1') : -1;
-		const nextColDefStart = nextColIdx >= 0 ? model.columns[nextColIdx] : undefined;
 		const startNextW = nextCol
-			? (parseInt(nextCol.style.width) || (nextColDefStart ? colMinWidth(nextColDefStart, getRegistry()) : 40))
+			? (parseInt(nextCol.style.width) || colMinWidth())
 			: null;
 
 		if (colLine) colLine.setCssProps({ '--bt-ri-opacity': '0.75' });
@@ -107,9 +106,7 @@ export function setupColResize(
 			const newW  = Math.max(MIN, startW + delta);
 			thisCol.style.setProperty('width', `${newW}px`);
 			if (nextCol && startNextW !== null) {
-				const nextColDef2 = nextColIdx >= 0 ? model.columns[nextColIdx] : undefined;
-				const nextMIN = nextColDef2 ? colMinWidth(nextColDef2, getRegistry()) : 40;
-				nextCol.style.setProperty('width', `${Math.max(nextMIN, startNextW - delta)}px`);
+				nextCol.style.setProperty('width', `${Math.max(colMinWidth(), startNextW - delta)}px`);
 			}
 			const sum = Array.from(tbl.querySelectorAll<HTMLElement>('col'))
 				.reduce((s, c) => s + (parseInt(c.style.width) || 0), 0);
@@ -133,8 +130,7 @@ export function setupColResize(
 			if (nextCol && startNextW !== null && nextColIdx >= 0) {
 				const nextColDef = model.columns[nextColIdx];
 				if (nextColDef) {
-					const nextMIN = colMinWidth(nextColDef, getRegistry());
-					void onStructuralOp({ type: 'set-col-width', colId: nextColDef.id, width: Math.max(nextMIN, startNextW - delta) });
+					void onStructuralOp({ type: 'set-col-width', colId: nextColDef.id, width: Math.max(colMinWidth(), startNextW - delta) });
 				}
 			}
 		};

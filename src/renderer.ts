@@ -619,7 +619,7 @@ export async function renderTable(
 			// explicitly-sized neighbors and its own (empty) content. colMinWidth
 			// alone IS "auto-fit to this column's current content" for a plain
 			// empty column (its 40px floor), so that's the right fallback, not 120.
-			const w = col.width != null ? Math.max(colMinWidth(col, registry), col.width) : colMinWidth(col, registry);
+			const w = col.width != null ? Math.max(colMinWidth(), col.width) : colMinWidth();
 			colEl.style.setProperty('width', `${w}px`);
 			totalWidth += w;
 		}
@@ -1784,14 +1784,14 @@ export async function renderTable(
 				const cols = visibleCols
 					.map(({ colIdx }) => {
 						const col = model.columns[colIdx];
-						return col ? { colIdx, minW: colMinWidth(col, getRegistry()) } : null;
+						return col ? { colIdx, minW: colMinWidth() } : null;
 					})
 					.filter((c): c is { colIdx: number; minW: number } => c !== null);
 				const fits = autoFitAllColWidths(table, cols);
 				for (const { colIdx } of cols) {
 					const col = model.columns[colIdx];
 					if (!col) continue;
-					void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fits.get(colIdx) ?? colMinWidth(col, getRegistry()) });
+					void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fits.get(colIdx) ?? colMinWidth() });
 				}
 				for (const row of model.rows) {
 					void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: 0 });

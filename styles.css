@@ -1668,13 +1668,20 @@
 	background: var(--background-modifier-hover);
 }
 
-/* Live-sort indicator — same corner as the filter button, one slot higher, so
- * a column that's both filtered and live-sorted shows both stacked instead of
- * overlapping. Always opaque (unlike the filter button) since it's only ever
- * in the DOM at all while a live sort is actually active on this column. */
+/* Live-sort indicator — top-right corner, diagonally opposite the filter
+ * button (bottom-right). A top:3px and a bottom:3px 16px icon need 38px of
+ * combined vertical room (3+16+3+16), which a normal single-line header
+ * (~32px) doesn't have on its own — see the bt-th-tall-icons rule right
+ * below, which grows exactly this header to fit both rather than relocating
+ * either icon (an earlier version stacked sort directly above filter in one
+ * corner, or moved it beside filter in a row, or diagonally to bottom-left —
+ * all sidestepped the height problem instead of solving it, at the cost of a
+ * spot other than the intended top-right corner). Always opaque (unlike the
+ * filter button) since it's only ever in the DOM at all while a live sort is
+ * actually active on this column. */
 .bt-table .bt-th .bt-sort-active-btn {
 	position: absolute;
-	bottom: 21px;
+	top: 3px;
 	right: 3px;
 	width: 16px;
 	height: 16px;
@@ -1688,6 +1695,41 @@
 .bt-table .bt-th .bt-sort-active-btn svg { width: var(--font-ui-smaller); height: var(--font-ui-smaller); }
 .bt-table .bt-th .bt-sort-active-btn:hover {
 	background: var(--background-modifier-hover);
+}
+/* Added to a header cell only while it's driving a live sort (renderCell.ts)
+ * — grows it enough to give the top-right sort icon and the bottom-right
+ * filter icon their own 3px-from-the-edge room without overlapping in the
+ * middle. `height`, not `min-height`: measured directly, min-height on a
+ * table cell does NOT grow the row in this layout engine (same limitation
+ * already documented for the base cell's own min-height above, which is why
+ * empty-cell height is actually fixed by inserting real content, not by that
+ * rule) — but plain `height` on a table cell IS already relied on elsewhere
+ * in this file as a row-height minimum (see "Row height" above), so this
+ * uses the same mechanism. `max(...)` keeps a taller manually-set row height
+ * (`--bt-row-height`) from being shrunk back down to this floor.
+ *
+ * This file never sets box-sizing on `.bt-th`/`.bt-td`, so `height` here
+ * could legally end up meaning either a CONTENT height (padding added on
+ * top for the rendered box) or a padding-INCLUSIVE total, depending on
+ * whatever box-sizing default is in effect for this element by the time the
+ * cascade resolves — and that default genuinely differs between this test
+ * harness (content-box, nothing here overrides the browser default) and the
+ * real Obsidian app (border-box, confirmed by reproducing the report with a
+ * simulated global `*, *::before, *::after { box-sizing: border-box }`
+ * reset). An EARLIER version of this rule picked a value sized for the
+ * content-box case (44px content + 16px padding = 60px total) and shipped
+ * passing its own test — then still overlapped in the real vault, where
+ * border-box makes that same "44px" the full 44px total instead, 6px under
+ * this comment's own 38px+buffer target the first time around (28px then,
+ * an even tighter miss). The explicit `box-sizing: border-box` below pins
+ * down which one 44px means; the value itself was raised so the rule stays
+ * correct (44px total under border-box, 60px total under content-box —
+ * either is ≥ the 38px actually needed) even for an ambient default this
+ * rule doesn't fully control. 44px = the 38px combined icon zone
+ * (3+16+3+16) plus a few px of breathing room. */
+.bt-table .bt-th.bt-th-tall-icons {
+	box-sizing: border-box;
+	height: max(44px, var(--bt-row-height, 0px));
 }
 
 
@@ -1758,23 +1800,47 @@
 	width: var(--bt-suggest-width, 260px);
 }
 
-/* Typed header cells — indicate they're interactive */
-.bt-table .bt-th-typed {
-	cursor: pointer;
+/* Column-type indicator — an inline icon inside .bt-th-text, right before the
+ * header's own name (renderCell.ts), not a corner overlay like filter/sort.
+ * A corner-pinned badge was tried first and tracked the CELL's corner rather
+ * than the TEXT — with the default centered alignment, or really any column
+ * wider than the icon itself, that put visible daylight between the badge
+ * and the name it was meant to label. Living inside .bt-th-text instead means
+ * it always sits flush against the name, whatever the column's alignment or
+ * width, and — since it's placed first — auto-fit's own .bt-th-text.
+ * offsetWidth measurement (renderAutofit.ts) naturally includes it.
+ *
+ * .bt-th-text itself becomes the flex container (not just the icon): the icon
+ * and the text both become flex items, vertically centered against each
+ * OTHER by the flex algorithm's own cross-axis alignment — reported as not
+ * quite centered under `vertical-align: middle` on the icon alone, which
+ * aligns to a fixed point half an ex above the text's baseline rather than
+ * the text's actual visual center, measurably off by a couple px for this
+ * icon/font combination. Still an inline-level box (`inline-flex`, not
+ * `flex`), so .bt-th's own text-align continues to position the whole
+ * icon+name unit exactly as before.
+ *
+ * Scoped to `.bt-th-typed` (only a header that actually has the icon), not
+ * every `.bt-th-text` — applying `display: inline-flex` to EVERY header's
+ * text span, typed or not, was tried first and broke auto-layout tables
+ * (no explicit column widths): a flex container's children don't wrap by
+ * Chrome's default flex sizing the way plain inline text does, so an
+ * untyped header's name stopped wrapping/shrinking, silently widening every
+ * auto-layout table — caught by the existing locked-wide-table-ctrl-col
+ * suite, which measures the ctrl column's position relative to the table's
+ * actual rendered width. */
+.bt-table .bt-th .bt-th-text.bt-th-typed {
+	display: inline-flex;
+	align-items: center;
 }
-
-.bt-table .bt-th-typed::after {
-	content: ' ▾';
-	font-size: 0.75em;
+.bt-table .bt-th .bt-th-type-icon {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 3px;
 	opacity: 0.45;
+	color: var(--text-muted);
 }
-
-/* Hover tint is JS-driven (renderer.ts, see above) — same consolidation as
- * bt-td-editable/bt-th-editable. */
-.bt-table .bt-th-typed:focus-visible {
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: -2px;
-}
+.bt-table .bt-th .bt-th-type-icon svg { width: var(--font-ui-smaller); height: var(--font-ui-smaller); }
 
 /* Choice pill badges */
 .bt-choice {
