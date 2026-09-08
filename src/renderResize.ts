@@ -106,7 +106,15 @@ export function setupColResize(
 			const newW  = Math.max(MIN, startW + delta);
 			thisCol.style.setProperty('width', `${newW}px`);
 			if (nextCol && startNextW !== null) {
-				nextCol.style.setProperty('width', `${Math.max(colMinWidth(), startNextW - delta)}px`);
+				// The neighbor mirrors how much THIS column actually moved (newW - startW),
+				// not the raw pointer delta — once this column is clamped at its own
+				// minimum, further dragging keeps enlarging `delta` with nothing left of
+				// it reflected in newW, and mirroring the raw delta anyway grew the
+				// neighbor with no corresponding shrink on this side, drifting the
+				// table's total width. Clamping the mirrored amount the same way this
+				// column's own width already is makes the neighbor stop moving too.
+				const actualDelta = newW - startW;
+				nextCol.style.setProperty('width', `${Math.max(colMinWidth(), startNextW - actualDelta)}px`);
 			}
 			const sum = Array.from(tbl.querySelectorAll<HTMLElement>('col'))
 				.reduce((s, c) => s + (parseInt(c.style.width) || 0), 0);
@@ -126,11 +134,14 @@ export function setupColResize(
 			hideColLine();
 			const delta = Math.round(ev.clientX - startX);
 			if (delta === 0) return;
-			void onStructuralOp({ type: 'set-col-width', colId: col.id, width: Math.max(MIN, startW + delta) });
+			const newW = Math.max(MIN, startW + delta);
+			void onStructuralOp({ type: 'set-col-width', colId: col.id, width: newW });
 			if (nextCol && startNextW !== null && nextColIdx >= 0) {
 				const nextColDef = model.columns[nextColIdx];
 				if (nextColDef) {
-					void onStructuralOp({ type: 'set-col-width', colId: nextColDef.id, width: Math.max(colMinWidth(), startNextW - delta) });
+					// Same clamped-mirror reasoning as onMove above.
+					const actualDelta = newW - startW;
+					void onStructuralOp({ type: 'set-col-width', colId: nextColDef.id, width: Math.max(colMinWidth(), startNextW - actualDelta) });
 				}
 			}
 		};
