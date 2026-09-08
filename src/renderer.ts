@@ -1981,13 +1981,25 @@ export async function renderTable(
 			// this stylesheet's control) instead of just spilling visibly onto
 			// the page below. Cap it to the table's own height so it scrolls
 			// internally in that case rather than losing buttons off the bottom.
-			// Clamp to the VISIBLE band (vt/vh), not the full table (tt/th), so the
-			// toolbar stays pinned in view when the table scrolls vertically inside
-			// the wrapper instead of scrolling off with the table's top.
+			// Position (--cc-top) clamps to the VISIBLE band (vt), not the full
+			// table (tt), so the toolbar stays pinned in view when the table
+			// scrolls vertically inside the wrapper instead of scrolling off with
+			// the table's top. The height cap deliberately does NOT reuse vh for
+			// this: vh is the live intersection of the table's and wrapper's
+			// rects, which is scroll-position-INVARIANT everywhere except a
+			// narrow band right at the very top/bottom of the scroll range (where
+			// the table's own edge is entering the wrapper's visible band) — the
+			// icon stack would visibly gain/lose buttons at the bottom as vh
+			// dipped there, even though the wrapper's own available height never
+			// actually changed (reported: icon spacing/visibility shifting while
+			// dragging the scrollbar). The wrapper's clientHeight is exactly as
+			// stable as vh everywhere else but doesn't have that dip, since it's
+			// the wrapper's own box size, not an intersection with the table's
+			// scroll-shifting rect.
 			ctrlCol.setCssProps({
 				'--cc-top':  `${g.vt + 2}px`,
 				'--cc-left': `${g.vl - CTRL_COL_LEFT_GAP}px`,
-				'--cc-maxh': `${Math.max(g.vh - 4, 0)}px`,
+				'--cc-maxh': `${Math.max(Math.min(g.th, wrapper.clientHeight) - 4, 0)}px`,
 			});
 		};
 		// A locked table's ctrl column is visible from the very first paint
