@@ -37,16 +37,27 @@ export function colMinWidth(): number {
  * choice cell's pill is updated (renderCell.ts's menu `onClick`), reading
  * the pill's own already-updated `offsetWidth` synchronously (no need to
  * wait for the write-back/re-render round trip). Same measurement math as
- * autoFitColWidth's own pill branch, so a value that would trigger a wider
- * fit there triggers the same width here, just reactively instead of on an
- * explicit auto-fit action.
+ * autoFitAllColWidths's own pill branch, so a value that would trigger a
+ * wider fit there triggers the same width here, just reactively instead of
+ * on an explicit auto-fit action.
+ *
+ * A no-op for a column that's currently auto (col[data-auto], or no explicit
+ * width at all because nothing in this table has one) — writing a width here
+ * would turn it into a genuinely fixed column, when the point of "auto" is
+ * that it doesn't need this reactive nudge at all: the next render's own
+ * measurement pass (applyAutoColWidths) or, in an all-auto table, the
+ * browser's own native table-layout:auto already picks up the wider pill on
+ * its own.
  */
 export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: HTMLElement, onStructuralOp: StructuralOpHandler): void {
 	const table = cellEl.closest('table');
 	const colIdxAttr = cellEl.dataset.col;
 	if (!table || colIdxAttr === undefined) return;
 	const colEl = table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`);
-	if (!colEl) return;
+	// table-layout:fixed only gets set when at least one column has an explicit
+	// width (renderer.ts's hasExplicitWidths) — an all-auto table stays plain
+	// table-layout:auto and needs no help from here either.
+	if (!colEl || colEl.dataset.auto || (table as HTMLElement).style.tableLayout !== 'fixed') return;
 
 	const currentWidth = parseInt(colEl.style.width) || cellEl.getBoundingClientRect().width;
 	const view = activeDocument.defaultView;
@@ -60,128 +71,15 @@ export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: 
 }
 
 /**
- * Auto-fit a column's width to the widest content among its cells. Measures each
- * cell in place: toggles white-space:nowrap on its content to get the intrinsic
- * single-line width, then restores it. For a single column this read-after-write
- * per cell is cheap; auto-fitting every column at once uses autoFitAllColWidths
- * instead, which batches the same measurement to avoid forcing a reflow per cell.
- */
-export function autoFitColWidth(tbl: HTMLElement, colIdx: number, minW: number): number {
-	const cells = Array.from(tbl.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`));
-	if (cells.length === 0) return minW;
-
-	let max = minW;
-	for (const cell of cells) {
-		// Skip cells that span multiple columns — their content is shared across columns
-		// and would inflate the auto-fit width of just this one column.
-		if (cell.tagName === 'TD' || cell.tagName === 'TH') {
-			if ((cell as HTMLTableCellElement).colSpan > 1) continue;
-		}
-
-		const view = activeDocument.defaultView;
-		const style = view ? view.getComputedStyle(cell) : null;
-		// Horizontal padding of the cell
-		const padH = style
-			? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
-			: 24;
-		// Border width contribution (border-collapse: collapse, ~1px each side)
-		const borderH = style
-			? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth)
-			: 2;
-
-		// 1. Header cell: measure the inline text span (not the cell itself), and
-		//    do this BEFORE the pill/media checks below — checked first
-		//    specifically because it's unambiguous (only a header cell ever has
-		//    .bt-th-text) and because a header cell also carries its own SVG
-		//    icons (the filter button, the live-sort indicator), which the
-		//    media check below would otherwise match FIRST and measure instead
-		//    of the header's actual text — reported as double-click auto-fit
-		//    doing nothing on a real column: the filter icon's few px, plus
-		//    padding, never exceeded the column's existing/minimum width, so
-		//    the "fit" came out identical to what was already there. Never
-		//    reproduced in this repo's own e2e suite because its setIcon() shim
-		//    only sets a data-icon attribute, never a real <svg> — see
-		//    obsidian-shim.ts.
-		//    cell.scrollWidth == clientWidth == current column width for table-cell
-		//    elements — useless. The inline span's offsetWidth is the actual text width —
-		//    but only once it's forced to one line first: if the column is already too
-		//    narrow, the header text is already wrapped, and offsetWidth on a wrapped
-		//    inline span reports the widest wrapped line, not the text's true natural
-		//    width, which would just confirm the too-narrow width forever.
-		const textSpan = cell.querySelector<HTMLElement>('.bt-th-text');
-		if (textSpan) {
-			textSpan.addClass('bt-nowrap-measure');
-			const w = textSpan.offsetWidth;
-			textSpan.removeClass('bt-nowrap-measure');
-			// Buffer by one letter-spacing unit — engines don't consistently include the
-			// trailing letter-spacing after the last character in the measured width, so a
-			// theme with non-zero letter-spacing (e.g. plain's bold header text) can measure
-			// a hair short of what's actually needed to avoid wrapping.
-			const spanStyle = view ? view.getComputedStyle(textSpan) : null;
-			const letterSpacing = spanStyle ? parseFloat(spanStyle.letterSpacing) || 0 : 0;
-			max = Math.max(max, w + letterSpacing + padH + borderH);
-			continue;
-		}
-
-		// 2. Typed cell: pill is inline-flex with white-space:nowrap;
-		//    offsetWidth is the natural pill width regardless of cell clipping.
-		const pill = cell.querySelector<HTMLElement>('.bt-choice');
-		if (pill) {
-			max = Math.max(max, pill.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
-			continue;
-		}
-
-		// 2b. Rendered diagram/embed (e.g. a mermaid/plantuml code block, which
-		//     renders to an inline <svg> with its own width/viewBox — a <canvas>-
-		//     based renderer looks the same to auto-fit). These size themselves
-		//     from their own attributes, not text flow: forcing white-space:nowrap
-		//     on an ancestor (the generic text branch below) does nothing for them,
-		//     and measuring via Range.getBoundingClientRect() is unreliable once the
-		//     range crosses into SVG's separate DOM namespace. Read the element's
-		//     own rendered box directly instead. Data cells only — a header cell
-		//     never reaches here, having already continued above.
-		const media = cell.querySelector<HTMLElement>('svg, canvas');
-		if (media) {
-			max = Math.max(max, media.getBoundingClientRect().width + padH + borderH);
-			continue;
-		}
-
-		// 3. Data cell with text: measure natural single-line width.
-		//    Two compounding problems:
-		//    a) Selecting the cell itself returns the block <p>'s layout width (= cell width).
-		//       Fix: select the *contents* of each <p> (inline nodes only).
-		//    b) If text is already wrapping, inline line-boxes span the full content area,
-		//       so their union rect width still equals the cell width — no auto-fit effect.
-		//       Fix: temporarily set white-space:nowrap on the <p> to collapse to one line,
-		//       measure the natural width, then restore.
-		const text = cell.textContent?.trim() ?? '';
-		if (text) {
-			const pEls = Array.from(cell.querySelectorAll<HTMLElement>('p'));
-			const targets: HTMLElement[] = pEls.length > 0 ? pEls : [cell];
-			for (const target of targets) {
-				target.addClass('bt-nowrap-measure');
-				const range = activeDocument.createRange();
-				range.selectNodeContents(target);
-				const rw = range.getBoundingClientRect().width;
-				target.removeClass('bt-nowrap-measure');
-				if (rw > 0) max = Math.max(max, rw + padH + borderH);
-			}
-		}
-		// Empty data cell: skip — its scrollWidth == current cell width,
-		// using it would cause the column to grow on every double-click.
-	}
-	return Math.ceil(max);
-}
-
-/**
- * Auto-fit every column's width in one pass. autoFitColWidth measures a single column
- * by toggling white-space:nowrap and reading the result per cell — interleaving those
- * writes and reads across every cell in every column forces one synchronous layout per
- * cell (classic layout thrashing), which gets dramatically slower under heavy theme CSS
- * (animations, gradients, filters make every forced layout more expensive). This does
- * the same measurement but strictly phased — add every nowrap class first, read every
- * width in one batch, then remove every class — so the browser only needs one layout
- * pass for the whole table instead of one per cell.
+ * Auto-fit every column's width in one pass. Measures each cell in place: toggles
+ * white-space:nowrap on its content to get the intrinsic single-line width, then
+ * restores it. Interleaving those writes and reads across every cell in every
+ * column would force one synchronous layout per cell (classic layout thrashing),
+ * which gets dramatically slower under heavy theme CSS (animations, gradients,
+ * filters make every forced layout more expensive) — so this is strictly phased
+ * instead: add every nowrap class first, read every width in one batch, then
+ * remove every class, so the browser only needs one layout pass for the whole
+ * table regardless of how many columns/cells are involved.
  */
 export function autoFitAllColWidths(
 	tbl: HTMLElement,
@@ -201,9 +99,9 @@ export function autoFitAllColWidths(
 		for (const cell of cells) {
 			if ((cell.tagName === 'TD' || cell.tagName === 'TH') && (cell as HTMLTableCellElement).colSpan > 1) continue;
 
-			// Header cell text span — checked BEFORE pill/media below, and for the
-			// same reason autoFitColWidth does: a header cell's own SVG icons (the
-			// filter button, the live-sort indicator) would otherwise match the
+			// Header cell text span — checked BEFORE pill/media below: a header
+			// cell's own SVG icons (the filter button, the live-sort indicator)
+			// would otherwise match the
 			// media check first and get measured instead of the actual header
 			// text, capping the "fit" at whatever tiny width an icon has. Force
 			// nowrap before reading offsetWidth below — if the column is already
@@ -214,12 +112,14 @@ export function autoFitAllColWidths(
 			if (textSpan) { textSpan.addClass('bt-nowrap-measure'); textSpans.push({ colIdx, el: textSpan }); continue; }
 			const pill = cell.querySelector<HTMLElement>('.bt-choice');
 			if (pill) { pills.push({ colIdx, el: pill }); continue; }
-			// Rendered diagram/embed (mermaid/plantuml) — see autoFitColWidth's own
-			// comment for why this needs its own branch instead of the generic
-			// nowrap+Range text path below. No write needed: unlike text, an svg/
-			// canvas's own box isn't affected by white-space, so nothing to toggle.
-			// Data cells only — a header cell never reaches here, having already
-			// continued above.
+			// Rendered diagram/embed (mermaid/plantuml, an inline <svg> with its own
+			// width/viewBox — a <canvas>-based renderer looks the same here). These
+			// size themselves from their own attributes, not text flow: forcing
+			// white-space:nowrap on an ancestor (the generic text branch below)
+			// does nothing for them. No write needed here either: unlike text, an
+			// svg/canvas's own box isn't affected by white-space, so nothing to
+			// toggle. Data cells only — a header cell never reaches here, having
+			// already continued above.
 			const media = cell.querySelector<HTMLElement>('svg, canvas');
 			if (media) { medias.push({ colIdx, el: media }); continue; }
 			const text = cell.textContent?.trim() ?? '';
@@ -256,7 +156,10 @@ export function autoFitAllColWidths(
 	}
 	for (const { colIdx, el } of textSpans) {
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
-		// Buffer by one letter-spacing unit — see autoFitColWidth's header-cell comment.
+		// Buffer by one letter-spacing unit — engines don't consistently include
+		// the trailing letter-spacing after the last character in the measured
+		// width, so a theme with non-zero letter-spacing (e.g. plain's bold
+		// header text) can measure a hair short of what's actually needed.
 		const style = view ? view.getComputedStyle(el) : null;
 		const letterSpacing = style ? parseFloat(style.letterSpacing) || 0 : 0;
 		grow(colIdx, el.offsetWidth + letterSpacing + padH + borderH);
@@ -277,6 +180,46 @@ export function autoFitAllColWidths(
 	return results;
 }
 
+/**
+ * Pins every column the renderer left unmeasured (col[data-auto], set in
+ * renderer.ts's colgroup build — a column with no width of its own,
+ * coexisting with a sibling that DOES have one, so the whole table is
+ * table-layout:fixed and every <col> needs an explicit px width) to its own
+ * actual current content width, and corrects the table's overall width to
+ * match. Must run after the table is attached to a live, painted document —
+ * autoFitAllColWidths reads real layout (offsetWidth/getBoundingClientRect),
+ * which a still-detached or not-yet-reflowed table can't provide — see
+ * tableBlock.ts's render(), which calls this right after its own atomic
+ * DOM swap and forced reflow.
+ *
+ * The data-auto marker is intentionally NOT removed after measuring: this
+ * whole <colgroup> is rebuilt from scratch on every render (freshly derived
+ * from the model's current column widths each time), and growColForChoiceValue
+ * (above) needs to keep telling an auto column apart from a genuinely fixed
+ * one for as long as this particular rendered table lives, not just up to
+ * the first measurement.
+ *
+ * A no-op when nothing is marked — the common case, since an all-auto table
+ * (no column has an explicit width at all) never sets table-layout:fixed in
+ * the first place and needs no help from here; native table-layout:auto
+ * already tracks content on its own, for free.
+ */
+export function applyAutoColWidths(table: HTMLElement): void {
+	const autoCols = Array.from(table.querySelectorAll<HTMLElement>('col[data-auto]'))
+		.map(colEl => ({ colEl, colIdx: parseInt(colEl.dataset.col ?? '-1') }))
+		.filter((c): c is { colEl: HTMLElement; colIdx: number } => c.colIdx >= 0);
+	if (autoCols.length === 0) return;
+
+	const fits = autoFitAllColWidths(table, autoCols.map(c => ({ colIdx: c.colIdx, minW: colMinWidth() })));
+	for (const { colEl, colIdx } of autoCols) {
+		colEl.style.setProperty('width', `${fits.get(colIdx) ?? colMinWidth()}px`);
+	}
+
+	const totalWidth = Array.from(table.querySelectorAll<HTMLElement>('col'))
+		.reduce((sum, c) => sum + (parseInt(c.style.width) || 0), 0);
+	table.style.setProperty('width', `${totalWidth}px`);
+}
+
 /** A column's right edge, in px offset from the table's own left border edge, summing <col> widths in DOM order. */
 export function colRightX(tbl: HTMLElement, colIdx: number): number {
 	let x = 0;
@@ -287,19 +230,3 @@ export function colRightX(tbl: HTMLElement, colIdx: number): number {
 	return x;
 }
 
-/** Auto-fit a row's height to its content by measuring cells without a forced height. */
-export function autoFitRowHeight(tbl: HTMLElement, rowIdx: number, minH: number): number {
-	const cells = Array.from(tbl.querySelectorAll<HTMLElement>(`[data-row="${rowIdx}"]`));
-	if (cells.length === 0) return minH;
-	// Exclude rowspan > 1 cells: their offsetHeight spans multiple rows so measuring
-	// them would inflate the single-row height (same guard as bindResizeHandle).
-	const single = cells.filter(c => (c as HTMLTableCellElement).rowSpan <= 1);
-	const targets = single.length > 0 ? single : cells;
-	// Temporarily clear the forced height so cells collapse to content, measure, restore.
-	const saved = cells.map(c => c.style.getPropertyValue('--bt-row-height'));
-	cells.forEach(c => c.style.removeProperty('--bt-row-height'));
-	let max = minH;
-	for (const c of targets) max = Math.max(max, c.offsetHeight);
-	cells.forEach((c, i) => { const s = saved[i]; if (s) c.style.setProperty('--bt-row-height', s); });
-	return Math.ceil(max);
-}

@@ -185,6 +185,11 @@ export const test = base.extend<{
 					'test-cache-key',         // cacheKey — needed by the cross-rebuild handoffs
 					() => !!singleClickEdit,
 				);
+				// Mirrors tableBlock.ts's own post-swap step: renderTable() leaves any
+				// column with no width of its own (alongside a sibling that has one)
+				// unmeasured — root is already live here (unlike tableBlock.ts's
+				// detached tmp tree), so this can run immediately.
+				document.querySelectorAll('table.bt-table').forEach(window.RichTableReal.applyAutoColWidths);
 				const wrapper = document.querySelector('.bt-table-wrapper');
 				if (scrollLeft !== undefined) wrapper.scrollLeft = scrollLeft;
 				if (scrollTop !== undefined) wrapper.scrollTop = scrollTop;

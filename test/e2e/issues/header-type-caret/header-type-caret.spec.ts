@@ -65,28 +65,34 @@ test('clicking the type icon is inert — no panel opens, the click falls throug
 	expect(await page.locator('[data-row="0"][data-col="0"]').evaluate(el => el.classList.contains('bt-editing'))).toBe(true);
 });
 
-test("auto-fit includes the type icon's width — a typed and an untyped column with identical text fit to different widths", async ({ page, renderFull }) => {
-	await renderFull(tableSource({
-		widths: [40, 40],
-		types: [undefined, 'task-status'],
-		rows: [{ 0: 'x', 1: 'x' }],
-	}));
-	await page.evaluate(() => {
-		document.querySelectorAll('.bt-th-text').forEach(el => {
-			const lastNode = el.childNodes[el.childNodes.length - 1];
-			if (lastNode) lastNode.textContent = 'Status Column';
-		});
-	});
+test("auto-fit includes the type icon's width — a typed and an untyped column with identical text fit to different widths", async ({ page, renderBlock }) => {
+	// renderBlock (not renderFull): auto-fit-all now CLEARS both columns'
+	// widths rather than writing a computed number (see choice-col-reactive-
+	// width's own notes) — the actual size only shows up after the note is
+	// rewritten and reprocessed, which only renderBlock actually does.
+	const block = await renderBlock(`---
+version: 2
+columns:
+  - { id: c_0, name: Status Column, width: 40 }
+  - { id: c_1, name: Status Column, width: 40, type: task-status }
+rows:
+  - { id: r_0, cells: { c_0: x, c_1: x } }
+---
+`);
 
 	await page.locator('table.bt-table').first().hover();
 	await page.waitForTimeout(150);
 	await page.locator('.bt-ctrl-btn[aria-label*="Auto-fit"]').first().click();
 
-	const ops = await page.evaluate(() => (window as unknown as { __btOps: { type: string; colId?: string; width?: number }[] }).__btOps);
-	const widths = ops.filter(o => o.type === 'set-col-width');
-	expect(widths.length, 'both columns should have gotten a set-col-width op').toBe(2);
-	const untypedWidth = widths.find(o => o.colId === 'c_0')!.width!;
-	const typedWidth = widths.find(o => o.colId === 'c_1')!.width!;
+	await expect.poll(() => block.noteText()).not.toContain('width:');
+	await block.reprocess();
+
+	// reprocess() doesn't itself wait for the rebuild to finish — poll on the
+	// real rendered widths rather than reading them once immediately after.
+	const width = (colIdx: number) => page.locator(`col[data-col="${colIdx}"]`).evaluate(el => (el as HTMLElement).getBoundingClientRect().width);
+	await expect.poll(() => width(0)).toBeGreaterThan(0);
+	const untypedWidth = await width(0);
+	const typedWidth = await width(1);
 	expect(typedWidth, "the typed column's fit width should account for the icon's own width").toBeGreaterThan(untypedWidth);
 });
 

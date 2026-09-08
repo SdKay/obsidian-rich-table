@@ -115,7 +115,7 @@
 
 ![排序与操作演示](docs/demo-05-reorder.gif)
 
-**5 · 拖拽调整宽高** — 拖拽列标题右边缘调整列宽 · 拖拽行底边缘调整行高
+**5 · 拖拽调整宽高** — 拖拽列标题右边缘调整列宽 · 拖拽行底边缘调整行高。没有自己宽高的列/行会自动跟随内容（"auto"）；拖拽调整即固定为具体数值，双击调整手柄可清空恢复为 auto
 
 ![调整宽高演示](docs/demo-06-resize.gif)
 
@@ -151,7 +151,7 @@
 
 ![表格锁定](docs/demo-13-lock.gif)
 
-**14 · 一键自适应** — ⊞ 图标一次性把所有列宽和行高调整到贴合内容
+**14 · 一键自适应** — ⊞ 图标把所有列宽和行高清空恢复为 auto，之后持续跟随内容变化，而不是只调整一次后固定住
 
 ![一键自适应](docs/demo-14-autofit.gif)
 
@@ -302,7 +302,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
   <td>合并单元格，以及把普通单元格拆成两行或两列——表头行也可以拆分，并向下与数据行合并</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
-<tr><td>拖拽重排行列；拖拽调整宽高；双击或 ⊞ 一键自适应</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>拖拽重排行列；拖拽调整宽高即固定，双击或 ⊞ 清空恢复为 auto（跟随内容）</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>插入、隐藏、删除行列；悬停边缘出现 <b>+</b> 快捷条</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>冻结表头及前 N 行 / 前 N 列</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>一键转置——交换行与列</td><td align="center">✅</td><td align="center">—</td></tr>
@@ -386,6 +386,8 @@ footer: "每周更新 · 点击任意单元格即可编辑"
 YAML 头部是**唯一的数据来源**——所有编辑都通过表格界面完成，不需要（也不应该）手动修改这段代码块。
 
 **单元格内容**支持完整 Obsidian Markdown：`**加粗**`、`*斜体*`、`[[双链]]`、`[链接](url)`、`![图片](url)`、`- 列表项`、`$数学公式$`、`<br>` 换行。
+
+**`width`/`height` 都是可选字段**——某一列/行没有 `width`/`height` 字段即为"auto"：渲染时按内容自动撑开宽高，且内容变化时持续跟随调整。手动拖拽调整为具体数值即为固定；双击调整手柄或点击"一键自适应"会删除该字段而不是写入一个计算出来的数值，使其恢复为 auto。
 
 **样式 target**（v2 ID 格式）：
 

@@ -10,6 +10,13 @@ import { test, expect } from '../../common/test-base';
 // column already was. Never reproduced in this repo's own e2e suite before
 // now because obsidian-shim.ts's setIcon() only set a data-icon attribute,
 // never a real <svg> — fixed alongside this test.
+//
+// Double-click's own behaviour later changed (see choice-col-reactive-width
+// and header-type-caret's own notes): it now CLEARS the column's width
+// rather than writing a computed number, so the column tracks its own
+// content going forward instead of being pinned to a one-off fit. Needs
+// renderBlock (not renderFull), since only that fixture actually reprocesses
+// the note after an op — renderFull's __btOps never feeds back into the DOM.
 const SOURCE = `---
 version: 2
 columns:
@@ -24,9 +31,9 @@ rows:
 | 2 |
 `;
 
-test('double-click auto-fit grows a narrow column to its header text width', async ({ page, renderFull }) => {
-	await renderFull(SOURCE);
-	const wrapper = page.locator('.bt-table-wrapper');
+test('double-click auto-fit grows a narrow column to its header text width', async ({ page, renderBlock }) => {
+	const block = await renderBlock(SOURCE);
+	const wrapper = page.locator('.bt-table-wrapper:not(#wrapper)');
 	const wb = (await wrapper.boundingBox())!;
 	await page.mouse.move(wb.x + wb.width / 2, wb.y + 5);
 	await page.waitForTimeout(300);
@@ -34,8 +41,15 @@ test('double-click auto-fit grows a narrow column to its header text width', asy
 	const handle = page.locator('.bt-sel-resize-col').first();
 	await handle.dblclick();
 
-	const ops = await page.evaluate(() => (window as unknown as { __btOps: { type: string; width?: number }[] }).__btOps);
-	const fitOp = ops.find(o => o.type === 'set-col-width');
-	expect(fitOp, 'no set-col-width op was dispatched at all').toBeTruthy();
-	expect(fitOp!.width, 'auto-fit should grow well past the narrow starting width to fit the header text').toBeGreaterThan(60);
+	// This is the ONLY column, so clearing its width drops the table back to
+	// no explicit widths at all — `width:` disappears from the note entirely.
+	await expect.poll(() => block.noteText()).not.toContain('width:');
+	await block.reprocess();
+
+	// reprocess() doesn't itself wait for the rebuild to finish (every other
+	// reprocess()-using test in this suite polls a real signal afterward
+	// before reading further state) — poll on the actual rendered width
+	// rather than reading it once immediately after reprocess() returns.
+	const colWidth = () => page.locator('col[data-col="0"]').evaluate(el => (el as HTMLElement).getBoundingClientRect().width);
+	await expect.poll(colWidth, 'auto-fit should grow well past the narrow starting width to fit the header text').toBeGreaterThan(60);
 });

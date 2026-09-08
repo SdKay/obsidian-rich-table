@@ -18,6 +18,7 @@ import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
 import { readXlsxAsModel } from './xlsxSource';
+import { applyAutoColWidths } from './renderAutofit';
 import { openXlsxFilePicker } from './xlsxFilePicker';
 import { captureTablePng, captureTableSvg } from './tableSnapshot';
 import type { SnapshotKind } from './renderTypes';
@@ -475,6 +476,16 @@ export class TableBlock extends MarkdownRenderChild {
 		// settled layout, then clear the guard.
 		void this.containerEl.getBoundingClientRect();
 		this.isRendering = false;
+
+		// Pin any column the renderer left unmeasured (col[data-auto] — a column
+		// with no width of its own alongside a sibling that has one) to its real
+		// content width. Must happen here, not inside renderTable() itself: that
+		// runs against the detached `tmp` tree above, where every measurement
+		// would read 0 — this is the first point the table is guaranteed attached
+		// and reflowed. Runs for every sheet's table this reprocess just rendered
+		// (a kanban/calendar active view has no <table> at all, so the query
+		// simply finds nothing there).
+		this.containerEl.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyAutoColWidths);
 
 		// A resumed edit (renderEditHandoff.ts) builds its editor DURING the render
 		// pass above, while the cell is still part of the off-screen `tmp` tree — a

@@ -18,7 +18,7 @@ import { takeSelectedCell } from './renderSelectionHandoff';
 import { cellEffectiveStyle } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { enterLineEdit } from './renderEditMode';
-import { colMinWidth, autoFitAllColWidths, autoFitRowHeight } from './renderAutofit';
+import { colMinWidth } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
 import { scrollContentOffset } from './renderGeometry';
 import { type CellOpEntry, openCellPanel, buildAlignCellOp } from './renderPanel';
@@ -613,15 +613,25 @@ export async function renderTable(
 		const colEl = colgroup.createEl('col');
 		colEl.dataset.col = String(ci);
 		if (hasExplicitWidths) {
-			// A column with no explicit width yet (e.g. one just inserted by
-			// split-cell-col/insert-col) has nothing to Math.max against — falling
-			// back to a flat 120 there rendered it far wider than its narrow,
-			// explicitly-sized neighbors and its own (empty) content. colMinWidth
-			// alone IS "auto-fit to this column's current content" for a plain
-			// empty column (its 40px floor), so that's the right fallback, not 120.
-			const w = col.width != null ? Math.max(colMinWidth(), col.width) : colMinWidth();
-			colEl.style.setProperty('width', `${w}px`);
-			totalWidth += w;
+			if (col.width != null) {
+				const w = Math.max(colMinWidth(), col.width);
+				colEl.style.setProperty('width', `${w}px`);
+				totalWidth += w;
+			} else {
+				// No width of its OWN while a sibling column has one (e.g. one just
+				// inserted by split-cell-col/insert-col, or any column left to auto-
+				// track its content on purpose) — this used to fall back to a flat
+				// colMinWidth() floor, which isn't really "auto", just a smaller flat
+				// number; a column marked this way instead gets measured against its
+				// actual content and pinned to that, once the table is attached and
+				// real content is rendered (applyAutoColWidths, called from
+				// tableBlock.ts post-swap — measuring here would read 0, since this
+				// runs before this table is ever attached to a live document). Left
+				// out of totalWidth for the same reason: its real contribution isn't
+				// known yet, and that same post-attach step corrects the table's
+				// overall width once every auto column has a real pinned value.
+				colEl.dataset.auto = '1';
+			}
 		}
 		visibleCols.push({ colEl, colIdx: ci });
 	}
@@ -1781,17 +1791,15 @@ export async function renderTable(
 			});
 			setIcon(autoFitBtn, 'maximize-2');
 			autoFitBtn.addEventListener('click', () => {
-				const cols = visibleCols
-					.map(({ colIdx }) => {
-						const col = model.columns[colIdx];
-						return col ? { colIdx, minW: colMinWidth() } : null;
-					})
-					.filter((c): c is { colIdx: number; minW: number } => c !== null);
-				const fits = autoFitAllColWidths(table, cols);
-				for (const { colIdx } of cols) {
+				// Clears every visible column's own width rather than computing and
+				// writing a specific number — same reasoning as the per-column
+				// dblclick handler (renderResize.ts): an auto column tracks its own
+				// content on every render from here on (applyAutoColWidths, called
+				// post-render from tableBlock.ts), not just at the moment of this click.
+				for (const { colIdx } of visibleCols) {
 					const col = model.columns[colIdx];
 					if (!col) continue;
-					void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fits.get(colIdx) ?? colMinWidth() });
+					void onStructuralOp({ type: 'set-col-width', colId: col.id, width: 0 });
 				}
 				for (const row of model.rows) {
 					void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: 0 });
@@ -2051,8 +2059,11 @@ export async function renderTable(
 			h.addEventListener('dblclick', (e: MouseEvent) => {
 				e.stopPropagation();
 				e.preventDefault();
-				const fit = autoFitRowHeight(table, displayIdx, 24);
-				void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: fit });
+				// Clears the row's own height rather than computing and writing a
+				// specific number — a row with no height of its own already hugs its
+				// content natively (no --bt-row-height override), so this just drops
+				// back to that instead of pinning it to whatever fit at this instant.
+				void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: 0 });
 			});
 			rowResizeHandles.set(ri, h);
 		});

@@ -113,7 +113,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![Reorder and ops demo](docs/demo-05-reorder.gif)
 
-**5 · Drag to resize** — column header right edge · row bottom edge
+**5 · Drag to resize** — column header right edge · row bottom edge. A column/row with no width/height of its own tracks its content automatically ("auto"); dragging pins it to a fixed size, and double-clicking the resize handle clears it back to auto
 
 ![Resize demo](docs/demo-06-resize.gif)
 
@@ -149,7 +149,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![表格锁定](docs/demo-13-lock.gif)
 
-**14 · Auto-fit all** — ⊞ icon fits every column width and row height to its content in one click
+**14 · Auto-fit all** — ⊞ icon clears every column/row's own width/height back to auto, so they all track their content from then on rather than being fit once and pinned
 
 ![一键自适应](docs/demo-14-autofit.gif)
 
@@ -299,7 +299,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
   <td>Merge cells, and split a plain cell into two rows or columns — including the header row, which can split and merge downward into data rows</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
-<tr><td>Drag to reorder rows / columns; drag to resize; double-click or ⊞ to auto-fit</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Drag to reorder rows / columns; drag to resize (fixes a size) or double-click / ⊞ to clear back to auto (tracks content)</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Insert, hide and delete rows / columns; hover an edge for <b>+</b> strips</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Freeze the header plus the first N rows / columns</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Transpose in place — swap rows and columns</td><td align="center">✅</td><td align="center">—</td></tr>
@@ -383,6 +383,8 @@ footer: "Updated weekly · click any cell to edit"
 The YAML front-matter is the **only data source** — everything is edited through the table UI, not by hand-editing this block.
 
 **Cell content** supports full Obsidian Markdown: `**bold**`, `*italic*`, `[[wikilinks]]`, `[links](url)`, `![images](url)`, `- lists`, `$math$`, `<br>` for line breaks.
+
+**`width`/`height` are both optional** — a column/row with no `width`/`height` field is "auto": it renders at whatever size fits its content and keeps tracking that as content changes. Setting either to a specific number (by dragging) pins it; double-clicking a resize handle or clicking **Auto-fit all** removes the field again rather than writing a computed number.
 
 **Style targets** (v2 ID-based):
 

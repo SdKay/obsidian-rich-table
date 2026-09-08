@@ -401,7 +401,14 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		// ── Dimensions ────────────────────────────────────────────────────────
 		case 'set-col-width': {
 			const col = model.columns.find(c => c.id === op.colId);
-			if (col) col.width = op.width;
+			if (!col) break;
+			// Same "0 or below clears it" convention as set-row-height below — a
+			// column with no width is auto: it tracks its own content width even
+			// while a sibling column has an explicit one (see renderer.ts's
+			// colgroup build + the post-render measurement pass in tableBlock.ts),
+			// rather than the flat colMinWidth() floor it fell back to before.
+			if (op.width > 0) col.width = op.width;
+			else delete col.width;
 			break;
 		}
 		case 'set-col-align': {

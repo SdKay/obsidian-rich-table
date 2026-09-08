@@ -2,7 +2,7 @@ import type { Component } from 'obsidian';
 import type { TableModelV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { StructuralOpHandler } from './renderTypes';
-import { colMinWidth, autoFitColWidth, colRightX } from './renderAutofit';
+import { colMinWidth, colRightX } from './renderAutofit';
 
 /**
  * Wire a handle element to resize column `colIdx`: hover/drag indicator line,
@@ -69,8 +69,12 @@ export function setupColResize(
 		e.stopPropagation();
 		e.preventDefault();
 		hideColLine();
-		const fit = autoFitColWidth(tbl, colIdx, colMinWidth());
-		void onStructuralOp({ type: 'set-col-width', colId: col.id, width: fit });
+		// Clears the column's own width rather than computing and writing a
+		// specific number — an auto column (operations.ts's set-col-width
+		// treats 0/absent the same way set-row-height already did) tracks its
+		// own content on every render from here on, rather than being pinned to
+		// whatever its content happened to need at the moment of this click.
+		void onStructuralOp({ type: 'set-col-width', colId: col.id, width: 0 });
 	});
 
 	handle.addEventListener('pointerdown', (e: PointerEvent) => {
