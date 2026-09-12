@@ -52,6 +52,55 @@ export function scrollContentOffset(el: HTMLElement, axis: 'x' | 'y'): number {
 		: rect.y + scroller.scrollTop - (box.y + (parseFloat(cs.borderTopWidth) || 0));
 }
 
+export interface VisibleGeom {
+	tr: DOMRect; rr: DOMRect; wr: DOMRect;
+	tt: number; th: number;
+	vl: number; vw: number; colOffset: number;
+	vt: number; vh: number; rowOffset: number;
+}
+
+/**
+ * Visible-viewport geometry of `table` within `wrapper` (the horizontal/
+ * vertical scroll container), in `root`-relative px — the shared answer to
+ * "where, and how much of the table, is actually on screen right now",
+ * originally a closure-local `computeVisibleGeom` in renderer.ts. Pulled out
+ * here, not just left there, because every one of its callers (the edge-add
+ * strips, the row/column selector strips, the ctrl column) needs to run this
+ * exact computation on a shared `wrapper` scroll event — see
+ * `renderScrollSync.ts`'s `bindScrollSync`, which computes it ONCE per
+ * coalesced frame and hands the same object to all three, instead of each
+ * independently spending 3 getBoundingClientRect() reads (9 total) on
+ * identical geometry every frame.
+ *
+ *   vl/vt      visible top-left corner        vw/vh      visible width/height
+ *   colOffset  how far the table's own left sits left of the visible left
+ *              (≤ 0) — added to every column-selector child's left so column
+ *              letters/grips/resize seams scroll horizontally in lockstep
+ *              with the table body and clip cleanly at the visible edges
+ *              (overflow:hidden on the col strip). rowOffset is its vertical
+ *              mirror, for the row selector's own inner-scroll tracking.
+ */
+export function computeVisibleGeom(table: HTMLElement, root: HTMLElement, wrapper: HTMLElement): VisibleGeom {
+	const tr = table.getBoundingClientRect();
+	const rr = root.getBoundingClientRect();
+	const wr = wrapper.getBoundingClientRect();
+	const visLeft   = Math.max(tr.left, wr.left);
+	const visRight  = Math.min(tr.right, wr.right);
+	const visTop    = Math.max(tr.top, wr.top);
+	const visBottom = Math.min(tr.bottom, wr.bottom);
+	return {
+		tr, rr, wr,
+		tt: tr.top - rr.top,
+		th: tr.height,
+		vl: visLeft - rr.left,
+		vw: Math.max(0, visRight - visLeft),
+		colOffset: tr.left - visLeft,
+		vt: visTop - rr.top,
+		vh: Math.max(0, visBottom - visTop),
+		rowOffset: tr.top - visTop,
+	};
+}
+
 /**
  * The initial, first-paint counterpart of renderer.ts's own `reserveLeftPad`
  * (its doc comment there has the full reasoning for what this padding is and

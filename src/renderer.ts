@@ -20,7 +20,8 @@ import { copyRangeToClipboard, copyRangeAsMarkdown, parseHtmlTableWithMerges, pa
 import { enterLineEdit } from './renderEditMode';
 import { colMinWidth } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
-import { scrollContentOffset } from './renderGeometry';
+import { scrollContentOffset, computeVisibleGeom as computeVisibleGeomPure, type VisibleGeom } from './renderGeometry';
+import { bindScrollSync } from './renderScrollSync';
 import { type CellOpEntry, openCellPanel, buildAlignCellOp } from './renderPanel';
 import { renderRow, triggerPrimaryAction } from './renderCell';
 import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
@@ -143,13 +144,22 @@ export async function renderTable(
 	// the table and would invalidate any positions computed before the change).
 	let showEdgeStrips    = () => { /* assigned in edge block */ };
 	let hideEdgeStrips    = () => { /* assigned in edge block */ };
+	// Read by bindScrollSync's shared isActive() check (selector block, below) —
+	// addRowBtn/addColBtn themselves are block-scoped to the edge-strip block and
+	// unreachable from there otherwise.
+	let isEdgeStripsVisible = () => false;
 	let showSelectors     = () => { /* assigned in selector block */ };
 	let hideSelectors     = () => { /* assigned in selector block */ };
 	let prepareLayout     = () => { /* assigned in selector block */ };
 	let restoreLayout     = () => { /* assigned in selector block */ };
 	let repositionLockBtn    = () => { /* assigned in lock-button block */ };
 	let repositionAutoFitBtn = () => { /* assigned in auto-fit-button block */ };
-	let repositionCtrlCol    = () => { /* assigned in ctrl-column block */ };
+	// Optional `geom` — bindScrollSync (below) computes the shared frame's
+	// geometry once and passes it to all three of these, instead of each
+	// independently recomputing identical geometry (see that module's own
+	// doc comment). Every OTHER call site (resize observers, mouseenter,
+	// drag-resize) omits it and gets a fresh computeVisibleGeom() as before.
+	let repositionCtrlCol    = (_geom?: VisibleGeom) => { /* assigned in ctrl-column block */ };
 	// Cheap, rebuild-free repositioning (no visibility toggle, no per-cell
 	// rebuild) — hoisted so the width/height drag-resize handles below can keep
 	// the strips tracking the view's live size during a drag, the same way the
@@ -157,8 +167,8 @@ export async function renderTable(
 	// sites for precedent: they call positionSelectors()/positionEdgeStrips()
 	// directly, never showSelectors()/rebuild(), specifically to stay cheap
 	// enough to run on every event in a fast-firing loop).
-	let repositionSelectorStrips = () => { /* assigned in selector block */ };
-	let repositionEdgeStrips     = () => { /* assigned in edge block */ };
+	let repositionSelectorStrips = (_geom?: VisibleGeom) => { /* assigned in selector block */ };
+	let repositionEdgeStrips     = (_geom?: VisibleGeom) => { /* assigned in edge block */ };
 	let updateStatusBarStats     = () => { /* assigned in status-bar block */ };
 	// Assigned below (drag-resize-handle block) to the height-resize handle's
 	// mount function — invoked much later, once the status bar exists, since
@@ -478,40 +488,12 @@ export async function renderTable(
 	const contentRow = wrapper.createDiv({ cls: 'bt-table-content-row' });
 	const table = contentRow.createEl('table', { cls: 'bt-table' });
 
-	// Visible-viewport geometry, all in root-relative px. The wrapper (overflow-x:auto)
-	// is the horizontal scroll viewport; a wide table scrolls INSIDE it while the wrapper
-	// rect itself stays put. All hover strips anchor to this VISIBLE region rather than
-	// the (possibly scrolled far off-screen) full table rect, so they behave like a fixed
-	// overlay pinned around the visible table on all four sides regardless of scroll.
-	//   vl/vt   visible top-left corner        vw/vh   visible width/height
-	//   colOffset  how far the table's own left sits left of the visible left (≤ 0) —
-	//              added to every column-selector child's left so column letters/grips/
-	//              resize seams scroll horizontally in lockstep with the table body and
-	//              clip cleanly at the visible edges (overflow:hidden on the col strip).
-	const computeVisibleGeom = () => {
-		const tr = table.getBoundingClientRect();
-		const rr = root.getBoundingClientRect();
-		const wr = wrapper.getBoundingClientRect();
-		const visLeft   = Math.max(tr.left, wr.left);
-		const visRight  = Math.min(tr.right, wr.right);
-		const visTop    = Math.max(tr.top, wr.top);
-		const visBottom = Math.min(tr.bottom, wr.bottom);
-		return {
-			tr, rr, wr,
-			tt: tr.top - rr.top,              // table top rel root (full, unclamped)
-			th: tr.height,
-			vl: visLeft - rr.left,            // visible left rel root
-			vw: Math.max(0, visRight - visLeft),
-			colOffset: tr.left - visLeft,     // ≤ 0 — horizontal inner-scroll offset
-			// Vertical mirror of vl/vw/colOffset — the visible band of the table
-			// within the (now vertically-scrollable) wrapper. Overlays clamp to
-			// this and shift their cells by rowOffset so they track inner vertical
-			// scroll, exactly as the column strip tracks inner horizontal scroll.
-			vt: visTop - rr.top,              // visible top rel root
-			vh: Math.max(0, visBottom - visTop),
-			rowOffset: tr.top - visTop,       // ≤ 0 — vertical inner-scroll offset
-		};
-	};
+	// Visible-viewport geometry, all in root-relative px — see renderGeometry.ts's
+	// own doc comment for the field-by-field meaning. Pulled out to a pure,
+	// parameterized function there (shared with bindScrollSync, below) since
+	// every caller here wants this closure's own table/root/wrapper anyway;
+	// this local alias keeps every existing zero-arg call site unchanged.
+	const computeVisibleGeom = () => computeVisibleGeomPure(table, root, wrapper);
 
 	// How far left of the table's visible edge the ctrl column needs to clear.
 	// The full SEL_TOTAL+AUTOFIT_OFFSET amount is sized to sit just left of the
@@ -1651,6 +1633,8 @@ export async function renderTable(
 		const addColBtn = contentRow.createDiv({ cls: 'bt-edge-add-col' });
 		addColBtn.createSpan({ cls: 'bt-edge-plus', text: '+' });
 
+		isEdgeStripsVisible = () => addRowBtn.hasClass('bt-strip-visible') || addColBtn.hasClass('bt-strip-visible');
+
 		// Belt-and-suspenders: strip nodes are freshly created so they should never
 		// carry bt-strip-visible, but reset it explicitly to guard against any
 		// future code path that might clone them.
@@ -1667,13 +1651,17 @@ export async function renderTable(
 		// overflow-x:auto can make it an offsetParent in some Chrome builds, so offsetTop/
 		// offsetLeft traversal may stop at the wrapper instead of reaching root.
 		// getBCR viewport-coordinate subtraction is always root-relative and unambiguous.
-		const positionEdgeStrips = (): boolean => {
+		// `geom`, when passed, comes from bindScrollSync's own shared computation
+		// (one read for the frame, shared with positionSelectors/positionCtrlCol) —
+		// every OTHER call site (resize observers, mouseenter, drag-resize) omits
+		// it and gets a fresh one, since those aren't part of that shared frame.
+		const positionEdgeStrips = (geom: VisibleGeom = computeVisibleGeom()): boolean => {
 			// Stale-root guard: if this renderTable() closure's root has been removed from
 			// the DOM by a subsequent atomic swap, any rect we read would be from an
 			// unrelated or detached element — bail immediately.
 			if (!root.isConnected) return false;
 
-			const g = computeVisibleGeom();
+			const g = geom;
 			const { tr, rr } = g;
 			if (tr.width === 0 || tr.height === 0) return false;
 			if (rr.width === 0) return false;
@@ -1744,7 +1732,7 @@ export async function renderTable(
 			});
 			return true;
 		};
-		repositionEdgeStrips = () => { positionEdgeStrips(); };
+		repositionEdgeStrips = (geom) => { positionEdgeStrips(geom); };
 
 		let hideTimer: number | null = null;
 		const scheduleHide = () => {
@@ -1796,15 +1784,9 @@ export async function renderTable(
 
 		// Horizontal scroll inside the wrapper doesn't move the wrapper (only the table
 		// content within it), so no resize/layout event fires — reposition the edge
-		// strips explicitly against the new visible region. rAF-coalesced so a burst of
-		// scroll events costs at most one reposition per frame.
-		let edgeScrollScheduled = false;
-		wrapper.addEventListener('scroll', () => {
-			if (!addRowBtn.hasClass('bt-strip-visible') && !addColBtn.hasClass('bt-strip-visible')) return;
-			if (edgeScrollScheduled) return;
-			edgeScrollScheduled = true;
-			window.requestAnimationFrame(() => { edgeScrollScheduled = false; positionEdgeStrips(); });
-		});
+		// strips explicitly against the new visible region. Wired below, alongside the
+		// selector strips and ctrl column, into ONE shared bindScrollSync call — see
+		// its own comment for why these three used to each run an independent listener.
 	}
 
 	// ── Control column: open-external-file · detach-from-xlsx · lock · autofit · theme · aggregate · collapse · views · add-sheet · snapshot — left of the row-drag strip ──
@@ -2077,8 +2059,10 @@ export async function renderTable(
 		// CTRL_COL_LEFT_GAP above) — anchored to the VISIBLE left edge (not the
 		// table's own left) so it stays on-screen when a wide table is
 		// horizontally scrolled.
-		const positionCtrlCol = () => {
-			const g = computeVisibleGeom();
+		// See positionEdgeStrips' own comment on the optional `geom` parameter —
+		// same shared-frame purpose, via bindScrollSync below.
+		const positionCtrlCol = (geom: VisibleGeom = computeVisibleGeom()) => {
+			const g = geom;
 			if (g.tr.width === 0) return;
 			// ctrlCol stacks a growing number of buttons (lock/auto-fit/theme/
 			// aggregate/collapse/views/add-sheet) with no height cap of its own —
@@ -2117,9 +2101,14 @@ export async function renderTable(
 		// would still compute an off-screen --cc-left. Locked-but-unhovered is
 		// exactly the state the reported bug was stuck in.
 		if (model.locked) reserveLeftPad();
-		window.requestAnimationFrame(positionCtrlCol);
-		table.addEventListener('bt-layout-changed', positionCtrlCol);
-		new ResizeObserver(positionCtrlCol).observe(table);
+		// Called with no args here — each of these hands positionCtrlCol its OWN
+		// callback argument (a timestamp, an Event, a ResizeObserverEntry[]), none
+		// of which is the VisibleGeom its now-optional parameter expects; omitting
+		// the arg lets that parameter's default (a fresh computeVisibleGeom())
+		// take over, exactly as before this parameter existed.
+		window.requestAnimationFrame(() => positionCtrlCol());
+		table.addEventListener('bt-layout-changed', () => positionCtrlCol());
+		new ResizeObserver(() => positionCtrlCol()).observe(table);
 		// A wide table shifted right by --bt-sel-pad-left on hover doesn't change the
 		// table's own size (it just overflows less/more), so ResizeObserver won't fire
 		// — the mouseenter handler calls this explicitly after prepareLayout instead.
@@ -2499,8 +2488,10 @@ export async function renderTable(
 		// table.offsetLeft returns 0 (relative to wrapper) instead of the root-relative
 		// centering offset.  The viewport-coordinate subtraction always gives the correct
 		// root-relative position regardless of offsetParent.
-		const positionSelectors = () => {
-			const g = computeVisibleGeom();
+		// See positionEdgeStrips' own comment on the optional `geom` parameter —
+		// same shared-frame purpose, via bindScrollSync below.
+		const positionSelectors = (geom: VisibleGeom = computeVisibleGeom()) => {
+			const g = geom;
 			// Col selector: pinned to the visible top edge, spanning the visible width,
 			// clipped (overflow:hidden in CSS). --cs-off shifts its column cells so they
 			// track the table body as it scrolls horizontally; --cs-top uses the visible
@@ -2524,7 +2515,7 @@ export async function renderTable(
 				'--rs-off':    `${g.rowOffset}px`,
 			});
 		};
-		repositionSelectorStrips = () => { positionSelectors(); };
+		repositionSelectorStrips = (geom) => { positionSelectors(geom); };
 
 		// prepareLayout / restoreLayout are called by the proximity handler BEFORE
 		// show/hide so that positionEdgeStrips() and positionSelectors() both see
@@ -3044,20 +3035,20 @@ export async function renderTable(
 		selResizeObs.observe(table);
 		component?.register(() => selResizeObs.disconnect());
 
-		// Horizontal scroll: only the containers + the --cs-off shift need updating —
-		// the per-column cells stay table-relative and follow --cs-off via CSS, so no
-		// full rebuild() is needed (keeps scrolling smooth). rAF-coalesced.
-		let selScrollScheduled = false;
-		wrapper.addEventListener('scroll', () => {
-			if (!colSel.hasClass('bt-strip-visible') && !rowSel.hasClass('bt-strip-visible')) return;
-			if (selScrollScheduled) return;
-			selScrollScheduled = true;
-			window.requestAnimationFrame(() => {
-				selScrollScheduled = false;
-				positionSelectors();
-				repositionCtrlCol();
-			});
-		});
+		// Scroll: repositions the selector strips, the edge-add strips, and the
+		// ctrl column — three former independent listeners, each spending 3
+		// getBoundingClientRect() reads on the SAME geometry, now merged into one
+		// rAF-coalesced frame that reads it once and hands it to all three. See
+		// bindScrollSync's own doc comment for the layout-thrashing cost this
+		// avoids. Only the containers + the --cs-off/--rs-off shift actually need
+		// updating on a pure scroll — the per-cell content stays table-relative
+		// and follows those via CSS, so no full rebuild() is needed here (keeps
+		// scrolling smooth).
+		bindScrollSync(
+			wrapper, table, root,
+			() => colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible') || isEdgeStripsVisible(),
+			[positionSelectors, repositionCtrlCol, repositionEdgeStrips],
+		);
 	}
 
 	// ── Show/hide overlays on mouse enter/leave ───────────────────────────────
