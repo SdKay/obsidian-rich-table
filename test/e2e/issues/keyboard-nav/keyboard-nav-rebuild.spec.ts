@@ -15,6 +15,19 @@ import { tableSource } from '../../common/fixtures';
  * Without that call these tests pass on the ORIGINAL instance, where the
  * selection was set synchronously and no handoff was involved at all — which is
  * how a first draft of this file passed while checking nothing.
+ *
+ * `reprocess()` itself only waits for the SYNCHRONOUS half of the rebuild — the
+ * write-back-time placeholder (a `cloneNode` of the outgoing DOM, injected before
+ * the real async render even starts, see tableBlock.ts) is up by the time it
+ * returns, but the real render (with real listeners, and the model's actual
+ * post-op content) lands a little later. A test that polls on a condition the
+ * placeholder ALSO satisfies (e.g. "some row exists", or a `.bt-selected` class
+ * that already moved synchronously pre-snapshot) races that gap and flakes
+ * under load; one that polls on something only the real, post-op render can
+ * produce (a row that's genuinely gone, a cell showing the newly-committed
+ * text) does not. Every wait below was chosen with that in mind — see the
+ * inline comments on the row-deletion and ArrowRight-after-rebuild tests for
+ * the two cases that actually depended on it.
  */
 const SOURCE = tableSource({
 	widths: [80, 80, 80],
@@ -72,6 +85,17 @@ test.describe('keyboard-nav — surviving a write-back rebuild', () => {
 		await page.keyboard.press('Tab');
 		await expect.poll(() => block.noteText()).toContain('moved');
 		await block.reprocess();
+
+		// `reprocess()` returns as soon as the placeholder (a clone of the PRE-op DOM,
+		// see tableBlock.ts's write-back-time snapshot) is injected — the real render,
+		// with real listeners, still lands a little later. The placeholder still shows
+		// the OLD cell text ("a1"), so waiting on the committed value ("moved") is a
+		// signal only the real render can satisfy, unlike waiting on `.bt-selected`
+		// (which the placeholder already carries too, since the Selected class moves
+		// synchronously on Tab, before the snapshot is even taken). Without this, a
+		// key sent to the still-inert placeholder is lost for good — placeholder nodes
+		// are `cloneNode`s with no event wiring — and the poll below times out.
+		await expect.poll(() => page.locator('[data-row="1"][data-col="0"]').textContent()).toBe('moved');
 		await expect.poll(() => page.locator('[data-row="1"][data-col="1"].bt-selected').count()).toBe(1);
 
 		await page.keyboard.press('ArrowRight');
@@ -110,11 +134,15 @@ test.describe('keyboard-nav — surviving a write-back rebuild', () => {
 		await expect.poll(() => block.noteText()).not.toContain('a2');
 		await block.reprocess();
 
-		await expect.poll(() => page.locator('.bt-td[data-row]').count(),
-			{ message: 'the rebuild should show one data row' }).toBeGreaterThan(0);
-		expect(await page.locator('[data-row="2"]').count(), 'row 2 is gone').toBe(0);
-		expect(await page.locator('.bt-selected').count(),
-			'a stale coordinate must not resurrect a highlight on an unrelated cell').toBe(0);
+		// `.bt-td[data-row]` count > 0 is NOT a "the rebuild is done" signal — the
+		// write-back-time placeholder (a clone of the table as it looked BEFORE this
+		// delete-row op, see tableBlock.ts) already satisfies it, since it still has
+		// its own (pre-delete) data-row cells. Poll for row 2 being GONE instead —
+		// true only once the real, post-delete render has replaced the placeholder.
+		await expect.poll(() => page.locator('[data-row="2"]').count(),
+			{ message: 'row 2 is gone', timeout: 10000 }).toBe(0);
+		await expect.poll(() => page.locator('.bt-selected').count(),
+			{ message: 'a stale coordinate must not resurrect a highlight on an unrelated cell' }).toBe(0);
 	});
 
 	test('a deleted selection is not merely invisible — the keyboard cannot resume from it', async ({ page, renderBlock }) => {
@@ -135,7 +163,12 @@ test.describe('keyboard-nav — surviving a write-back rebuild', () => {
 		});
 		await expect.poll(() => block.noteText()).not.toContain('a2');
 		await block.reprocess();
-		await expect.poll(() => page.locator('.bt-td[data-row]').count()).toBeGreaterThan(0);
+		// Same reasoning as the previous test: wait for row 2 to actually be gone
+		// (the real render), not just "some row exists" (the placeholder already
+		// has that). Sending a key before the real, listener-bearing DOM is up would
+		// be lost — the placeholder is an inert `cloneNode` — and falsely "pass" by
+		// never moving the selection at all.
+		await expect.poll(() => page.locator('[data-row="2"]').count(), { timeout: 10000 }).toBe(0);
 
 		for (const key of ['ArrowUp', 'ArrowDown', 'Tab', 'ArrowLeft']) {
 			await page.keyboard.press(key);
