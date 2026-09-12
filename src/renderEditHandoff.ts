@@ -50,6 +50,15 @@ export function clearLiveEdit(cacheKey: string, row: number, col: number): void 
 	handoff.clear(cacheKey, matches(row, col));
 }
 
+/** Unconditional clear, regardless of which cell (if any) is registered — for
+ *  a cacheKey that will never be looked up again (tableBlock.ts's unload
+ *  cleanup for a nested table's per-mount-unique key), where MAX_AGE_MS alone
+ *  wouldn't help: staleness is only checked inside take(), which nothing ever
+ *  calls with a key that's never reused. */
+export function clearAllLiveEdits(cacheKey: string): void {
+	handoff.clear(cacheKey);
+}
+
 /**
  * Consumes (removes) and returns the live edit for (cacheKey, row, col), if
  * one is registered, matches this exact cell, and isn't stale. Called once

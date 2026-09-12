@@ -1,3 +1,5 @@
+import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
+
 /**
  * The one place that answers "where is this element within the scrolling
  * content?" — shared by the frozen region (renderFreeze.ts) and the row/column
@@ -48,4 +50,37 @@ export function scrollContentOffset(el: HTMLElement, axis: 'x' | 'y'): number {
 	return axis === 'x'
 		? rect.x + scroller.scrollLeft - (box.x + (parseFloat(cs.borderLeftWidth) || 0))
 		: rect.y + scroller.scrollTop - (box.y + (parseFloat(cs.borderTopWidth) || 0));
+}
+
+/**
+ * The initial, first-paint counterpart of renderer.ts's own `reserveLeftPad`
+ * (its doc comment there has the full reasoning for what this padding is and
+ * why it's now reserved PERMANENTLY, never collapsed back on mouseleave, for
+ * every table — no nested-vs-top-level distinction). Kept as a standalone,
+ * DOM-derived function rather than reusing that closure-local one because it
+ * must run from tableBlock.ts's render(), AFTER the atomic DOM swap that
+ * first makes the table's own container genuinely attached and measurable —
+ * the same reason applyAutoColWidths (renderAutofit.ts) is its own
+ * standalone post-swap call rather than something renderTable() does
+ * internally (it runs against a still-detached tree there). Runs for every
+ * `.bt-render-root` a render just produced, a NESTED table's own root
+ * included — found by the exact same blanket query, with no special-casing
+ * of its own to tell the two apart (see tableBlock.ts).
+ *
+ * `leftNeed` is re-derived from the DOM (whether `root` actually has
+ * selector-strip elements at all) rather than threaded in from renderer.ts's
+ * own CTRL_COL_LEFT_GAP, since this runs from an entirely separate call site
+ * with no access to that closure.
+ */
+export function reserveSelectorLeftPad(root: HTMLElement): void {
+	const wrapper = root.querySelector<HTMLElement>('.bt-table-wrapper');
+	if (!wrapper) return;
+	const hasSelectors = !!root.querySelector('.bt-col-selector, .bt-row-selector');
+	const leftNeed = hasSelectors ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
+	const wr0 = wrapper.getBoundingClientRect();
+	const rr0 = root.getBoundingClientRect();
+	const currentPad = parseFloat(root.style.getPropertyValue('--bt-sel-pad-left')) || 0;
+	const leftRoom = (wr0.left - rr0.left) - currentPad;
+	const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
+	if (leftPad !== currentPad) root.setCssProps({ '--bt-sel-pad-left': `${leftPad}px` });
 }

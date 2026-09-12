@@ -3,6 +3,7 @@ import type { TableModelV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { StructuralOpHandler } from './renderTypes';
 import { colMinWidth, colRightX } from './renderAutofit';
+import { ownCells, ownCols } from './renderOwnScope';
 
 /**
  * Wire a handle element to resize column `colIdx`: hover/drag indicator line,
@@ -20,7 +21,8 @@ export function setupColResize(
 	component?: Component,
 ): void {
 	const col = model.columns[colIdx];
-	const thisCol = tbl.querySelector<HTMLElement>(`col[data-col="${colIdx}"]`);
+	const allCols = ownCols(tbl).filter(c => c.dataset.col !== undefined);
+	const thisCol = allCols.find(c => c.dataset.col === String(colIdx));
 	if (!col || !thisCol) return;
 
 	handle.addEventListener('click', e => e.stopPropagation());
@@ -109,8 +111,9 @@ export function setupColResize(
 			// works here (bindResizeHandle below never touches any other row).
 			// Reported after an earlier version mirrored the shrink/growth onto the
 			// immediate neighbor to keep the table's total width constant — visibly
-			// inconsistent with both of those.
-			const sum = Array.from(tbl.querySelectorAll<HTMLElement>('col'))
+			// inconsistent with both of those. Scoped to ownCols so resizing the
+			// OUTER table's column never sums in a nested rich-table's own <col>s.
+			const sum = ownCols(tbl)
 				.reduce((s, c) => s + (parseInt(c.style.width) || 0), 0);
 			tbl.style.setProperty('width', `${sum}px`);
 
@@ -159,8 +162,14 @@ export function bindResizeHandle(
 	// Cells that belong to exactly this one row (exclude rowspan cells whose height
 	// spans multiple rows — using them would measure/set the whole merge, making the
 	// indicator sit at the merge bottom and the drag magnitude mismatch the pointer).
+	// dataAttr is always `name="value"` (e.g. `data-row="3"`) — matched against
+	// ownCells' own dataset instead of a raw `[${dataAttr}]` selector on `table`,
+	// which would also reach into a nested rich-table's own same-named attribute.
+	const [, attrName, attrValue] = /^([\w-]+)="([^"]*)"$/.exec(dataAttr) ?? [];
 	const rowCells = (): HTMLElement[] => {
-		const all = Array.from(table.querySelectorAll<HTMLElement>(`[${dataAttr}]`));
+		const all = attrName
+			? ownCells(table).filter(c => c.getAttribute(attrName) === attrValue)
+			: [];
 		const single = all.filter(c => (c as HTMLTableCellElement).rowSpan <= 1);
 		return single.length > 0 ? single : all;
 	};

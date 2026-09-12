@@ -152,7 +152,15 @@ export function parseSource(source: string): TableModelV2 | WorkbookV3 {
 function extractFrontmatter(source: string): Record<string, unknown> | null {
 	const lines = source.split('\n');
 	if (lines[0]?.trim() !== '---') return null;
-	const closeIdx = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+	// No leading whitespace allowed (only trailing, e.g. a stray \r) — the
+	// serializer always writes the real closing delimiter at column 0. An
+	// INDENTED "---" is YAML content, not the delimiter: a cell value can be
+	// a block-scalar (`c_0: |`) whose own text contains a line that's just
+	// "---" — a nested rich-table block's own frontmatter delimiters, or even
+	// just a plain Markdown horizontal rule typed into a cell — and matching
+	// on a trimmed comparison mistook that indented line for the outer
+	// frontmatter's close, silently truncating everything after it.
+	const closeIdx = lines.findIndex((l, i) => i > 0 && /^---\s*$/.test(l));
 	if (closeIdx === -1) return null;
 	const yamlStr = lines.slice(1, closeIdx).join('\n');
 	return (parseYaml(yamlStr) as Record<string, unknown>) ?? null;

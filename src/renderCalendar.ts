@@ -38,6 +38,13 @@ export function registerCalendarMonth(cacheKey: string, year: number, month: num
 	monthHandoff.register(cacheKey, { year, month });
 }
 
+/** Unconditional clear — see renderEditHandoff.ts's clearAllLiveEdits for why
+ *  a cacheKey that will never be looked up again needs this instead of
+ *  relying on staleness. */
+export function clearCalendarMonth(cacheKey: string): void {
+	monthHandoff.clear(cacheKey);
+}
+
 /** Choice-registry-free: a date column is its own special type (SPECIAL_TYPES,
  *  renderTypes.ts), so eligibility here is just "is this a date column" —
  *  no eligibility list to intersect against, unlike Kanban's choice types. */

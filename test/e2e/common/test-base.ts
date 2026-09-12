@@ -46,6 +46,14 @@ export interface RenderFullOpts {
 	 * on click-to-edit behaviour should cover both.
 	 */
 	singleClickEdit?: boolean;
+	/** Overrides the fixed 'test-cache-key' default — for a test that needs
+	 *  renderTable() to treat this render as a NESTED table (a cacheKey
+	 *  containing blockCacheKey.ts's nested marker). Only ONE thing in
+	 *  renderer.ts still branches on this (TOP_STRIP_PAD skipping the extra
+	 *  clearance for Obsidian's block-hover toolbar, which structurally can't
+	 *  float over a nested block) — everything else renders identically
+	 *  regardless of cacheKey, by design. */
+	cacheKey?: string;
 }
 
 export interface RenderBlockResult {
@@ -144,7 +152,7 @@ export const test = base.extend<{
 			await page.goto(`file://${SHELL}`);
 			await page.addScriptTag({ path: BUNDLE });
 
-			const model = await page.evaluate(async ({ source, sheetId, scrollLeft, scrollTop, singleClickEdit }) => {
+			const model = await page.evaluate(async ({ source, sheetId, scrollLeft, scrollTop, singleClickEdit, cacheKey }) => {
 				const R = window.RichTableReal;
 				const parsed = R.parseSource(source);
 				const active = 'sheets' in parsed
@@ -182,7 +190,7 @@ export const test = base.extend<{
 					() => { window.__btOps.push({ type: 'toggle-lock' }); return Promise.resolve(); },
 					undefined,                // onRootReady
 					undefined,                // isSwapping
-					'test-cache-key',         // cacheKey — needed by the cross-rebuild handoffs
+					cacheKey ?? 'test-cache-key', // cacheKey — needed by the cross-rebuild handoffs
 					() => !!singleClickEdit,
 				);
 				// Mirrors tableBlock.ts's own post-swap step: renderTable() leaves any
@@ -197,6 +205,7 @@ export const test = base.extend<{
 			}, {
 				source, sheetId: opts?.sheetId, scrollLeft: opts?.scrollLeft,
 				scrollTop: opts?.scrollTop, singleClickEdit: opts?.singleClickEdit,
+				cacheKey: opts?.cacheKey,
 			});
 
 			return { model };

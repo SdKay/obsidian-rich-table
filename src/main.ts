@@ -7,6 +7,7 @@ import { planRichTableBlockInsertion } from './insertRichTableBlock';
 import { planMarkdownTableConversion, type MarkdownTableConversionPlan } from './convertMarkdownTable';
 import { ChangelogModal, shouldShowChangelog } from './changelogModal';
 import { t } from './i18n';
+import { computeCacheKey } from './blockCacheKey';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
 	choiceRegistry!: ChoiceRegistry;
@@ -18,7 +19,7 @@ export default class BetterTablePlugin extends Plugin {
 
 		this.registerMarkdownCodeBlockProcessor('rich-table', (source, el, ctx) => {
 			const info = ctx.getSectionInfo(el);
-			const cacheKey = info ? `${ctx.sourcePath}:${info.lineStart}` : ctx.sourcePath;
+			const cacheKey = computeCacheKey(ctx.sourcePath, info, () => Math.random().toString(36).slice(2));
 			const block = new TableBlock(el, source, this, ctx.sourcePath, ctx, cacheKey);
 			ctx.addChild(block);
 		});

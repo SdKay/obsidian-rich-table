@@ -16,6 +16,7 @@ import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel, buildAli
 import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
 import { growColForChoiceValue } from './renderAutofit';
+import { isInsideNestedTable } from './renderOwnScope';
 
 /**
  * Single source of truth for a cell's click→primary-action / panel-action wiring,
@@ -628,7 +629,12 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		// renders as extra vertical space and makes that break look looser than a
 		// literal <br>. Strip it so every <br> in the cell — typed or soft-break —
 		// has identical spacing.
+		// Excludes anything inside a nested rich-table block (a cell's markdown
+		// can itself be a ```rich-table``` fence) — its own <br>/<ul>/<ol> belong
+		// to that nested table's own rendering, not this cell's, and rewriting
+		// them here would corrupt the nested table's own list/line-break display.
 		el.querySelectorAll('br').forEach(br => {
+			if (isInsideNestedTable(br, el)) return;
 			const next = br.nextSibling;
 			if (next?.nodeType === Node.TEXT_NODE && next.textContent) {
 				next.textContent = next.textContent.replace(/^\n+/, '');
@@ -637,6 +643,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		// Convert <ul>/<ol> to <br>-separated inline content — the only reliable way
 		// to match <br> line spacing regardless of which theme variables are in use.
 		el.querySelectorAll<HTMLElement>('ul, ol').forEach(list => {
+			if (isInsideNestedTable(list, el)) return;
 			const items = Array.from(list.querySelectorAll<HTMLElement>(':scope > li'));
 			if (items.length === 0) return;
 			const isOrdered = list.tagName === 'OL';

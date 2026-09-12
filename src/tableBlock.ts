@@ -13,12 +13,16 @@ import { applyThemeClass } from './renderThemeClass';
 import { genId } from './idGen';
 import { registerHoverState, takeHoverState } from './renderHoverHandoff';
 import { registerSelectedCell } from './renderSelectionHandoff';
-import { registerCalendarMonth } from './renderCalendar';
+import { registerCalendarMonth, clearCalendarMonth } from './renderCalendar';
+import { clearAllLiveEdits } from './renderEditHandoff';
 import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
 import { readXlsxAsModel } from './xlsxSource';
 import { applyAutoColWidths } from './renderAutofit';
+import { belongsToRoot } from './renderOwnScope';
+import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
+import { reserveSelectorLeftPad } from './renderGeometry';
 import { openXlsxFilePicker } from './xlsxFilePicker';
 import { captureTablePng, captureTableSvg } from './tableSnapshot';
 import type { SnapshotKind } from './renderTypes';
@@ -168,6 +172,24 @@ export class TableBlock extends MarkdownRenderChild {
 		// every render() the way xlsxWatchRefs itself is swapped above.
 		this.register(() => { for (const ref of this.xlsxWatchRefs) this.plugin.app.vault.offref(ref); });
 		this.register(() => { if (this.xlsxRefreshTimer !== null) window.clearTimeout(this.xlsxRefreshTimer); });
+		// A nested table's cacheKey (main.ts) is unique per mount — nothing will
+		// ever look it up again after THIS instance is done with it, unlike a
+		// top-level table's stable sourcePath:lineStart key, which the NEXT
+		// instance deliberately reads via that same key. Without this, every
+		// write-back on (or containing) a nested table would leave its cloned-DOM
+		// renderCache entry — and its hover/edit/selection/calendar handoff
+		// registrations — behind forever: a real, unbounded leak this fix would
+		// otherwise introduce by removing the cacheKey COLLISION that used to
+		// (incorrectly) keep reusing the same one entry/slot.
+		if (this.cacheKey.includes(NESTED_CACHE_KEY_MARKER)) {
+			this.register(() => {
+				renderCache.delete(this.cacheKey);
+				registerHoverState(this.cacheKey, false);
+				registerSelectedCell(this.cacheKey, null);
+				clearAllLiveEdits(this.cacheKey);
+				clearCalendarMonth(this.cacheKey);
+			});
+		}
 	}
 
 	/** The sheet currently being shown — a plain single-sheet model in
@@ -486,6 +508,15 @@ export class TableBlock extends MarkdownRenderChild {
 		// (a kanban/calendar active view has no <table> at all, so the query
 		// simply finds nothing there).
 		this.containerEl.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyAutoColWidths);
+
+		// Same "needs live layout, must run post-swap" reasoning, for the
+		// selector strips' left-padding reservation (see reserveSelectorLeftPad's
+		// doc comment) — every `.bt-render-root` this reprocess just rendered,
+		// found the same blanket way applyAutoColWidths finds every table above
+		// (a nested table's own root included, with no special-casing to single
+		// it out — it gets here via the exact same query as its own top-level
+		// container, and reserveSelectorLeftPad treats every root identically).
+		this.containerEl.querySelectorAll<HTMLElement>('.bt-render-root').forEach(reserveSelectorLeftPad);
 
 		// A resumed edit (renderEditHandoff.ts) builds its editor DURING the render
 		// pass above, while the cell is still part of the off-screen `tmp` tree — a
@@ -1015,15 +1046,22 @@ export class TableBlock extends MarkdownRenderChild {
 		// hover state immediately instead of flickering out of it (see renderHoverHandoff.ts).
 		// Reading the class is more robust than :hover here: it also captures the
 		// "strips pinned open because a menu is up" case (renderHoverPin.ts).
+		// Own-root-only, not a blanket querySelector: a nested rich-table living
+		// inside one of this table's own cells can have its OWN strips visible
+		// (or its own selected cell) at the same moment, and a raw query from
+		// this.renderedRoot would reach right into it.
+		const root = this.renderedRoot;
 		registerHoverState(this.cacheKey,
-			!!this.renderedRoot?.querySelector('.bt-strip-visible'));
+			!!root && Array.from(root.querySelectorAll('.bt-strip-visible')).some(el => belongsToRoot(el, root)));
 		// Same fact-driven idea for the keyboard-selected cell (see
 		// renderSelectionHandoff.ts). Exactly ONE `.bt-selected` element means a
 		// single Selected cell; a mouse drag-selection paints that same class across
 		// a whole range, which this single-cell mechanism deliberately doesn't cover,
 		// so anything other than one match registers nothing.
-		const selectedEls = this.renderedRoot?.querySelectorAll<HTMLElement>('.bt-selected');
-		const onlySelected = selectedEls?.length === 1 ? selectedEls[0] : undefined;
+		const selectedEls = root
+			? Array.from(root.querySelectorAll<HTMLElement>('.bt-selected')).filter(el => belongsToRoot(el, root))
+			: [];
+		const onlySelected = selectedEls.length === 1 ? selectedEls[0] : undefined;
 		const selRow = parseInt(onlySelected?.dataset.row ?? '-1');
 		const selCol = parseInt(onlySelected?.dataset.col ?? '-1');
 		registerSelectedCell(this.cacheKey,

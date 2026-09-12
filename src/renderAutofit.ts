@@ -1,4 +1,5 @@
 import type { StructuralOpHandler } from './renderTypes';
+import { ownCells, ownCols } from './renderOwnScope';
 
 /**
  * Extra headroom added on top of a choice pill's measured `offsetWidth`. The
@@ -88,16 +89,30 @@ export function autoFitAllColWidths(
 	const results = new Map<number, number>();
 	for (const { colIdx, minW } of cols) results.set(colIdx, minW);
 
-	const pills:      { colIdx: number; el: HTMLElement }[] = [];
-	const medias:     { colIdx: number; el: HTMLElement }[] = [];
-	const textSpans:  { colIdx: number; el: HTMLElement }[] = [];
-	const nowrapEls:  { colIdx: number; el: HTMLElement }[] = [];
+	const pills:        { colIdx: number; el: HTMLElement }[] = [];
+	const medias:       { colIdx: number; el: HTMLElement }[] = [];
+	const textSpans:    { colIdx: number; el: HTMLElement }[] = [];
+	const nowrapEls:    { colIdx: number; el: HTMLElement }[] = [];
+	const nestedTables: { colIdx: number; el: HTMLElement }[] = [];
 
 	// Phase 1 — classify cells and apply the one write each nowrap target needs. No reads yet.
 	for (const { colIdx } of cols) {
-		const cells = Array.from(tbl.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`));
+		const cells = ownCells(tbl).filter(e => e.dataset.col === String(colIdx));
 		for (const cell of cells) {
 			if ((cell.tagName === 'TD' || cell.tagName === 'TH') && (cell as HTMLTableCellElement).colSpan > 1) continue;
+
+			// A nested rich-table block, rendered as its own .bt-render-root — its
+			// .bt-table-wrapper has `max-width: 100%` (styles.css), capping its own
+			// offsetWidth/clientWidth down to whatever the OUTER cell already
+			// happens to be, so either would just measure the cap and never grow
+			// the column to fit. scrollWidth is the wrapper's true content width
+			// regardless of that cap. Checked before the header-text/pill/media
+			// branches below — a nested table has its own header text/pills/svg
+			// deep inside it that would otherwise satisfy one of those branches
+			// first and measure just that one inner piece. No write needed here:
+			// scrollWidth isn't affected by white-space, so nothing to toggle.
+			const nestedWrapper = cell.querySelector<HTMLElement>('.bt-render-root .bt-table-wrapper');
+			if (nestedWrapper) { nestedTables.push({ colIdx, el: nestedWrapper }); continue; }
 
 			// Header cell text span — checked BEFORE pill/media below: a header
 			// cell's own SVG icons (the filter button, the live-sort indicator)
@@ -146,6 +161,10 @@ export function autoFitAllColWidths(
 			borderH: style ? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) : 2,
 		};
 	};
+	for (const { colIdx, el } of nestedTables) {
+		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
+		grow(colIdx, el.scrollWidth + padH + borderH);
+	}
 	for (const { colIdx, el } of pills) {
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
 		grow(colIdx, el.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
@@ -223,10 +242,9 @@ export function applyAutoColWidths(table: HTMLElement): void {
 /** A column's right edge, in px offset from the table's own left border edge, summing <col> widths in DOM order. */
 export function colRightX(tbl: HTMLElement, colIdx: number): number {
 	let x = 0;
-	for (const c of Array.from(tbl.querySelectorAll<HTMLElement>('col'))) {
+	for (const c of ownCols(tbl)) {
 		x += parseInt(c.style.width) || 0;
 		if (c.dataset.col !== undefined && parseInt(c.dataset.col) === colIdx) break;
 	}
 	return x;
 }
-

@@ -21,6 +21,28 @@
 	--bt-wrapper-margin: auto;
 	--bt-title-mb-pull:  0px;
 	--bt-cell-border:    none;
+	/* Per-cell override variables — reset to their guaranteed-invalid value here
+	 * so var(--x, fallback) below correctly falls back to `fallback` for any
+	 * cell in THIS table that doesn't set its own. Custom properties inherit by
+	 * default; without this reset, a nested rich-table block (rendered inside a
+	 * cell of another one — its whole DOM tree sits INSIDE that cell, hence
+	 * inside whatever this reaches) would otherwise inherit whatever value an
+	 * OUTER cell happens to have inline-set for one of these, even though the
+	 * two tables' rows/cells have nothing to do with each other. Reported as
+	 * dragging the outer row's resize handle making the nested table's own
+	 * rows balloon to the same explicit height, all at once: --bt-row-height is
+	 * set inline per-cell (renderCell.ts) and consumed via `height: var(--bt-
+	 * row-height, auto)` (below) — every one of the nested table's own "auto"
+	 * rows inherited the OUTER row's just-set explicit pixel height instead of
+	 * falling back to auto, and a table cell's `height` acts as a per-row
+	 * minimum, so EVERY nested row tried to be that tall independently.
+	 * --bt-cell-font-size follows the identical set-inline-per-cell/fall-back-
+	 * elsewhere pattern (renderCellStyle.ts / styles.css's own font-size rule)
+	 * and would leak the same way. Applies uniformly to every table, nested or
+	 * not — a top-level table has no ancestor .bt-render-root setting these in
+	 * the first place, so this is a no-op for it either way. */
+	--bt-row-height: initial;
+	--bt-cell-font-size: initial;
 }
 /* Applied the instant a write-back is queued (tableBlock.ts) and left on until this root
  * is torn down and replaced by the re-render it triggers. Themes with continuous filter/

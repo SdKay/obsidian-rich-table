@@ -1,6 +1,7 @@
 import type { TableModelV2 } from './model';
 import { scrollContentOffset } from './renderGeometry';
 import { planFreeze, resolveFreeze, type CellSnapshot, type FreezePlan, type TableSnapshot } from './renderFreezePlan';
+import { ownCells, ownCols, ownRows } from './renderOwnScope';
 
 /**
  * Applies sticky positioning for frozen rows/columns (`model.freezeRows`/
@@ -81,8 +82,20 @@ function clearCell(el: HTMLElement): void {
 function clearFreeze(table: HTMLTableElement): void {
 	// Includes tr.bt-frozen-row, which no current build produces but a table
 	// rendered in place by an older one still carries — clearCell is harmless on a
-	// <tr>, and removing the class is what un-sticks it.
-	table.querySelectorAll<HTMLElement>('.bt-frozen-row, .bt-frozen-col').forEach(clearCell);
+	// <tr>, and removing the class is what un-sticks it. Filtered to cells/rows a
+	// PREVIOUS pass actually froze — clearCell also strips background-color, so
+	// running it against every cell unconditionally would erase a user's own
+	// per-cell colour on every pass, freeze or not. ownCells/ownRows, not a
+	// blanket table.querySelectorAll: a nested rich-table's own frozen cells are
+	// still DOM descendants of the outer <table> and would otherwise get cleared
+	// (or, worse, later written) by the OUTER table's own freeze pass.
+	const thead = table.querySelector<HTMLElement>(':scope > thead');
+	const tbody = table.querySelector<HTMLElement>(':scope > tbody');
+	[
+		...ownCells(table),
+		...(thead ? ownRows(thead) : []),
+		...(tbody ? ownRows(tbody) : []),
+	].filter(el => el.hasClass('bt-frozen-row') || el.hasClass('bt-frozen-col')).forEach(clearCell);
 	// Reset rather than re-override, so the reads in phase 2 see the theme's real
 	// values: a previous pass left these 'transparent', and reading that back
 	// would echo 'transparent' forever instead of the theme's border colour.
@@ -130,7 +143,7 @@ function snapshotTable(
 	if (freezeRows === undefined && freezeCols === undefined) return snapshot;
 
 	if (freezeCols !== undefined) {
-		for (const col of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
+		for (const col of ownCols(table)) {
 			const ci = col.dataset.col !== undefined ? parseInt(col.dataset.col) : undefined;
 			if (ci === undefined || ci >= freezeCols) continue;
 			// Measured off the <col>, which is never sticky, so its rect is always the
@@ -139,10 +152,10 @@ function snapshotTable(
 		}
 	}
 
-	const rows = [...Array.from(thead.querySelectorAll<HTMLElement>('tr')), ...Array.from(tbody.querySelectorAll<HTMLElement>('tr'))]
+	const rows = [...ownRows(thead), ...ownRows(tbody)]
 		// Aggregate and hidden-row-indicator rows have no [data-row] cell and are
 		// never frozen.
-		.map(tr => ({ tr, idxAttr: tr.querySelector<HTMLElement>('[data-row]')?.dataset.row }))
+		.map(tr => ({ tr, idxAttr: tr.querySelector<HTMLElement>(':scope > [data-row]')?.dataset.row }))
 		.filter((r): r is { tr: HTMLElement; idxAttr: string } => r.idxAttr !== undefined)
 		.map(r => ({ tr: r.tr, rowIdx: parseInt(r.idxAttr) }));
 	const lastDataRowIdx = rows.length ? rows[rows.length - 1]?.rowIdx : undefined;

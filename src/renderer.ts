@@ -28,7 +28,9 @@ import { isHoverPinned, onHoverUnpinned, showMenuPinned, getActiveCellMenu } fro
 import { renderKanbanBoard } from './renderKanban';
 import { renderCalendarBoard } from './renderCalendar';
 import { renderViewToolbar, buildViewSwitcherMenu } from './renderViews';
+import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
 import { applyFreeze } from './renderFreeze';
+import { ownCells, ownCols, ownRows } from './renderOwnScope';
 import { canFreezeRows, canFreezeCols } from './operations';
 import { computeSelectionStats } from './renderStatusBar';
 
@@ -535,7 +537,17 @@ export async function renderTable(
 	// e2e harness has no way to render Obsidian's own chrome to verify against
 	// — so treat this as a starting point that may need retuning after a real
 	// check in the app, not a settled constant.
-	const TOP_STRIP_PAD = SEL_TOTAL + (model.title ? 0 : 28);
+	//
+	// This toolbar can only ever float over a genuine top-level code block —
+	// Obsidian's editor has no concept of a nested ```rich-table``` fence
+	// (rendered via a recursive MarkdownRenderer.render() call, see
+	// blockCacheKey.ts) as a hoverable block of its own, so the extra clearance
+	// is a real, objective non-issue for one, not a preference. isNested here
+	// answers exactly that fact — it does not otherwise change how a nested
+	// table renders (see reserveSelectorLeftPad/statusBarPinned above, which
+	// deliberately don't distinguish the two at all).
+	const isNested = !!cacheKey?.includes(NESTED_CACHE_KEY_MARKER);
+	const TOP_STRIP_PAD = SEL_TOTAL + (model.title || isNested ? 0 : 28);
 
 	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
 	// its container flush-left, leaving no natural margin for the row selector +
@@ -691,12 +703,12 @@ export async function renderTable(
 	const clearSel = () => {
 		sel.start = sel.end = null;
 		sel.hasMoved = false;
-		table.querySelectorAll<HTMLElement>('.bt-selected').forEach(e => e.removeClass('bt-selected'));
+		ownCells(table).forEach(e => e.removeClass('bt-selected'));
 		updateStatusBarStats();
 	};
 
 	const updateHighlights = () => {
-		table.querySelectorAll<HTMLElement>('[data-row][data-col]').forEach(e => {
+		ownCells(table).forEach(e => {
 			const row = parseInt(e.dataset.row ?? '-1');
 			const col = parseInt(e.dataset.col ?? '-1');
 			if (row >= 0 && col >= 0) e.toggleClass('bt-selected', inSel(row, col));
@@ -737,9 +749,7 @@ export async function renderTable(
 		if (!rect) return;
 		const { r1, r2, c1, c2 } = rect;
 
-		const selectedEls = Array.from(
-			table.querySelectorAll<HTMLElement>('[data-row][data-col]'),
-		).filter(cell => {
+		const selectedEls = ownCells(table).filter(cell => {
 			const row = parseInt(cell.dataset.row ?? '-1');
 			const col = parseInt(cell.dataset.col ?? '-1');
 			return row >= r1 && row <= r2 && col >= c1 && col <= c2;
@@ -1118,8 +1128,8 @@ export async function renderTable(
 	let dragOverCol = -1;
 	let dragOverAgg: AggType | null = null;
 	const clearDropIndicators = () => {
-		table.querySelectorAll<HTMLElement>('.bt-drop-before').forEach(e => e.removeClass('bt-drop-before'));
-		table.querySelectorAll<HTMLElement>('.bt-col-drop-before').forEach(e => e.removeClass('bt-col-drop-before'));
+		[...ownRows(thead), ...ownRows(tbody)].forEach(e => e.removeClass('bt-drop-before'));
+		ownCells(table).forEach(e => e.removeClass('bt-col-drop-before'));
 	};
 
 	// Formula-mode reference insertion — set while some cell's editor is in
@@ -1149,7 +1159,7 @@ export async function renderTable(
 	 *  (see the mousedown branch above), so this toggles the same class from
 	 *  its own independent start/end pair instead. */
 	const updateFormulaDragHighlight = () => {
-		table.querySelectorAll<HTMLElement>('[data-row][data-col]').forEach(e => {
+		ownCells(table).forEach(e => {
 			const row = parseInt(e.dataset.row ?? '-1');
 			const col = parseInt(e.dataset.col ?? '-1');
 			const inRange = !!formulaDragStart && !!formulaDragEnd &&
@@ -1202,7 +1212,7 @@ export async function renderTable(
 			if (colIdx < 0 || colIdx === dragOverCol) return;
 			clearDropIndicators();
 			dragOverCol = colIdx;
-			table.querySelectorAll<HTMLElement>(`[data-col="${colIdx}"]`).forEach(e => e.addClass('bt-col-drop-before'));
+			ownCells(table).filter(e => e.dataset.col === String(colIdx)).forEach(e => e.addClass('bt-col-drop-before'));
 		});
 
 		thead.addEventListener('drop', (evt: DragEvent) => {
@@ -2074,18 +2084,22 @@ export async function renderTable(
 
 		// Highlight table cells corresponding to the current selector selection.
 		// Uses data-sel-stripe to track our additions so we don't clobber the
-		// cell drag-to-select highlights.
+		// cell drag-to-select highlights: only stripe-tagged cells are touched
+		// here, since rebuild() also runs from a ResizeObserver whenever the
+		// table's box changes for any reason (e.g. exiting cell-edit mode) and
+		// must leave an unrelated, `sel`-driven cell selection alone.
 		const updateTableHighlights = () => {
-			table.querySelectorAll<HTMLElement>('[data-sel-stripe]').forEach(e => {
+			ownCells(table).forEach(e => {
+				if (!e.hasAttribute('data-sel-stripe')) return;
 				e.removeAttribute('data-sel-stripe');
 				e.removeClass('bt-selected');
 			});
 			if (selAxis === null) return;
 			const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
-			const selector = selAxis === 'col'
-				? Array.from({ length: hi - lo + 1 }, (_, i) => `[data-col="${lo + i}"]`).join(',')
-				: Array.from({ length: hi - lo + 1 }, (_, i) => `[data-row="${lo + i}"]`).join(',');
-			table.querySelectorAll<HTMLElement>(selector).forEach(e => {
+			ownCells(table).filter(e => {
+				const v = parseInt((selAxis === 'col' ? e.dataset.col : e.dataset.row) ?? '-1');
+				return v >= lo && v <= hi;
+			}).forEach(e => {
 				e.setAttribute('data-sel-stripe', '1');
 				e.addClass('bt-selected');
 			});
@@ -2115,8 +2129,8 @@ export async function renderTable(
 				// whichever columns never get a precise unspanned measurement.
 				const spanned: { startCol: number; span: number; width: number }[] = [];
 				const rows = [
-					...Array.from(thead.querySelectorAll<HTMLElement>('tr')),
-					...Array.from(tbody.querySelectorAll<HTMLElement>('tr')),
+					...ownRows(thead),
+					...ownRows(tbody),
 				];
 				for (const tr of rows) {
 					for (const cell of Array.from(tr.querySelectorAll<HTMLTableCellElement>('[data-col]'))) {
@@ -2138,7 +2152,7 @@ export async function renderTable(
 					}
 				}
 				let pinnedTotal = 0;
-				for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
+				for (const c of ownCols(table)) {
 					const ci = c.dataset.col;
 					if (ci === undefined) continue;
 					const w = measured.get(ci);
@@ -2196,7 +2210,7 @@ export async function renderTable(
 			// separate calculation is needed here, just reusing the existing one.
 			const freezeCols = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
 			const freezeRows = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
-			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
+			for (const c of ownCols(table)) {
 				const w = parseFloat(c.style.width) || 0;
 				// MEASURED via the same function the frozen cells use, not
 				// accumulated: an accumulator starting at 0 omits the table's own
@@ -2243,8 +2257,8 @@ export async function renderTable(
 			// own top edge, which CSS Grid aligns with the table wrapper automatically.
 			rowSel.querySelectorAll('.bt-sel-cell, .bt-sel-row-drag').forEach(e => e.remove());
 			const allTrs = [
-				...Array.from(thead.querySelectorAll<HTMLElement>('tr')),
-				...Array.from(tbody.querySelectorAll<HTMLElement>('tr')),
+				...ownRows(thead),
+				...ownRows(tbody),
 			];
 			// Row selector — one cell per physical row, independent of rowspan merges.
 			// Use getBoundingClientRect() for row positions: tr.offsetTop is relative to
@@ -2345,7 +2359,7 @@ export async function renderTable(
 
 			// Reposition persistent resize handles (column seam positions, row bottom edges).
 			// parseFloat, not parseInt — see the matching comment on the colSel loop above.
-			for (const c of Array.from(table.querySelectorAll<HTMLElement>('col'))) {
+			for (const c of ownCols(table)) {
 				const dc = c.dataset.col;
 				if (dc === undefined) continue;
 				const h = colResizeHandles.get(parseInt(dc));
@@ -2482,14 +2496,23 @@ export async function renderTable(
 			// to stop it jumping up right as the cursor reached it — same
 			// mechanism, just a smaller trigger; every table gets it now.)
 			// Left/right padding don't affect root's HEIGHT (only horizontal
-			// centering within whatever width IS available) — collapsing
-			// --bt-sel-pad-left has no equivalent risk (it's a synchronous,
-			// self-contained width change with no dependency on Obsidian's
-			// own pane scroll state), and a wide/flush-left table reserving
-			// that space permanently would itself be a visible, unasked-for
-			// shift at rest — so only top stays permanently reserved (set
-			// once up front too — see the initial-paint call below).
-			root.setCssProps({ '--bt-sel-pad-left': '0px' });
+			// centering within whatever width IS available), so collapsing
+			// --bt-sel-pad-left has no scrollbar-cascade risk to guard against —
+			// but it's reserved permanently too now, same as --bt-sel-pad (top),
+			// rather than only while hovering: this was originally left
+			// hover-only for a wide/flush-left table specifically to avoid a
+			// visible shift at rest, on the assumption that no table actually
+			// needed it reserved permanently. A NESTED table (rendered inside a
+			// cell of another one, via the exact same renderTable() call —
+			// nothing here is nested-aware or ever should be) turned out to need
+			// exactly that: its own cell is a much smaller, tighter box than the
+			// reading pane a top-level table sits in, and the hover-only
+			// reserve/collapse cycle read as the whole (already cramped) nested
+			// table visibly shifting sideways within it. Reserving it
+			// permanently for every table — the same treatment top padding
+			// already gets — fixes that without a nested-specific branch; the
+			// one-time reserve call for this now runs unconditionally too (see
+			// the initial-paint call below), not just from a first hover.
 			titleEl?.setCssProps({ '--bt-title-mb-adj': '0px' });
 			repositionLockBtn();
 			repositionAutoFitBtn();
@@ -2521,6 +2544,7 @@ export async function renderTable(
 
 		const startDrag = (axis: 'col' | 'row', idx: number, e: PointerEvent, wrap: HTMLElement) => {
 			closeSelectorPanel();
+			clearSel(); // a selector-strip drag replaces any active cell-range selection
 			selAxis = null; selI1 = selI2 = -1; // clear old highlight before new drag
 			e.stopPropagation(); e.preventDefault();
 			wrap.setPointerCapture(e.pointerId);
@@ -2558,12 +2582,12 @@ export async function renderTable(
 
 			// Collect cells for live preview
 			const els: HTMLElement[] = axis === 'col'
-				? (() => { const a: HTMLElement[] = []; for (let ci = lo; ci <= hi; ci++) a.push(...Array.from(table.querySelectorAll<HTMLElement>(`[data-col="${ci}"]`))); return a; })()
-				: Array.from(table.querySelectorAll<HTMLElement>('[data-row]')).filter(e => { const r = parseInt(e.dataset.row ?? '-1'); return r >= lo && r <= hi; });
+				? ownCells(table).filter(e => { const c = parseInt(e.dataset.col ?? '-1'); return c >= lo && c <= hi; })
+				: ownCells(table).filter(e => { const r = parseInt(e.dataset.row ?? '-1'); return r >= lo && r <= hi; });
 
 			const anchor = axis === 'col'
-				? (table.querySelector<HTMLElement>(`th[data-col="${hi}"]`) ?? table)
-				: (table.querySelector<HTMLElement>(`[data-row="${hi}"]`) ?? table);
+				? (ownCells(table).find(e => e.tagName === 'TH' && e.dataset.col === String(hi)) ?? table)
+				: (ownCells(table).find(e => e.dataset.row === String(hi)) ?? table);
 
 			const rule = model.styles.find(s => s.target === target);
 			const existing = { bg: rule?.bg, color: rule?.color, size: rule?.size };
@@ -2770,7 +2794,7 @@ export async function renderTable(
 			if (toIdx >= 0 && toIdx !== dragOverCol) {
 				clearDropIndicators();
 				dragOverCol = toIdx;
-				table.querySelectorAll<HTMLElement>(`[data-col="${toIdx}"]`).forEach(e => e.addClass('bt-col-drop-before'));
+				ownCells(table).filter(e => e.dataset.col === String(toIdx)).forEach(e => e.addClass('bt-col-drop-before'));
 			}
 		});
 		colSel.addEventListener('drop', (evt: DragEvent) => {
@@ -2804,7 +2828,7 @@ export async function renderTable(
 				dragOverRow = toIdx;
 				// table, not tbody: the target row may be one a header merge
 				// reaches into, hosted in <thead> (see computeHeaderRowSpan).
-				table.querySelector<HTMLElement>(`tr:has([data-row="${toIdx}"])`)?.addClass('bt-drop-before');
+				ownCells(table).find(e => e.dataset.row === String(toIdx))?.closest<HTMLElement>('tr')?.addClass('bt-drop-before');
 			}
 		});
 		rowSel.addEventListener('drop', (evt: DragEvent) => {
@@ -2838,7 +2862,7 @@ export async function renderTable(
 			if (toAgg && toAgg !== dragOverAgg) {
 				clearDropIndicators();
 				dragOverAgg = toAgg;
-				tbody.querySelector<HTMLElement>(`tr[data-agg="${toAgg}"]`)?.addClass('bt-drop-before');
+				ownRows(tbody).find(tr => tr.dataset.agg === toAgg)?.addClass('bt-drop-before');
 			}
 		});
 		rowSel.addEventListener('drop', (evt: DragEvent) => {
@@ -3015,9 +3039,13 @@ export async function renderTable(
 			// table has no column selector to reserve room for, so this stays
 			// scoped to onStructuralOp specifically, unlike reserveLeftPad above.
 			// Sets --bt-sel-pad directly rather than calling the full
-			// prepareLayout() — that also computes --bt-sel-pad-left, which stays
-			// intentionally hover-only (see restoreLayout's comment on why that
-			// one doesn't need the same fix).
+			// prepareLayout() — that also computes --bt-sel-pad-left, which gets
+			// the same "reserve from first paint, never collapse" treatment now,
+			// just from a separate call site (tableBlock.ts's post-swap pass,
+			// alongside applyAutoColWidths) rather than here: unlike this flat
+			// constant, it needs real geometry (wrapper vs root) that a still-
+			// detached tree (this function always runs against one — see
+			// tableBlock.ts) can't provide.
 			root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
 			updateViewFrame();
 		}
