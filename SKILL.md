@@ -194,6 +194,8 @@ merges:
 
 The anchor cell holds the displayed content; covered cells should have empty or omitted values.
 
+A merge can also anchor in the header and extend down into data rows (`anchor: header.c_000000`, `end: r_000001.c_000000`) — the header row participates in merges exactly like a data row, using the literal `header` sentinel in place of a row ID.
+
 ### `styles` (array, optional)
 Each entry has a `target` and one or more style properties:
 
@@ -205,6 +207,7 @@ Each entry has a `target` and one or more style properties:
 | `size`   | number  | Font size in px |
 | `bold`   | boolean | Bold text |
 | `italic` | boolean | Italic text |
+| `align`  | `left` \| `center` \| `right` | Text alignment for this target — overrides the column's own `align` field (see `columns` above) for just these cells |
 
 ```yaml
 styles:
@@ -216,6 +219,8 @@ styles:
   - target: r_000000.c_000002
     color: "#c0392b"
     size: 14
+  - target: r_000000.c_000003
+    align: center
 ```
 
 ### `footer` (string or array of strings, optional)
@@ -338,6 +343,8 @@ Known gaps (view-only phase 1): no formula engine (formula cells show their last
 
 Per-attribute merge — a cell rule only overrides the properties it explicitly sets.
 
+`align` has one extra fallback below all of these: if no matching `styles[]` rule sets `align` for a cell, it falls back to that cell's own column's `align` field (`columns[].align`) instead of being left unset — set `columns[].align` for a column-wide default, and only add an `align` style rule to override it for specific cells.
+
 ---
 
 ## Cell content
@@ -356,6 +363,7 @@ Cell values are plain strings rendered by Obsidian's `MarkdownRenderer`. Support
 | Inline math (KaTeX) | `$E=mc^2$` |
 | Line break | `Line 1<br>Line 2` |
 | List items | Use YAML block scalar `\|-` with `- ` prefix lines |
+| Nested rich-table | A whole ` ```rich-table ` fenced block, itself in v2 format, inside the cell's own block scalar — see below |
 
 **List example** (the `- ` prefix lines render as a compact bulleted list):
 ```yaml
@@ -364,6 +372,28 @@ c_000000: |-
   - Second item
   - Third item
 ```
+
+**Nested table example** — a cell's own value can be a complete, independent `rich-table` block (own `columns`/`rows`/`merges`/`styles`, sequential IDs starting at `c_000000`/`r_000000` again — nested IDs don't need to avoid colliding with the outer table's, they're two separate documents):
+````yaml
+c_000001: |-
+  ```rich-table
+  ---
+  version: 2
+  columns:
+    - id: c_000000
+      name: Subtask
+    - id: c_000001
+      name: Status
+      type: task-status
+  rows:
+    - id: r_000000
+      cells:
+        c_000000: Write tests
+        c_000001: done
+  ---
+  ```
+````
+It renders and behaves as a fully independent, interactive table in place — editing, sorting, styling it never touches the outer table. There is no limit on nesting depth, but keep it to one or two levels for readability.
 
 **Math example** (backslash is literal in YAML):
 ```yaml
