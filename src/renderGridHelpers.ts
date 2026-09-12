@@ -65,7 +65,16 @@ export function computeHeaderRowSpan(model: TableModelV2): number {
 	return maxRowHi + 1;
 }
 
-/** Returns true when displayIdx (1-based, 0=header) should be hidden by active filters. */
+/**
+ * Returns true when displayIdx (1-based, 0=header) should be hidden by active
+ * filters. Reads each filtered column's cell through `resolveCellValue`, not
+ * the row's own raw cell, because a row covered by a vertical merge on that
+ * column has a genuinely empty cell of its own — the value it visibly shows
+ * lives only on the merge's anchor. Reported: a merge spanning rows 2-3 on a
+ * filtered column, anchored at row 2 which matched the filter, still hid row
+ * 3 — its raw (empty) cell never matched anything, even though row 3 visibly
+ * shows the exact same value via the merge.
+ */
 export function isRowFiltered(displayIdx: number, model: TableModelV2): boolean {
 	if (displayIdx === 0) return false;
 	const row = model.rows[displayIdx - 1];
@@ -73,7 +82,7 @@ export function isRowFiltered(displayIdx: number, model: TableModelV2): boolean 
 	for (const col of model.columns) {
 		const values = col.filter;
 		if (!values || values.length === 0) continue;
-		const cellValue = (row.cells[col.id] ?? '').trim();
+		const cellValue = resolveCellValue(model, row.id, col.id).trim();
 		if (!values.includes(cellValue)) return true;
 	}
 	return false;
@@ -140,6 +149,18 @@ function resolveMergeRowIndex(model: TableModelV2, id: string): number | undefin
 	return idx >= 0 ? idx : undefined;
 }
 
+/**
+ * True when 0-based row index `ri` (-1 = header) gets no `<tr>` of its own —
+ * either genuinely hidden or filtered out by another column's active filter.
+ * Both cases must promote a merge's effective anchor the same way: a filtered
+ * row vanishes from the render loop exactly like a hidden one (see
+ * `isRowFiltered`'s call site in renderer.ts), so an anchor sitting on a
+ * filtered row is just as unrenderable as one sitting on a hidden row.
+ */
+function rowHasNoTr(model: TableModelV2, ri: number): boolean {
+	return !!model.rows[ri]?.hidden || isRowFiltered(ri + 1, model);
+}
+
 /** Build the set of "rowId.colId" keys that are COVERED (not anchor) by a merge. */
 export function buildOccupied(model: TableModelV2): Set<string> {
 	const occupied = new Set<string>();
@@ -156,12 +177,13 @@ export function buildOccupied(model: TableModelV2): Set<string> {
 		const r2 = resolveMergeRowIndex(model, endRowId);
 		const c2 = model.columns.findIndex(c => c.id === endColId);
 		if (r1 === undefined || c1 < 0 || r2 === undefined || c2 < 0) continue;
-		// If the literal anchor row/col is hidden, the merge survives by promoting the
-		// effective anchor to the first visible row/col within the range — the merge
-		// still displays (with the literal anchor's content, see renderRow) instead of
-		// collapsing into empty standalone cells. Only give up if the whole range is hidden.
+		// If the literal anchor row/col is hidden (or, for rows, filtered out), the merge
+		// survives by promoting the effective anchor to the first row/col within the range
+		// that actually gets a <tr>/rendered cell — the merge still displays (with the
+		// literal anchor's content, see renderRow) instead of collapsing into empty
+		// standalone cells. Only give up if the whole range is hidden/filtered.
 		let effR1 = r1;
-		while (effR1 <= r2 && model.rows[effR1]?.hidden) effR1++;
+		while (effR1 <= r2 && rowHasNoTr(model, effR1)) effR1++;
 		let effC1 = c1;
 		while (effC1 <= c2 && model.columns[effC1]?.hidden) effC1++;
 		if (effR1 > r2 || effC1 > c2) continue;
@@ -216,12 +238,13 @@ export function getMergeOrigin(rowIdx: number, colIdx: number, model: TableModel
 		const r2 = resolveMergeRowIndex(model, endRowId);
 		const c2 = model.columns.findIndex(c => c.id === endColId);
 		if (r1 === undefined || c1 < 0 || r2 === undefined || c2 < 0) continue;
-		// Match against the effective anchor (promoted past a hidden literal anchor row/col,
-		// same rule as buildOccupied) — see the "Table format versioning"-adjacent comment
-		// in buildOccupied for why. anchorRowId/anchorColId stay literal for style targets
-		// and unmerge, which key off the merge record's actual identity, not the render position.
+		// Match against the effective anchor (promoted past a hidden or filtered-out literal
+		// anchor row, or hidden literal anchor column, same rule as buildOccupied) — see the
+		// "Table format versioning"-adjacent comment in buildOccupied for why. anchorRowId/
+		// anchorColId stay literal for style targets and unmerge, which key off the merge
+		// record's actual identity, not the render position.
 		let effR1 = r1;
-		while (effR1 <= r2 && model.rows[effR1]?.hidden) effR1++;
+		while (effR1 <= r2 && rowHasNoTr(model, effR1)) effR1++;
 		let effC1 = c1;
 		while (effC1 <= c2 && model.columns[effC1]?.hidden) effC1++;
 		if (effR1 > r2 || effC1 > c2) continue;

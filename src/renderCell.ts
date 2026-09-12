@@ -4,7 +4,7 @@ import type { ColumnDefV2, TableModelV2 } from './model';
 import type { FormulaErrorCode } from './formula';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler } from './renderTypes';
-import { rowId, colId, getMergeOrigin } from './renderGridHelpers';
+import { rowId, colId, getMergeOrigin, isRowFiltered } from './renderGridHelpers';
 import {
 	cellEffectiveStyle, cellInheritedStyle, buildCellStyleContext,
 	applyColStyle, applyStyleRulesV2,
@@ -178,11 +178,14 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		el.dataset.col = String(colIdx);
 
 		if (merge) {
-			// Adjust rowspan/colspan to skip hidden rows/cols within the merge
+			// Adjust rowspan/colspan to skip hidden or filtered-out rows/cols within the
+			// merge — neither gets a <tr> of its own (see isRowFiltered's call site in
+			// renderer.ts), so both must be excluded the same way or the rowspan would
+			// overcount past the end of the table's actual physical rows.
 			let rowSpan = 0;
 			for (let ri = merge.startRow; ri <= merge.endRow; ri++) {
-				const hidden = ri > 0 ? (model.rows[ri - 1]?.hidden ?? false) : false;
-				if (!hidden) rowSpan++;
+				const skipped = ri > 0 ? ((model.rows[ri - 1]?.hidden ?? false) || isRowFiltered(ri, model)) : false;
+				if (!skipped) rowSpan++;
 			}
 			let colSpan = 0;
 			for (let ci = merge.startCol; ci <= merge.endCol; ci++) {
