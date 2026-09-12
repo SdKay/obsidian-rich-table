@@ -1041,10 +1041,14 @@ export async function renderTable(
 	});
 	table.addEventListener('mouseleave', () => { lastHoverCell = null; clearHover(); });
 
-	// Click outside the table clears selection and panel
+	// Click outside the table clears selection and panel. ctrlCol counts as
+	// part of the table's own UI (same as the panel itself) — it sits outside
+	// .bt-table-wrapper in the DOM, so without this a click on one of its own
+	// buttons (e.g. select-all, below) would bubble here and immediately
+	// clear the very selection/panel that button just opened.
 	component.registerDomEvent(activeDocument, 'click', (evt: MouseEvent) => {
 		if (!selectionPanel && !sel.start) return;
-		if (!(evt.target as HTMLElement).closest('.bt-table-wrapper, .bt-cell-panel')) {
+		if (!(evt.target as HTMLElement).closest('.bt-table-wrapper, .bt-cell-panel, .bt-ctrl-col')) {
 			removeSelectionPanel();
 			clearSel();
 		}
@@ -1899,6 +1903,25 @@ export async function renderTable(
 			});
 			setIcon(transposeBtn, 'flip-horizontal-2');
 			transposeBtn.addEventListener('click', () => void onStructuralOp({ type: 'transpose' }));
+		}
+
+		// Select-all button — selects every cell (header included) and opens the
+		// same range-selection popup a manual drag-select across the whole table
+		// would, so every range-level action (merge/hide/delete rows or columns,
+		// align, style, copy) is reachable without dragging corner-to-corner by
+		// hand. Hidden while collapsed (see lock button above).
+		if (onStructuralOp && !model.collapsed) {
+			const selectAllBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('selectAllOpenMenu'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(selectAllBtn, 'table');
+			selectAllBtn.addEventListener('click', () => {
+				sel.start = { row: 0, col: 0 };
+				sel.end   = { row: model.rows.length, col: model.columns.length - 1 };
+				updateHighlights();
+				showSelectionPanel();
+			});
 		}
 
 		// Theme picker button — third in column. Hidden while collapsed (see lock button above).

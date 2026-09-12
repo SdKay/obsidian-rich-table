@@ -101,6 +101,9 @@ const EN = {
 	// Transpose
 	transposeTable: 'Transpose rows and columns',
 
+	// Select-all (ctrlCol button — selects every cell and opens the range menu)
+	selectAllOpenMenu: 'Select all and open menu',
+
 	// Theme picker (individual theme names live in @theme-label-en/zh CSS comments)
 	changeTheme:      'Change table theme',
 	themeDefault:     'Default',
@@ -283,6 +286,8 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	autoFitAll: '自动调整所有列宽和行高',
 
 	transposeTable: '行列转置',
+
+	selectAllOpenMenu: '全选并弹出菜单',
 
 	changeTheme:      '切换表格主题',
 	themeDefault:     '默认',
