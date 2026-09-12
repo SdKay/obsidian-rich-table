@@ -239,6 +239,60 @@ export function applyAutoColWidths(table: HTMLElement): void {
 	table.style.setProperty('width', `${totalWidth}px`);
 }
 
+/**
+ * Widens cell text's line-height just enough to stop adjacent lines' inline
+ * `code` backgrounds from visually overlapping — reported for a multi-line
+ * cell where both the line above and the line below contain inline code.
+ * Obsidian's own inline-code styling (background, padding) is theme/snippet
+ * territory this plugin has no fixed value for: a `<code>` element's own
+ * rendered height (font metrics + vertical padding) can exceed its line's
+ * `line-height`, and when it does, the code's background paints past its own
+ * line's box into the next one — two such lines stacked directly on top of
+ * each other collide.
+ *
+ * Rather than guessing a fixed line-height generous enough for every theme
+ * (wasting vertical space on the overwhelming majority of tables that never
+ * hit this at all), measure whatever `code` element actually rendered and
+ * widen line-height only enough to fit IT — a single failed querySelector,
+ * no-op for a table with no inline code anywhere. One measurement for the
+ * whole table, not per cell: the code element's rendered metrics come from
+ * the active theme/font context, which every cell in this table shares
+ * (short of an unusual per-cell font-size override), so there is nothing
+ * further to learn from checking a second one.
+ *
+ * Must run after the table is attached to a live, painted document, same
+ * reasoning as applyAutoColWidths above (getBoundingClientRect/
+ * getComputedStyle on a still-detached tree reads zero/nonsense).
+ */
+export function applyCodeLineHeightFix(table: HTMLElement): void {
+	const code = table.querySelector<HTMLElement>('.bt-td code, .bt-th code');
+	if (!code) return;
+	const line = code.closest('p') ?? code.parentElement;
+	if (!line) return;
+	// Measure the line's TRUE rendered height via a plain, padding-free probe
+	// inserted right next to the code element, in the same line box — reading
+	// `line-height` off computed style is unreliable here: its computed value
+	// can be a bare unitless number ("1.5") or the literal keyword "normal",
+	// neither a px height on its own, and correctly resolving either needs the
+	// exact font metrics anyway. A probe measures the browser's ACTUAL used
+	// value directly, regardless of how it was specified — and specifically
+	// does NOT grow to contain the (taller) code element, which is exactly
+	// the mechanism behind the overlap this function fixes.
+	// U+00A0 (non-breaking space), not a plain space or empty string — CSS
+	// collapses a text node that's only regular whitespace, which wouldn't
+	// reliably generate a line box at all (same reasoning as the empty-cell
+	// height fix elsewhere in this codebase). The probe is removed
+	// synchronously, in the same tick, well before the next paint.
+	const probe = createSpan({ text: ' ' });
+	code.after(probe);
+	const currentLineHeight = probe.getBoundingClientRect().height;
+	probe.remove();
+	if (!currentLineHeight) return;
+	const codeHeight = code.getBoundingClientRect().height;
+	if (codeHeight <= currentLineHeight) return; // already fits — the common case for most themes
+	table.style.setProperty('--bt-cell-line-height', `${codeHeight}px`);
+}
+
 /** A column's right edge, in px offset from the table's own left border edge, summing <col> widths in DOM order. */
 export function colRightX(tbl: HTMLElement, colIdx: number): number {
 	let x = 0;

@@ -1456,6 +1456,11 @@
 .bt-table .bt-th p {
 	margin: 0;
 	text-align: inherit;
+	/* Set by applyCodeLineHeightFix (renderAutofit.ts) only when this table
+	 * actually has inline code whose own rendered height needs more room than
+	 * the theme's line-height gives it — falls through to the theme's own
+	 * value (inherited, untouched) for every table that never needs this. */
+	line-height: var(--bt-cell-line-height, inherit);
 }
 /* bt-list-block: inline-block so the list centers as a unit while items stay left-aligned */
 .bt-table .bt-td .bt-list-block,

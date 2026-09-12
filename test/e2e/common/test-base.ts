@@ -198,6 +198,8 @@ export const test = base.extend<{
 				// unmeasured — root is already live here (unlike tableBlock.ts's
 				// detached tmp tree), so this can run immediately.
 				document.querySelectorAll('table.bt-table').forEach(window.RichTableReal.applyAutoColWidths);
+				// Same mirroring, for the inline-code line-height fix (renderAutofit.ts).
+				document.querySelectorAll('table.bt-table').forEach(window.RichTableReal.applyCodeLineHeightFix);
 				const wrapper = document.querySelector('.bt-table-wrapper');
 				if (scrollLeft !== undefined) wrapper.scrollLeft = scrollLeft;
 				if (scrollTop !== undefined) wrapper.scrollTop = scrollTop;

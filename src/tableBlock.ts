@@ -19,7 +19,7 @@ import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
 import { readXlsxAsModel } from './xlsxSource';
-import { applyAutoColWidths } from './renderAutofit';
+import { applyAutoColWidths, applyCodeLineHeightFix } from './renderAutofit';
 import { belongsToRoot } from './renderOwnScope';
 import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
 import { reserveSelectorLeftPad } from './renderGeometry';
@@ -516,6 +516,11 @@ export class TableBlock extends MarkdownRenderChild {
 		// (a kanban/calendar active view has no <table> at all, so the query
 		// simply finds nothing there).
 		this.containerEl.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyAutoColWidths);
+
+		// Same "needs live layout, must run post-swap" reasoning, for the inline-
+		// code line-height fix (see its own doc comment) — every table this
+		// reprocess just rendered, found the same blanket way as above.
+		this.containerEl.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyCodeLineHeightFix);
 
 		// Same "needs live layout, must run post-swap" reasoning, for the
 		// selector strips' left-padding reservation (see reserveSelectorLeftPad's
