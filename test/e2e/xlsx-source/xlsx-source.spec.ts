@@ -146,4 +146,36 @@ test.describe('xlsx-backed table', () => {
 		await expect(page.locator('.bt-td').first()).toHaveText('hello');
 		await expect(page.locator('.bt-td-editable').first()).toBeVisible();
 	});
+
+	// The theme picker button needs onStructuralOp, which an xlsx-backed table
+	// never has (queueOp's isXlsxBacked guard would drop the write anyway) — so
+	// it can't switch themes interactively. Defaults to 'grid' instead of the
+	// no-theme look every other kind of table defaults to, since a plain look
+	// reads worse against a spreadsheet-shaped table than an explicit gridline
+	// theme does.
+	test('defaults to the grid theme, with no interactive picker', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({ sheets: [{ name: 'S', grid: [['A'], ['1']] }] });
+		await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+
+		await expect(page.locator('.bt-render-root.bt-theme-grid')).toHaveCount(1);
+		await expect(page.locator('.bt-ctrl-btn[aria-label="Change table theme"]')).toHaveCount(0);
+	});
+
+	// A theme hand-written into the block's own YAML is preserved rather than
+	// overridden — the same shell-preservation treatment viewWidth/viewHeight
+	// already get for an xlsx-backed table.
+	test('honors a theme hand-written into the block\'s own YAML', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({ sheets: [{ name: 'S', grid: [['A'], ['1']] }] });
+		const source = `---
+version: 2
+xlsxSource:
+  path: ${XLSX_PATH}
+theme: academic
+---
+`;
+		await renderBlock(source, { binaryFiles: { [XLSX_PATH]: bytes } });
+
+		await expect(page.locator('.bt-render-root.bt-theme-academic')).toHaveCount(1);
+		await expect(page.locator('.bt-render-root.bt-theme-grid')).toHaveCount(0);
+	});
 });

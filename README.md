@@ -437,6 +437,7 @@ The easiest way to create one: insert an empty `rich-table` block, then click **
 - **Follows renames** — moving or renaming the file updates `xlsxSource.path` in the block automatically.
 - **Deleted-file handling** — if the file goes away, the table shows an error instead of silently going stale.
 - **Open in default app** and **Convert to plain table** — two buttons in the table's left toolbar. The first hands the file to whatever your OS associates with `.xlsx` (desktop only). The second snapshots the file's current content into the block itself as ordinary `columns`/`rows`, permanently dropping the `xlsxSource` reference — after that it's a normal, fully-editable rich-table.
+- **Theme** — defaults to `grid` (no interactive picker, since that needs the editing this view-only table doesn't have); add `theme: <id>` to the block's own YAML alongside `xlsxSource` to use a different built-in theme instead.
 
 Known gaps (phase 1): theme-relative/indexed colors, cell borders and number formats aren't carried over; formula cells show only their last-saved value (no formula engine); rich-text runs are flattened to plain text.
 

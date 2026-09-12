@@ -359,6 +359,14 @@ export class TableBlock extends MarkdownRenderChild {
 			if (this.isXlsxBacked && this.xlsxShell && active) {
 				if (this.xlsxShell.viewWidth !== undefined)  active.viewWidth  = this.xlsxShell.viewWidth;
 				if (this.xlsxShell.viewHeight !== undefined) active.viewHeight = this.xlsxShell.viewHeight;
+				// Same shell-preservation idea, for theme: the theme picker button is
+				// unavailable here (it needs onStructuralOp, which queueOp's
+				// isXlsxBacked guard would drop anyway), so an xlsx-backed table can't
+				// switch themes interactively. Default to 'grid' — plain/no-theme read
+				// worse against a spreadsheet-shaped table than an explicit gridline
+				// theme does — but still honor a theme the user hand-wrote into the
+				// block's own YAML, the same way viewWidth/viewHeight above do.
+				active.theme = this.xlsxShell.theme ?? 'grid';
 			}
 			// An xlsx-backed table is view-only outright (phase 1 — see the
 			// isXlsxBacked field doc comment): every editing entry point below is
