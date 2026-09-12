@@ -78,7 +78,14 @@ export type StructuralOpV2 =
 	/** Width in px of the status bar's scrollbar section; null resets to the
 	 *  fixed initial width (see model.ts). */
 	| { type: 'set-status-bar-scroll-width'; width: number | null }
-	| { type: 'paste-values';   anchorRowId: string; anchorColId: string; values: string[][] }
+	/** merges, if present, are rectangles 0-indexed and relative to the pasted
+	 *  block's own top-left (values[0][0]) — the read-back counterpart to a
+	 *  copied range's own merges (renderClipboard.ts's buildRangeHtml /
+	 *  parseHtmlTableWithMerges). Absent for a plain-text/TSV paste, which has
+	 *  no concept of a merge. Not offered for paste-values-with-header below —
+	 *  a merge landing in the row that BECOMES the header (values[0]) has no
+	 *  well-defined target shape once that row stops being a data row at all. */
+	| { type: 'paste-values';   anchorRowId: string; anchorColId: string; values: string[][]; merges?: { r1: number; c1: number; r2: number; c2: number }[] }
 	/** Pasting onto a HEADER cell instead of a data cell — table-format
 	 *  conversion (paste a whole copied/typed table, header included, and get
 	 *  it as a real rich-table): values[0] becomes column names starting at
@@ -283,8 +290,14 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'merge-cells': {
 			const anchor = `${op.anchorRowId}.${op.anchorColId}`;
 			const end    = `${op.endRowId}.${op.endColId}`;
-			// Remove any existing merges that overlap (absorb them)
-			model.merges = model.merges.filter(m => m.anchor !== anchor);
+			const r1 = resolveMergeRowIndex(model, op.anchorRowId);
+			const r2 = resolveMergeRowIndex(model, op.endRowId);
+			const c1 = model.columns.findIndex(c => c.id === op.anchorColId);
+			const c2 = model.columns.findIndex(c => c.id === op.endColId);
+			// Absorb any existing merge this new one overlaps — not just one
+			// sharing its exact anchor (see clearMergesOverlapping's own doc
+			// comment for why a same-anchor-only check isn't enough).
+			if (r1 !== undefined && r2 !== undefined && c1 >= 0 && c2 >= 0) clearMergesOverlapping(model, r1, r2, c1, c2);
 			model.merges.push({ anchor, end });
 			break;
 		}
@@ -571,7 +584,7 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 
 		// ── Paste (from Excel/clipboard) ────────────────────────────────────────
 		case 'paste-values': {
-			const { anchorRowId, anchorColId, values } = op;
+			const { anchorRowId, anchorColId, values, merges } = op;
 			if (values.length === 0) break;
 			const rowStart = model.rows.findIndex(r => r.id === anchorRowId);
 			const colStart = model.columns.findIndex(c => c.id === anchorColId);
@@ -599,6 +612,25 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 					if (value === '') delete row.cells[col.id];
 					else row.cells[col.id] = value;
 				}
+			}
+
+			// Reconstructs the copied range's own merges at the destination —
+			// rows/columns are already grown above, so every absolute index below
+			// is guaranteed to resolve to a real row/column. Only positions the
+			// SOURCE range itself merged are touched; a destination merge that
+			// doesn't overlap any of THESE rectangles is left exactly as it was —
+			// pasting a plain (unmerged) source cell onto an unrelated existing
+			// merge elsewhere in the destination isn't itself a conflict to
+			// resolve. Matches Excel's own "just make it work" paste behaviour
+			// rather than rejecting the paste outright over a merge mismatch.
+			for (const rel of merges ?? []) {
+				const r1 = rowStart + rel.r1, r2 = rowStart + rel.r2;
+				const c1 = colStart + rel.c1, c2 = colStart + rel.c2;
+				const anchorRow = model.rows[r1], endRow = model.rows[r2];
+				const anchorCol = model.columns[c1], endCol = model.columns[c2];
+				if (!anchorRow || !endRow || !anchorCol || !endCol) continue;
+				clearMergesOverlapping(model, r1, r2, c1, c2);
+				model.merges.push({ anchor: `${anchorRow.id}.${anchorCol.id}`, end: `${endRow.id}.${endCol.id}` });
 			}
 			break;
 		}
@@ -977,6 +1009,37 @@ export function findMergeCoveringCell(model: TableModelV2, rowId: string, colId:
 			&& cIdx >= Math.min(c1, c2) && cIdx <= Math.max(c1, c2)) return m;
 	}
 	return undefined;
+}
+
+/**
+ * Removes every existing merge whose rectangle INTERSECTS the given one
+ * (row indices in resolveMergeRowIndex's scale — -1 for the header, 0-based
+ * into model.rows otherwise) — not just one sharing the new merge's exact
+ * anchor. A merge anchored elsewhere that only partly reaches into the new
+ * rectangle would otherwise survive alongside it, silently producing two
+ * merges with overlapping cells — a state the renderer's own occupied-cell
+ * resolution was never designed to represent (a covered cell is assumed to
+ * belong to exactly one merge). Shared by merge-cells (which used to only
+ * clear a same-anchor merge) and paste-values (stamping a whole copied
+ * range's worth of merges into a destination that may already hold
+ * unrelated ones).
+ */
+function clearMergesOverlapping(model: TableModelV2, r1: number, r2: number, c1: number, c2: number): void {
+	const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+	const cLo = Math.min(c1, c2), cHi = Math.max(c1, c2);
+	model.merges = model.merges.filter(m => {
+		const [anchorRowId, anchorColId] = splitAnchor(m.anchor);
+		const [endRowId, endColId]       = splitAnchor(m.end);
+		const mr1 = resolveMergeRowIndex(model, anchorRowId);
+		const mr2 = resolveMergeRowIndex(model, endRowId);
+		const mc1 = model.columns.findIndex(c => c.id === anchorColId);
+		const mc2 = model.columns.findIndex(c => c.id === endColId);
+		if (mr1 === undefined || mr2 === undefined || mc1 < 0 || mc2 < 0) return true; // unresolvable — leave it
+		const mLoR = Math.min(mr1, mr2), mHiR = Math.max(mr1, mr2);
+		const mLoC = Math.min(mc1, mc2), mHiC = Math.max(mc1, mc2);
+		const overlaps = mHiR >= lo && mLoR <= hi && mHiC >= cLo && mLoC <= cHi;
+		return !overlaps;
+	});
 }
 
 /**

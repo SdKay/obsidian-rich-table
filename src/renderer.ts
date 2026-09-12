@@ -16,7 +16,7 @@ import { cellIdsToLabel, rangeIdsToLabel } from './formulaLabel';
 import { moveCell, clampToValidCell, type NavCell } from './cellNav';
 import { takeSelectedCell } from './renderSelectionHandoff';
 import { cellEffectiveStyle } from './renderCellStyle';
-import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
+import { copyRangeToClipboard, copyRangeAsMarkdown, parseHtmlTableWithMerges, parseMarkdownPipeTable } from './renderClipboard';
 import { enterLineEdit } from './renderEditMode';
 import { colMinWidth } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
@@ -1055,10 +1055,90 @@ export async function renderTable(
 	// Selected cell — so a table the user hasn't clicked into never swallows a
 	// keystroke meant for the note, and a multi-cell drag range (same
 	// `.bt-selected` class) is left to the mouse-driven selection panel.
+	// Ctrl/Cmd+V reads the system clipboard and pastes starting at the current
+	// selection's own top-left corner (single Selected cell OR a multi-cell
+	// drag range — both share `sel`), reusing the exact same parsing a
+	// single-cell edit-mode paste already does (renderEditMode.ts) — an HTML
+	// <table> (Excel/Sheets, or a copy made via the selection panel's own
+	// "Copy to Excel" button) takes priority, including reconstructing any
+	// merges its rowspan/colspan implies (parseHtmlTableWithMerges), falling
+	// back to a Markdown pipe table in plain text. Reported as pressing it
+	// while cells were merely selected (not being individually edited) doing
+	// nothing at all.
+	const pasteAtSelection = async (r1: number, c1: number): Promise<void> => {
+		if (!onStructuralOp) return;
+		let html = '', text = '';
+		try {
+			const items = await activeWindow.navigator.clipboard.read();
+			for (const item of items) {
+				if (item.types.includes('text/html')) html = await (await item.getType('text/html')).text();
+				if (item.types.includes('text/plain')) text = await (await item.getType('text/plain')).text();
+			}
+		} catch {
+			new Notice(t('pasteFailed'));
+			return;
+		}
+		const parsed = /<table[\s>]/i.test(html) ? parseHtmlTableWithMerges(html) : null;
+		const values = parsed?.values ?? parseMarkdownPipeTable(text);
+		if (!values) return;
+		const anchorColId = colId(model, c1);
+		if (!anchorColId) return;
+		// A selection anchored on the header row has no "data row" to paste
+		// into — the same table-format-conversion op a header cell's own
+		// edit-mode paste already uses (renderCell.ts's onPasteGridHeader),
+		// values-only: a merge landing in the row that BECOMES the header has
+		// no well-defined shape once that row stops being a data row at all.
+		if (r1 === 0) {
+			void onStructuralOp({ type: 'paste-values-with-header', anchorColId, values });
+			return;
+		}
+		const anchorRowId = rowId(model, r1);
+		if (!anchorRowId) return;
+		void onStructuralOp({ type: 'paste-values', anchorRowId, anchorColId, values, merges: parsed?.merges });
+	};
+
 	component.registerDomEvent(activeDocument, 'keydown', (evt: KeyboardEvent) => {
 		if (!sel.start || !sel.end) return;
-		if (sel.start.row !== sel.end.row || sel.start.col !== sel.end.col) return;
 		if (!table.isConnected) return;
+
+		// An open editor owns these keys itself (renderEditMode.ts) — including
+		// its own native copy/paste of whatever text is selected inside it.
+		// What identifies that case is where the event CAME FROM — not whether
+		// the table currently carries `.bt-editing`, which is mutable state
+		// that has already changed by the time this listener runs: a microtask
+		// checkpoint happens after every event-listener callback returns, so
+		// the editor's own handler has not only run but its deferred commit has
+		// too — dropping `.bt-editing` and setting the selection — before this
+		// same keystroke finishes bubbling here. Reading the class would
+		// therefore see "not editing", treat the Enter the editor just consumed
+		// as a fresh command, and reopen the editor it just closed. (Same
+		// family as the isConnected-inside-blur trap in CLAUDE.md: don't judge
+		// an in-flight event by state that a microtask may already have
+		// rewritten.)
+		const target = evt.target as HTMLElement | null;
+		if (target?.closest('.bt-cell-editor, .bt-date-input, .bt-inline-editor')) return;
+
+		// Paste applies to BOTH a single Selected cell and a multi-cell drag
+		// range — everything else below this block is single-cell-only (see
+		// the row/col-equality check right after it). Copy is deliberately
+		// NOT bound to Ctrl/Cmd+C here — with the multi-cell selection panel
+		// open (the common case for copying a range), something ahead of this
+		// listener in the real app (outside this plugin's own DOM — Obsidian's
+		// own Live Preview/CodeMirror editor the block sits inside is the
+		// likely source) already consumes it, so this would be dead code
+		// pretending to work. The panel's own "Copy to Excel"/"Copy as
+		// Markdown" buttons are the one reliable way to copy a range; Ctrl+V
+		// here is what makes pasting it back in feel keyboard-driven end-to-end.
+		if ((evt.ctrlKey || evt.metaKey) && !evt.altKey && evt.key.toLowerCase() === 'v' && onStructuralOp) {
+			const rect = effectiveSelRect();
+			if (rect) {
+				evt.preventDefault();
+				void pasteAtSelection(rect.r1, rect.c1);
+			}
+			return;
+		}
+
+		if (sel.start.row !== sel.end.row || sel.start.col !== sel.end.col) return;
 		const current = sel.start;
 
 		// A choice column's value menu renders to document.body, outside `table` —
@@ -1075,20 +1155,6 @@ export async function renderTable(
 			}
 			return;
 		}
-
-		// An open editor owns these keys itself (renderEditMode.ts). What identifies
-		// that case is where the event CAME FROM — not whether the table currently
-		// carries `.bt-editing`, which is mutable state that has already changed by
-		// the time this listener runs: a microtask checkpoint happens after every
-		// event-listener callback returns, so the editor's own handler has not only
-		// run but its deferred commit has too — dropping `.bt-editing` and setting
-		// the selection — before this same keystroke finishes bubbling here. Reading
-		// the class would therefore see "not editing", treat the Enter the editor
-		// just consumed as a fresh command, and reopen the editor it just closed.
-		// (Same family as the isConnected-inside-blur trap in CLAUDE.md: don't judge
-		// an in-flight event by state that a microtask may already have rewritten.)
-		const target = evt.target as HTMLElement | null;
-		if (target?.closest('.bt-cell-editor, .bt-date-input, .bt-inline-editor')) return;
 
 		if (evt.key === 'Tab') {
 			evt.preventDefault();

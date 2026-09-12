@@ -23,9 +23,10 @@ const EN = {
 	alignCenter:     'Align center',
 	alignRight:      'Align right',
 	alignClear:      'Clear alignment',
-	copyToExcel:     'Copy to Excel',
+	copyToExcel:     'Copy as Excel/rich-table',
 	copyToMarkdown:  'Copy as Markdown',
 	copyFailed:      'Copy failed — clipboard access was denied',
+	pasteFailed:     'Paste failed — clipboard access was denied',
 
 	// Style panel
 	background:  'Background',
@@ -217,9 +218,10 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	alignCenter:     '居中',
 	alignRight:      '右对齐',
 	alignClear:      '取消对齐',
-	copyToExcel:     '复制到 Excel',
+	copyToExcel:     '复制为Excel/rich-table',
 	copyToMarkdown:  '复制为 Markdown',
 	copyFailed:      '复制失败——剪贴板访问被拒绝',
+	pasteFailed:     '粘贴失败——剪贴板访问被拒绝',
 
 	background:  '背景色',
 	textColor:   '字体颜色',

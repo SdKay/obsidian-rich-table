@@ -4,7 +4,7 @@ import type { CellChangeHandler, EditNavigateHandler, EditNavigateMove, Structur
 import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
 import type { TableModelV2 } from './model';
 import { labelFormulaToIds } from './formulaLabel';
-import { parseMarkdownPipeTable, parseHtmlTable } from './renderClipboard';
+import { parseMarkdownPipeTable, parseHtmlTableWithMerges } from './renderClipboard';
 
 /**
  * Bundles everything formula-mode editing needs, so enterEditMode's already-
@@ -238,7 +238,7 @@ export function enterEditMode(
 	app: App,
 	sourcePath: string,
 	onCellChange: CellChangeHandler,
-	onPasteGrid?: (values: string[][]) => void,
+	onPasteGrid?: (values: string[][], merges?: { r1: number; c1: number; r2: number; c2: number }[]) => void,
 	cacheKey?: string,
 	initialText?: string,
 	onEditNavigate?: EditNavigateHandler,
@@ -415,13 +415,14 @@ export function enterEditMode(
 		// matching leaves the paste as native single-cell text.
 		editor.addEventListener('paste', (evt: ClipboardEvent) => {
 			const html = evt.clipboardData?.getData('text/html') ?? '';
-			const values = /<table[\s>]/i.test(html)
-				? parseHtmlTable(html)
-				: parseMarkdownPipeTable(evt.clipboardData?.getData('text/plain') ?? '');
+			const parsed = /<table[\s>]/i.test(html)
+				? parseHtmlTableWithMerges(html)
+				: null;
+			const values = parsed?.values ?? parseMarkdownPipeTable(evt.clipboardData?.getData('text/plain') ?? '');
 			if (!values) return;
 			evt.preventDefault();
 			cancel();
-			onPasteGrid(values);
+			onPasteGrid(values, parsed?.merges);
 		});
 	}
 	/**

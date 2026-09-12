@@ -673,10 +673,10 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		el.createEl('p', { text: ' ' });
 	}
 
-	const onPasteGrid = (onCellChange && onStructuralOp) ? (values: string[][]) => {
+	const onPasteGrid = (onCellChange && onStructuralOp) ? (values: string[][], merges?: { r1: number; c1: number; r2: number; c2: number }[]) => {
 		const anchorRowId = rowId(model, rowIdx);
 		const anchorColId = colId(model, colIdx);
-		if (anchorRowId && anchorColId) void onStructuralOp({ type: 'paste-values', anchorRowId, anchorColId, values });
+		if (anchorRowId && anchorColId) void onStructuralOp({ type: 'paste-values', anchorRowId, anchorColId, values, merges });
 	} : undefined;
 
 	// Formula editing is only offered for plain untyped columns — reaching this

@@ -131,7 +131,7 @@
 
 > 🎬 *演示 GIF 即将发布*
 
-**9 · 与 Excel/Markdown 互相复制粘贴** — 从 Excel/Sheets 复制的内容可直接粘贴进单元格（通过剪贴板 HTML 识别），标准 Markdown/GFM 表格（手打、从别的笔记复制、AI 回复、GitHub 等，以纯文本形式粘贴）也能识别并拆分成网格；如果粘贴目标是**表头**格，则会把整张表转成本表格式——粘贴内容的表头行变成列名，其余行变成数据，一次粘贴完成格式转换。也可把选区复制为 Excel 兼容表格或 Markdown 表格，入口在选区/单元格/表头菜单
+**9 · 与 Excel/Markdown 互相复制粘贴** — 从 Excel/Sheets 复制的内容可直接粘贴进单元格（通过剪贴板 HTML 识别），标准 Markdown/GFM 表格（手打、从别的笔记复制、AI 回复、GitHub 等，以纯文本形式粘贴）也能识别并拆分成网格；如果粘贴目标是**表头**格，则会把整张表转成本表格式——粘贴内容的表头行变成列名，其余行变成数据，一次粘贴完成格式转换。也可把选区复制为 Excel 兼容表格或 Markdown 表格，入口在选区/单元格/表头菜单——复制范围内的合并单元格会原样带过去。选中单个格子或多个格子（不需要进入编辑态）时 Ctrl+V 也能直接粘贴，从选区左上角开始写入，并按复制时的合并形状在目标位置重建合并；如果目标位置正好挡着别的合并，会直接吸收掉那个旧合并，不会报错拒绝
 
 > 🎬 *演示 GIF 即将发布*
 
@@ -265,7 +265,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 </tr>
 <tr><td>键盘操作——方向键、Tab、直接打字替换内容（详见<a href="#键盘操作">键盘操作</a>）</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>单元格 / 表头 / 选区菜单——插入、删除、隐藏行列，合并，设置样式，切换列类型。对齐分层生效：列选择器条带的菜单设置整列默认对齐（未来新增行也遵循）；表头单元格或某个数据单元格/选区可以从同一个"对齐"二级菜单单独覆盖，只影响自己</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>与 Excel / Sheets / Markdown 表格互通剪贴板——把一片区域或一个 Markdown 表格粘进单元格（粘到表头格可转换整表格式），也可把选区复制回去（或复制为 Markdown 表格）</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>与 Excel / Sheets / Markdown 表格互通剪贴板——把一片区域或一个 Markdown 表格粘进单元格（粘到表头格可转换整表格式），也可把选区复制回去（或复制为 Markdown 表格）；合并单元格双向都能带过去，选中状态下 Ctrl+V 也能直接粘贴，不必先进入编辑态</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>表格标题与页脚注释——点击即可就地编辑</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>不用手打代码块——命令面板（可自己绑快捷键）、左侧功能栏图标，或编辑器右键菜单都能插入</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>把已有的普通 Markdown 表格原地转为 rich-table，编辑器右键菜单直接转换</td><td align="center">✅</td><td align="center">—</td></tr>

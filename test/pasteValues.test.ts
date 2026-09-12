@@ -56,6 +56,39 @@ describe('paste-values', () => {
 		applyStructuralOpV2(model, { type: 'paste-values', anchorRowId: 'nope', anchorColId: 'c_0', values: [['x']] });
 		expect(model.rows).toEqual(before.rows);
 	});
+
+	// merges are 0-indexed and relative to the pasted block's own top-left —
+	// see parseHtmlTableWithMerges (renderClipboard.ts), the read side that
+	// produces them from a copied range's HTML.
+	it('reconstructs a merge from the copied range at the destination, growing rows first', () => {
+		const model = baseModel();
+		applyStructuralOpV2(model, {
+			type: 'paste-values', anchorRowId: 'r_1', anchorColId: 'c_1',
+			values: [['x'], ['x']],
+			merges: [{ r1: 0, c1: 0, r2: 1, c2: 0 }],
+		});
+		expect(model.rows).toHaveLength(3);
+		const newRow = model.rows[2]!;
+		expect(model.merges).toEqual([{ anchor: 'r_1.c_1', end: `${newRow.id}.c_1` }]);
+	});
+
+	it('absorbs (not just coexists with) an existing merge the new one overlaps', () => {
+		const model = baseModel();
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_1.c_0' });
+		applyStructuralOpV2(model, {
+			type: 'paste-values', anchorRowId: 'r_0', anchorColId: 'c_0',
+			values: [['x', 'y']],
+			merges: [{ r1: 0, c1: 0, r2: 0, c2: 1 }],
+		});
+		expect(model.merges).toEqual([{ anchor: 'r_0.c_0', end: 'r_0.c_1' }]);
+	});
+
+	it('a pasted range with no merges at all leaves existing merges untouched', () => {
+		const model = baseModel();
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_1.c_0' });
+		applyStructuralOpV2(model, { type: 'paste-values', anchorRowId: 'r_0', anchorColId: 'c_1', values: [['x']] });
+		expect(model.merges).toEqual([{ anchor: 'r_0.c_0', end: 'r_1.c_0' }]);
+	});
 });
 
 describe('paste-values-with-header', () => {

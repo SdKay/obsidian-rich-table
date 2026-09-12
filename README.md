@@ -129,7 +129,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 > 🎬 *Demo GIF coming soon*
 
-**9 · Copy/paste interop with Excel & Markdown** — paste a range from Excel/Sheets straight into a cell (detected via clipboard HTML), or a standard Markdown/GFM pipe table pasted as plain text (typed by hand, copied from another note, an LLM reply, GitHub, etc.); pasting onto a **header** cell instead converts the whole thing — the pasted header row becomes column names, the rest becomes data, table-format conversion in one paste. Copy a selection out as an Excel-compatible table or as a Markdown table, from the selection/cell/header menus
+**9 · Copy/paste interop with Excel & Markdown** — paste a range from Excel/Sheets straight into a cell (detected via clipboard HTML), or a standard Markdown/GFM pipe table pasted as plain text (typed by hand, copied from another note, an LLM reply, GitHub, etc.); pasting onto a **header** cell instead converts the whole thing — the pasted header row becomes column names, the rest becomes data, table-format conversion in one paste. Copy a selection out as an Excel-compatible table or as a Markdown table, from the selection/cell/header menus — merged cells in the copied range carry over intact. Ctrl+V also works directly on a Selected cell or multi-cell range (no need to be editing), pasting starting at its top-left corner and reconstructing any merges the copied range had; a destination merge it collides with is absorbed rather than rejected
 
 > 🎬 *Demo GIF coming soon*
 
@@ -262,7 +262,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 </tr>
 <tr><td>Keyboard navigation — arrow keys, Tab, type-to-replace (see <a href="#keyboard">Keyboard</a>)</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Cell, header and selection menus — insert / delete / hide rows &amp; columns, merge, style, column type. Alignment is layered: the column-selector strip's own menu sets a column's default (covers future rows too); a header cell or a data cell/range can override it just for itself, from the same "Align" flyout</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Excel / Sheets / Markdown-table clipboard — paste a range from Excel/Sheets or a pasted/typed Markdown table into a cell (or onto a header cell to convert the whole table's format), copy a selection back out (or as a Markdown table)</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Excel / Sheets / Markdown-table clipboard — paste a range from Excel/Sheets or a pasted/typed Markdown table into a cell (or onto a header cell to convert the whole table's format), copy a selection back out (or as a Markdown table); merged cells round-trip both ways, and Ctrl+V works directly on a Selected cell/range, not just while editing</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Table title and footer notes — click to edit inline</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Insert a block without typing the fence — command palette (assign your own hotkey), ribbon icon, or editor right-click</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Convert an existing plain Markdown table to rich-table in place, from the editor right-click menu</td><td align="center">✅</td><td align="center">—</td></tr>

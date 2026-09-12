@@ -159,14 +159,36 @@ export function parseMarkdownPipeTable(text: string): string[][] | null {
  * markup (bold, links, inline code) a cell might contain — paste-as-values
  * already discards formatting the same way TSV paste always has.
  */
-export function parseHtmlTable(html: string): string[][] | null {
+export interface PastedRange {
+	values: string[][];
+	/** Rectangles, 0-indexed and relative to the pasted block's own top-left —
+	 *  one per source `<td>`/`<th>` that had a real rowspan/colspan>1. */
+	merges: { r1: number; c1: number; r2: number; c2: number }[];
+}
+
+/**
+ * Parses an HTML `<table>` into both a flat values grid AND the merge
+ * rectangles a real rowspan/colspan implies — the read-back counterpart to
+ * buildRangeHtml's own output, so copying a range with merged cells and
+ * pasting it back (into this table or a different one) reconstructs the
+ * same merges rather than flattening them away. A covered cell (inside a
+ * span, not the span's own top-left) gets the SAME text as the cell that
+ * covers it — matches how a merge already looks to every value-only reader
+ * in this codebase (cellRawValue et al. treat every covered cell as holding
+ * the anchor's value) — so a caller that ignores `.merges` entirely (the
+ * plain-values paste path) still sees a sane, fully-populated grid instead
+ * of blanks at every covered position.
+ *
+ * Walks the already-parsed (inert) DOM directly rather than round-tripping
+ * through innerHTML — `<br>` becomes a literal newline (matching
+ * parseMarkdownPipeTable's own handling), any other element (bold, links,
+ * inline code) is flattened to its own text content the same way plain
+ * single-cell paste already discards formatting.
+ */
+export function parseHtmlTableWithMerges(html: string): PastedRange | null {
 	const doc = new DOMParser().parseFromString(html, 'text/html');
 	const table = doc.querySelector('table');
 	if (!table) return null;
-	// Walks the already-parsed (inert) DOM directly rather than round-tripping
-	// through innerHTML — <br> becomes a literal newline, any other element
-	// (bold, links, inline code) is flattened to its own text content the
-	// same way plain single-cell paste already discards formatting.
 	const cellText = (cell: Element): string => {
 		let text = '';
 		const walk = (node: ChildNode) => {
@@ -178,7 +200,39 @@ export function parseHtmlTable(html: string): string[][] | null {
 		cell.childNodes.forEach(walk);
 		return text.trim();
 	};
-	const rows = Array.from(table.querySelectorAll('tr')).map(tr =>
-		Array.from(tr.querySelectorAll('td, th')).map(cellText));
-	return rows.length > 0 ? rows : null;
+
+	const trs = Array.from(table.querySelectorAll('tr'));
+	if (trs.length === 0) return null;
+
+	const values: string[][] = [];
+	const merges: { r1: number; c1: number; r2: number; c2: number }[] = [];
+	// Columns in a given row already claimed by an earlier row's rowspan
+	// reaching down into it — the same "occupied" idea buildOccupied uses for
+	// the live model's own merges, just over the freshly-parsed source grid.
+	const occupied = new Map<number, Set<number>>();
+	const isOccupied = (r: number, c: number) => occupied.get(r)?.has(c) ?? false;
+	const markOccupied = (r: number, c: number) => {
+		if (!occupied.has(r)) occupied.set(r, new Set());
+		occupied.get(r)!.add(c);
+	};
+
+	trs.forEach((tr, r) => {
+		let c = 0;
+		for (const cell of Array.from(tr.querySelectorAll(':scope > td, :scope > th'))) {
+			while (isOccupied(r, c)) c++;
+			const text = cellText(cell);
+			const rowspan = Math.max(1, parseInt(cell.getAttribute('rowspan') ?? '1') || 1);
+			const colspan = Math.max(1, parseInt(cell.getAttribute('colspan') ?? '1') || 1);
+			for (let dr = 0; dr < rowspan; dr++) {
+				for (let dc = 0; dc < colspan; dc++) {
+					const rr = r + dr, cc = c + dc;
+					(values[rr] ??= [])[cc] = text;
+					if (dr > 0 || dc > 0) markOccupied(rr, cc);
+				}
+			}
+			if (rowspan > 1 || colspan > 1) merges.push({ r1: r, c1: c, r2: r + rowspan - 1, c2: c + colspan - 1 });
+			c += colspan;
+		}
+	});
+	return values.length > 0 ? { values, merges } : null;
 }
