@@ -169,6 +169,10 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 > 🎬 *Demo GIF coming soon*
 
+**19 · Nested tables** — a cell's content can itself be a `rich-table` block, rendered and fully interactive in place
+
+> 🎬 *Demo GIF coming soon*
+
 ---
 
 ## Keyboard
@@ -295,7 +299,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Conditional formatting — styles applied automatically from value rules</td><td align="center">🔜</td><td align="center">P2</td></tr>
 
 <tr>
-  <td rowspan="7"><b>Structure</b></td>
+  <td rowspan="8"><b>Structure</b></td>
   <td>Merge cells, and split a plain cell into two rows or columns — including the header row, which can split and merge downward into data rows</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
@@ -305,6 +309,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Transpose in place — swap rows and columns</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Transposed starting template — row and column headers the same</td><td align="center">🔜</td><td align="center">P1</td></tr>
 <tr><td>Row grouping — collapsible groups</td><td align="center">🔜</td><td align="center">P3</td></tr>
+<tr><td>Nest a rich-table block inside a cell of another one — renders and edits fully in place</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
   <td rowspan="2"><b>Views</b></td>

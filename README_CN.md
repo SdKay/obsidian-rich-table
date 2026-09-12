@@ -171,6 +171,10 @@
 
 > 🎬 *演示 GIF 制作中*
 
+**19 · 嵌套表格** — 单元格内容本身可以是一个 rich-table 代码块，原地完整渲染并可交互编辑
+
+> 🎬 *演示 GIF 制作中*
+
 ---
 
 ## 键盘操作
@@ -298,7 +302,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>条件格式——按取值规则自动套用样式</td><td align="center">🔜</td><td align="center">P2</td></tr>
 
 <tr>
-  <td rowspan="7"><b>表格结构</b></td>
+  <td rowspan="8"><b>表格结构</b></td>
   <td>合并单元格，以及把普通单元格拆成两行或两列——表头行也可以拆分，并向下与数据行合并</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
@@ -308,6 +312,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>一键转置——交换行与列</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>转置起始模板——行、列表头内容一致</td><td align="center">🔜</td><td align="center">P1</td></tr>
 <tr><td>行分组——可折叠分组</td><td align="center">🔜</td><td align="center">P3</td></tr>
+<tr><td>在单元格中嵌套另一个 rich-table 代码块——原地完整渲染并可交互编辑</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
   <td rowspan="2"><b>视图</b></td>
