@@ -827,6 +827,14 @@ export async function renderTable(
 
 	table.addEventListener('mousedown', (evt: MouseEvent) => {
 		if (evt.button !== 0) return;
+		// A locked table has no editing, no structural ops, and (showSelectionPanel's
+		// own `!onStructuralOp` guard) no popup — so this custom drag-select/highlight
+		// machinery leads nowhere for it, while its own `preventDefault()` below
+		// actively blocks the ONE thing that DOES still work unassisted: the browser's
+		// native click-and-drag text selection inside a cell, and Ctrl+C copying it.
+		// Skip entirely and let that happen instead. Reported: locked tables offered
+		// no way at all to copy a cell's content.
+		if (!onStructuralOp) return;
 		if (formulaEdit) {
 			// A cell is mid-formula-edit — clicking ANOTHER cell inserts a
 			// reference instead of the normal drag-select/open-editor behaviour.

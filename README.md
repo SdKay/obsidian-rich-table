@@ -145,7 +145,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![表格折叠/展开](docs/demo-12-collapse.gif)
 
-**13 · Table lock** — 🔒 icon disables all graphical editing for that table
+**13 · Table lock** — 🔒 icon disables all graphical editing for that table; a cell's text stays selectable by mouse drag and copyable with the browser's own Ctrl+C, same as any other page
 
 ![表格锁定](docs/demo-13-lock.gif)
 
