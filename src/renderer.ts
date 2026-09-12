@@ -2125,12 +2125,21 @@ export async function renderTable(
 
 		const colSel = root.createDiv({ cls: 'bt-col-selector' });
 		const rowSel = root.createDiv({ cls: 'bt-row-selector' });
+		// Non-frozen cells/grips/resize-handles are parented here instead of
+		// directly under colSel/rowSel — see styles.css's own comment above
+		// .bt-sel-track for why (one shared transform instead of one per cell).
+		// A frozen one stays a direct child of colSel/rowSel, outside the track,
+		// so it never inherits the track's scroll-offset transform at all.
+		const colTrack = colSel.createDiv({ cls: 'bt-sel-track' });
+		const rowTrack = rowSel.createDiv({ cls: 'bt-sel-track' });
 
-		// Persistent resize handles — created once, repositioned in rebuild().
+		// Persistent resize handles — created once (into the track, the common
+		// case), reparented into/out of it in rebuild() below if a column/row's
+		// frozen status changes, repositioned every time either way.
 		const colResizeHandles = new Map<number, HTMLElement>();
 		model.columns.forEach((c, ci) => {
 			if (c.hidden) return;
-			const h = colSel.createDiv({ cls: 'bt-sel-resize-col', attr: { 'aria-hidden': 'true' } });
+			const h = colTrack.createDiv({ cls: 'bt-sel-resize-col', attr: { 'aria-hidden': 'true' } });
 			setupColResize(h, table, ci, getRegistry, model, onStructuralOp, component);
 			colResizeHandles.set(ci, h);
 		});
@@ -2138,7 +2147,7 @@ export async function renderTable(
 		// ri is 0-based v2 index; display index = ri+1 (header is 0)
 		model.rows.forEach((row, ri) => {
 			const displayIdx = ri + 1;
-			const h = rowSel.createDiv({ cls: 'bt-sel-resize-row', attr: { 'aria-hidden': 'true' } });
+			const h = rowTrack.createDiv({ cls: 'bt-sel-resize-row', attr: { 'aria-hidden': 'true' } });
 			bindResizeHandle(
 				h, table, `data-row="${displayIdx}"`, '--bt-row-height', 24,
 				(height) => void onStructuralOp({ type: 'set-row-height', rowId: row.id, height }),
@@ -2277,15 +2286,15 @@ export async function renderTable(
 			// to the resize-handle seam positions below, which summed the same
 			// truncated value.
 			// A frozen column's real table cell doesn't move on horizontal scroll
-			// (position:sticky) — its selector-strip label shouldn't either, but
-			// every .bt-sel-cell's `left` normally tracks --cs-off (set to roughly
-			// -scrollLeft) to stay visually aligned with content scrolling past
-			// underneath. Reported: with column freeze on, the label strip kept
-			// scrolling away out from under the column it's supposed to label.
-			// bt-sel-cell-frozen (CSS) drops --cs-off from that formula, leaving
-			// just --cl — which is already the same table-relative left offset
-			// applyFreeze computes into --bt-frozen-left for the real cell, so no
-			// separate calculation is needed here, just reusing the existing one.
+			// (position:sticky) — its selector-strip label shouldn't either, but a
+			// non-frozen cell's parent (.bt-sel-track, below) is transformed to stay
+			// visually aligned with content scrolling past underneath. Reported: with
+			// column freeze on, the label strip kept scrolling away out from under the
+			// column it's supposed to label. Parenting a frozen cell OUTSIDE the track
+			// (see the `frozen` ternaries below) is what keeps it still; --cl is
+			// already the same table-relative left offset applyFreeze computes into
+			// --bt-frozen-left for the real cell, so no separate calculation is needed
+			// here, just reusing the existing one.
 			const freezeCols = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
 			const freezeRows = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
 			for (const c of ownCols(table)) {
@@ -2293,27 +2302,31 @@ export async function renderTable(
 				// MEASURED via the same function the frozen cells use, not
 				// accumulated: an accumulator starting at 0 omits the table's own
 				// border, so the strip sat that far left of the columns it labels —
-				// and a frozen label (which drops --cs-off and relies on --cl alone
-				// matching --bt-frozen-left exactly) drifted off its own column. See
-				// renderGeometry.ts for why this is one shared function rather than
-				// two call sites that are "obviously" equal.
+				// and a frozen label (whose --cl must match --bt-frozen-left exactly)
+				// drifted off its own column. See renderGeometry.ts for why this is
+				// one shared function rather than two call sites that are "obviously"
+				// equal.
 				const colX = scrollContentOffset(c, 'x');
 				if (c.dataset.col !== undefined) {
 					// Visible column — one cell per physical column
 					const ci = parseInt(c.dataset.col);
-					const cell = colSel.createDiv({ cls: 'bt-sel-cell' });
+					// A frozen column's cell/grip is parented directly under colSel,
+					// OUTSIDE colTrack, so it never inherits the track's scroll-offset
+					// transform — see styles.css's .bt-sel-track comment.
+					const frozen = freezeCols !== undefined && ci < freezeCols;
+					const cell = (frozen ? colSel : colTrack).createDiv({ cls: 'bt-sel-cell' });
 					cell.dataset.idx = String(ci);
 					cell.setText(colIndexToLetter(ci));
 					cell.setCssProps({ '--cl': `${colX}px`, '--cw': `${w}px` });
-					if (freezeCols !== undefined && ci < freezeCols) cell.addClass('bt-sel-cell-frozen');
+					if (frozen) cell.addClass('bt-sel-cell-frozen');
 					if (selAxis === 'col') {
 						const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
 						if (ci >= lo && ci <= hi) cell.addClass('is-sel');
 					}
 					// Drag grip: sibling of sel-cell, lives in the upper 10px of the
 					// col selector (above the A/B/C labels) — separate from selection zone.
-					const colGrip = colSel.createDiv({
-						cls: 'bt-sel-col-drag' + (freezeCols !== undefined && ci < freezeCols ? ' bt-sel-cell-frozen' : ''),
+					const colGrip = (frozen ? colSel : colTrack).createDiv({
+						cls: 'bt-sel-col-drag' + (frozen ? ' bt-sel-cell-frozen' : ''),
 						attr: { draggable: 'true', 'aria-label': t('dragReorderCol') },
 					});
 					setIcon(colGrip, 'grip-vertical');
@@ -2359,7 +2372,9 @@ export async function renderTable(
 					// only. Uses [data-agg-idx] (not [data-idx]) so it never collides with
 					// the real-row drag machinery above, which assumes a numeric row index.
 					const agg = tr.dataset.agg as AggType;
-					const cell = rowSel.createDiv({ cls: 'bt-sel-cell bt-sel-agg-cell' });
+					// Aggregate rows aren't part of model.rows/freezeRows — never frozen,
+					// always in the track.
+					const cell = rowTrack.createDiv({ cls: 'bt-sel-cell bt-sel-agg-cell' });
 					cell.dataset.aggIdx = agg;
 					setIcon(cell, 'sigma');
 					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
@@ -2372,7 +2387,7 @@ export async function renderTable(
 						});
 						showMenuPinned(m, e);
 					});
-					const grip = rowSel.createDiv({
+					const grip = rowTrack.createDiv({
 						cls: 'bt-sel-row-drag bt-sel-agg-drag',
 						attr: { draggable: 'true', 'aria-label': t('dragReorderAgg') },
 					});
@@ -2392,16 +2407,17 @@ export async function renderTable(
 					if (!firstCell) continue;
 					const ri = parseInt(firstCell.dataset.row ?? '-1');
 					if (ri < 0) continue;
-					const cell = rowSel.createDiv({ cls: 'bt-sel-cell' });
+					// A frozen row's real cell doesn't move on vertical inner-scroll
+					// (position:sticky) — its row-number label shouldn't either. In
+					// renderFreeze idx<=freezeRows are frozen (header=0 + first
+					// freezeRows data rows); ri here is that same data-row value.
+					// Parenting outside rowTrack (see styles.css's .bt-sel-track
+					// comment) is what stops it tracking scroll now.
+					const rowFrozen = freezeRows !== undefined && ri <= freezeRows;
+					const cell = (rowFrozen ? rowSel : rowTrack).createDiv({ cls: 'bt-sel-cell' });
 					cell.dataset.idx = String(ri);
 					cell.setText(String(ri + 1));
 					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
-					// A frozen row's real cell doesn't move on vertical inner-scroll
-					// (position:sticky) — its row-number label shouldn't either. Mirror
-					// of the frozen-column case above: drop --rs-off, keep --rt. In
-					// renderFreeze idx<=freezeRows are frozen (header=0 + first
-					// freezeRows data rows); ri here is that same data-row value.
-					const rowFrozen = freezeRows !== undefined && ri <= freezeRows;
 					if (rowFrozen) cell.addClass('bt-sel-cell-frozen');
 					if (selAxis === 'row') {
 						const lo = Math.min(selI1, selI2), hi2 = Math.max(selI1, selI2);
@@ -2415,7 +2431,7 @@ export async function renderTable(
 					// visible effect. (Sort is disabled — see hasRowSpanningMerge —
 					// while a row-spanning merge exists, so the grip stays available then.)
 					if (ri > 0 && !(model.sort && !hasRowSpanningMerge(model))) {
-						const grip = rowSel.createDiv({
+						const grip = (rowFrozen ? rowSel : rowTrack).createDiv({
 							cls: 'bt-sel-row-drag' + (rowFrozen ? ' bt-sel-cell-frozen' : ''),
 							attr: { draggable: 'true', 'aria-label': t('dragReorderRow') },
 						});
@@ -2446,12 +2462,16 @@ export async function renderTable(
 				// through the shared helper for the same reason as --cl above.
 				h.setCssProps({ '--rx': `${scrollContentOffset(c, 'x') + (parseFloat(c.style.width) || 0)}px` });
 				// A frozen column's real cell doesn't move on horizontal scroll, so
-				// neither may the hover zone that resizes it. Without this the zone
-				// tracked --cs-off and slid away from the boundary line it belongs to
-				// — reported as the resize hover area sitting outside the selector,
-				// along the extension of that line. The label cells were already
-				// freeze-aware; the handles never were.
-				h.toggleClass('bt-sel-cell-frozen', freezeCols !== undefined && parseInt(dc) < freezeCols);
+				// neither may the hover zone that resizes it — reparent it outside
+				// colTrack (same partition as the label cells above) instead of
+				// letting the track's scroll-tracking transform carry it away from
+				// the boundary line it belongs to. Reported before this existed: the
+				// resize hover area sitting outside the selector, along the
+				// extension of that line.
+				const colFrozen = freezeCols !== undefined && parseInt(dc) < freezeCols;
+				h.toggleClass('bt-sel-cell-frozen', colFrozen);
+				const colDesiredParent = colFrozen ? colSel : colTrack;
+				if (h.parentElement !== colDesiredParent) colDesiredParent.appendChild(h);
 			}
 			for (const [ri, h] of rowResizeHandles) {
 				// data-row is 1-based (header=0, data rows=1,2,3…); ri is 0-based model index.
@@ -2461,9 +2481,13 @@ export async function renderTable(
 					// Row's BOTTOM edge, through the shared helper — the vertical
 					// mirror of the column seams above, freeze-aware part included: a
 					// frozen row's resize zone must stay on its boundary instead of
-					// tracking --rs-off away from it.
+					// being carried away from it by the track's transform (same
+					// reparent-outside-the-track treatment as the column seams above).
 					h.setCssProps({ '--ry': `${scrollContentOffset(tr, 'y') + tr.getBoundingClientRect().height}px` });
-					h.toggleClass('bt-sel-cell-frozen', freezeRows !== undefined && ri + 1 <= freezeRows);
+					const rowResizeFrozen = freezeRows !== undefined && ri + 1 <= freezeRows;
+					h.toggleClass('bt-sel-cell-frozen', rowResizeFrozen);
+					const rowDesiredParent = rowResizeFrozen ? rowSel : rowTrack;
+					if (h.parentElement !== rowDesiredParent) rowDesiredParent.appendChild(h);
 					h.removeClass('bt-sel-resize-hidden');
 				} else {
 					h.addClass('bt-sel-resize-hidden');
@@ -2493,27 +2517,35 @@ export async function renderTable(
 		const positionSelectors = (geom: VisibleGeom = computeVisibleGeom()) => {
 			const g = geom;
 			// Col selector: pinned to the visible top edge, spanning the visible width,
-			// clipped (overflow:hidden in CSS). --cs-off shifts its column cells so they
-			// track the table body as it scrolls horizontally; --cs-top uses the visible
-			// top (vt) so the column letters stay pinned above the view while the table
-			// scrolls vertically (like a sticky column header), instead of scrolling off.
+			// clipped (overflow:hidden in CSS). --cs-top uses the visible top (vt) so
+			// the column letters stay pinned above the view while the table scrolls
+			// vertically (like a sticky column header), instead of scrolling off.
 			colSel.setCssProps({
 				'--cs-left':  `${g.vl}px`,
 				'--cs-top':   `${g.vt - SEL_TOTAL}px`,
 				'--cs-width': `${g.vw}px`,
-				'--cs-off':   `${g.colOffset}px`,
 			});
+			// colTrack's own transform carries the horizontal inner-scroll offset for
+			// every non-frozen column cell/grip/resize-handle at once (see styles.css's
+			// .bt-sel-track comment). Set directly via style.setProperty, deliberately
+			// NOT through a CSS custom property (setCssProps): a custom-property change
+			// forces the browser to re-examine style for its WHOLE descendant subtree
+			// regardless of which specific descendant (if any) actually reads it —
+			// measured at ~9ms for a 300-row table's worth of descendants vs ~0.02ms
+			// setting `transform` directly, so routing this specific value through a
+			// variable would have defeated the whole point of a shared track transform.
+			colTrack.style.setProperty('transform', `translateX(${g.colOffset}px)`);
 			// Row selector: pinned just left of the visible left edge, spanning the
-			// visible HEIGHT (not the full table), clipped, with --rs-off shifting its
-			// row cells to track inner vertical scroll — the exact vertical mirror of
-			// the col selector's --cs-off. Without this the row numbers scrolled off
-			// with the table's top once the view had a vertical scrollbar.
+			// visible HEIGHT (not the full table), clipped — the exact vertical mirror
+			// of the col selector above, rowTrack included. Without --rs-top/height the
+			// row numbers scrolled off with the table's top once the view had a
+			// vertical scrollbar.
 			rowSel.setCssProps({
 				'--rs-left':   `${g.vl - SEL_TOTAL}px`,
 				'--rs-top':    `${g.vt}px`,
 				'--rs-height': `${g.vh}px`,
-				'--rs-off':    `${g.rowOffset}px`,
 			});
+			rowTrack.style.setProperty('transform', `translateY(${g.rowOffset}px)`);
 		};
 		repositionSelectorStrips = (geom) => { positionSelectors(geom); };
 
@@ -3040,10 +3072,10 @@ export async function renderTable(
 		// getBoundingClientRect() reads on the SAME geometry, now merged into one
 		// rAF-coalesced frame that reads it once and hands it to all three. See
 		// bindScrollSync's own doc comment for the layout-thrashing cost this
-		// avoids. Only the containers + the --cs-off/--rs-off shift actually need
-		// updating on a pure scroll — the per-cell content stays table-relative
-		// and follows those via CSS, so no full rebuild() is needed here (keeps
-		// scrolling smooth).
+		// avoids. Only the containers' own position + each track's transform
+		// actually need updating on a pure scroll — the per-cell content stays
+		// table-relative and follows those, so no full rebuild() is needed here
+		// (keeps scrolling smooth).
 		bindScrollSync(
 			wrapper, table, root,
 			() => colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible') || isEdgeStripsVisible(),

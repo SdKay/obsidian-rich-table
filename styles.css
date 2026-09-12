@@ -112,9 +112,10 @@
 	width:  var(--cs-width, 100px);
 	height: var(--bt-sel-total); /* grip zone (top) + label zone (bottom) */
 	/* Clip column letters/grips/seams to the visible viewport: the strip is pinned to
-	 * the visible region and its children are offset by --cs-off to track horizontal
-	 * scroll, so anything scrolled past either edge is hidden rather than spilling over
-	 * the row selector / off-screen. */
+	 * the visible region and its .bt-sel-track child is transformed to track
+	 * horizontal scroll (see that class's own comment below), so anything scrolled
+	 * past either edge is hidden rather than spilling over the row selector /
+	 * off-screen. */
 	overflow: hidden;
 }
 .bt-render-root.bt-has-strips .bt-row-selector {
@@ -124,8 +125,9 @@
 	width:  var(--bt-sel-total); /* grip zone (left) + label zone (right) */
 	height: var(--rs-height, 100px);
 	/* Vertical mirror of the col selector: pinned to the visible band and
-	 * clipped, so row numbers offset by --rs-off (inner vertical scroll) are
-	 * hidden past the visible top/bottom instead of spilling off. */
+	 * clipped, so row numbers — shifted by its own .bt-sel-track's transform to
+	 * track inner vertical scroll — are hidden past the visible top/bottom
+	 * instead of spilling off. */
 	overflow: hidden;
 }
 .bt-table-wrapper {
@@ -754,55 +756,72 @@
 	color: var(--text-on-accent);
 	border-color: var(--interactive-accent);
 }
-/* Col selector: labels sit in the lower label zone; top grip zone reserved for drag grips.
- * --cs-off (set on the strip container) shifts every child to track horizontal scroll. */
+/* Inner scroll (horizontal for columns, vertical for rows) is tracked by ONE
+ * `transform` on a shared inner wrapper (`.bt-sel-track`, one per strip), not by
+ * every individual cell. There's one `.bt-sel-cell` per COLUMN/ROW of the whole
+ * table (un-virtualized), so writing the offset into EACH cell's own style —
+ * even via `transform`, which skips layout — still costs a real style
+ * recalculation for every one of them on every scroll frame (measured, 300-row
+ * table: ~8.5ms/frame).
+ *
+ * renderer.ts's positionSelectors sets this transform directly via
+ * `track.style.setProperty('transform', ...)`, deliberately NOT through a CSS
+ * custom property (the usual `setCssProps` pattern elsewhere in this file) — a
+ * custom-property change forces the browser to re-examine style for its WHOLE
+ * descendant subtree regardless of which descendant (if any) actually reads it.
+ * Measured: routing the very same value through a variable cost ~9ms/frame for
+ * that subtree, vs ~0.02ms setting `transform` directly — i.e. the custom
+ * property indirection alone was responsible for nearly all the remaining cost
+ * a plain wrapper transform was supposed to have already eliminated. So this
+ * rule intentionally sets no `transform` at all; look for the `.style.
+ * setProperty` calls in renderer.ts instead.
+ *
+ * A frozen row/column's real cell doesn't move on scroll (position:sticky) — its
+ * selector-strip label/grip/resize-handle shouldn't either, so renderer.ts's
+ * rebuild() parents a frozen one directly under `.bt-col-selector`/
+ * `.bt-row-selector` itself, OUTSIDE the track, instead of inside it — a sibling
+ * of the track, not a descendant, so it never inherits the track's transform in
+ * the first place. `.bt-sel-cell-frozen` no longer needs to override `left`/
+ * `transform` for this reason (both are already identical either way); it's kept
+ * only for the z-index bump below, so a frozen cell — added to its parent before
+ * the (higher-DOM-order) track — still paints ABOVE the track's whole subtree as
+ * non-frozen siblings scroll past underneath. */
+.bt-col-selector .bt-sel-track,
+.bt-row-selector .bt-sel-track {
+	position: absolute;
+	inset: 0;
+}
+/* Col selector: labels sit in the lower label zone; top grip zone reserved for drag grips. */
 .bt-col-selector .bt-sel-cell {
 	top: var(--bt-sel-grip); height: var(--bt-sel-cell);
-	left:  calc(var(--cl, 0px) + var(--cs-off, 0px));
+	left:  var(--cl, 0px);
 	width: var(--cw, 60px);
 }
-/* A frozen column's real cell doesn't move on horizontal scroll — its label
- * (and drag grip, same rule below) shouldn't either. --cl alone is already
- * the label's correct fixed position: it's the same table-relative left
- * offset (sum of preceding columns' widths) that applyFreeze computes into
- * --bt-frozen-left for the real cell, just dropping --cs-off so it stops
- * tracking scroll. renderer.ts's rebuild() adds this class only to cells for
- * columns actually within the current model.freezeCols. */
 .bt-col-selector .bt-sel-cell.bt-sel-cell-frozen {
-	left: var(--cl, 0px);
 	/* Both cell and grip are already position:absolute with an opaque
 	 * background (base rules above) — DOM order alone decides paint order
 	 * otherwise, and a frozen cell is added to colSel earlier than the
-	 * non-frozen cells scrolling past it, so without a higher z-index the
-	 * later (non-frozen) cells painted on top as they slid underneath,
+	 * track (whose non-frozen cells scroll past it), so without a higher
+	 * z-index the track's contents painted on top as they slid underneath,
 	 * covering the now-fixed frozen label — reported as still being
 	 * "curtained" even after the position fix. z-index 2 matches the real
 	 * frozen table cells' own z-index for the same reason. */
 	z-index: 2;
 }
 .bt-col-selector .bt-sel-col-drag.bt-sel-cell-frozen {
-	left: var(--cdx, 0px);
 	z-index: 2;
 }
 /* Row selector: labels sit in the right label zone; left grip zone reserved for drag grips */
 .bt-row-selector .bt-sel-cell {
 	left: calc(var(--bt-sel-total) - var(--bt-sel-cell)); width: var(--bt-sel-cell);
-	/* + --rs-off tracks inner vertical scroll — mirror of the col cell's --cs-off. */
-	top:    calc(var(--rt, 0px) + var(--rs-off, 0px));
+	top:    var(--rt, 0px);
 	height: var(--rh, 30px);
 }
-/* A frozen row's real cell doesn't move on vertical inner-scroll — its row-number
- * label (and drag grip, same rule below) shouldn't either. --rt alone is already
- * the label's correct fixed position (the same table-relative top offset the row's
- * sticky --bt-frozen-top mirrors), just dropping --rs-off so it stops tracking
- * scroll. z-index 2 keeps it above the non-frozen labels sliding underneath — same
- * reasoning as the frozen-column rule above. */
+/* Z-index only — same reasoning as the frozen-column rule above. */
 .bt-row-selector .bt-sel-cell.bt-sel-cell-frozen {
-	top: var(--rt, 0px);
 	z-index: 2;
 }
 .bt-row-selector .bt-sel-row-drag.bt-sel-cell-frozen {
-	top: var(--rdy, 0px);
 	z-index: 2;
 }
 
@@ -836,12 +855,21 @@
  * reproduced in the harness across every dpr and layout mode tried, so this
  * remains the one part of the fix resting on the user's testing rather than on a
  * test. */
+/* translateX(-50%) centers the seam on the boundary. Scroll-tracking is NOT part
+ * of this element's own transform any more — a non-frozen handle lives inside
+ * `.bt-sel-track` (which carries the scroll-tracking transform itself, set
+ * directly from JS — see that class's own comment), a frozen one lives
+ * directly under `.bt-col-selector` instead (see the .bt-sel-track comment
+ * above) — so this same -50%-only transform is correct for both, and there's no
+ * separate `.bt-sel-cell-frozen` override needed here at all (unlike the label
+ * cells above, resize handles don't need z-index either: the base rule's z-index
+ * 3 already wins over everything, frozen or not). */
 .bt-sel-resize-col {
 	position: absolute;
 	top: 0;
 	height: var(--bt-sel-total); /* spans full col-selector height */
 	width: 9px;
-	left: calc(var(--rx, 0px) + var(--cs-off, 0px));
+	left: var(--rx, 0px);
 	transform: translateX(-50%);
 	cursor: col-resize;
 	z-index: 3;
@@ -851,22 +879,10 @@
 	left: 0;
 	width: var(--bt-sel-total); /* spans full row-selector width */
 	height: 9px;
-	top: calc(var(--ry, 0px) + var(--rs-off, 0px)); /* track inner vertical scroll */
+	top: var(--ry, 0px);
 	transform: translateY(-50%);
 	cursor: row-resize;
 	z-index: 3; /* mirror of the column seam above */
-}
-/* A frozen row/column's real cell doesn't move on inner scroll, so the hover
- * zone that resizes it mustn't either — same rule, and the same class, as the
- * frozen label cells above: drop the scroll offset and use the measured
- * table-relative position alone (renderGeometry.ts is what guarantees the two
- * agree). Without this the zone slid away from the boundary line it drags,
- * ending up outside the strip along that line's extension. */
-.bt-col-selector .bt-sel-resize-col.bt-sel-cell-frozen {
-	left: var(--rx, 0px);
-}
-.bt-row-selector .bt-sel-resize-row.bt-sel-cell-frozen {
-	top: var(--ry, 0px);
 }
 .bt-sel-resize-hidden {
 	display: none;
@@ -1008,7 +1024,7 @@
 	left: 1px;
 	width: var(--bt-sel-grip);
 	height: var(--bt-sel-cell);
-	top: calc(var(--rdy, 0px) + var(--rs-off, 0px)); /* track inner vertical scroll */
+	top: var(--rdy, 0px);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1022,8 +1038,8 @@
 	top: 1px;
 	height: var(--bt-sel-grip);
 	width: var(--bt-sel-cell);
-	left: calc(var(--cdx, 0px) + var(--cs-off, 0px));
-	transform: translateX(-50%);
+	left: var(--cdx, 0px);
+	transform: translateX(-50%); /* centers the grip on the boundary point */
 	display: flex;
 	align-items: center;
 	justify-content: center;
