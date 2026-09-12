@@ -113,7 +113,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![Reorder and ops demo](docs/demo-05-reorder.gif)
 
-**5 · Drag to resize** — column header right edge · row bottom edge. A column/row with no width/height of its own tracks its content automatically ("auto"); dragging pins it to a fixed size, and double-clicking the resize handle clears it back to auto
+**5 · Drag to resize** — column header right edge · row bottom edge. Only the dragged column/row changes size; the table's overall width/height grows or shrinks to match, same as Excel. A column/row with no width/height of its own tracks its content automatically ("auto"); dragging pins it to a fixed size, and double-clicking the resize handle clears it back to auto
 
 ![Resize demo](docs/demo-06-resize.gif)
 

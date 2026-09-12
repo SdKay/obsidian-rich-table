@@ -22,8 +22,6 @@ export function setupColResize(
 	const col = model.columns[colIdx];
 	const thisCol = tbl.querySelector<HTMLElement>(`col[data-col="${colIdx}"]`);
 	if (!col || !thisCol) return;
-	const allCols = Array.from(tbl.querySelectorAll<HTMLElement>('col[data-col]'));
-	const nextCol = allCols.find(c => parseInt(c.dataset.col ?? '-1') > colIdx) ?? null;
 
 	handle.addEventListener('click', e => e.stopPropagation());
 
@@ -84,13 +82,9 @@ export function setupColResize(
 		handle.setPointerCapture(e.pointerId);
 		colDragging = true;
 
-		const startX     = e.clientX;
-		const MIN        = colMinWidth();
-		const startW     = parseInt(thisCol.style.width) || col.width || MIN;
-		const nextColIdx = nextCol ? parseInt(nextCol.dataset.col ?? '-1') : -1;
-		const startNextW = nextCol
-			? (parseInt(nextCol.style.width) || colMinWidth())
-			: null;
+		const startX = e.clientX;
+		const MIN    = colMinWidth();
+		const startW = parseInt(thisCol.style.width) || col.width || MIN;
 
 		if (colLine) colLine.setCssProps({ '--bt-ri-opacity': '0.75' });
 		else { colLine = makeColLine(); colLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
@@ -109,17 +103,13 @@ export function setupColResize(
 			const delta = Math.round(ev.clientX - startX);
 			const newW  = Math.max(MIN, startW + delta);
 			thisCol.style.setProperty('width', `${newW}px`);
-			if (nextCol && startNextW !== null) {
-				// The neighbor mirrors how much THIS column actually moved (newW - startW),
-				// not the raw pointer delta — once this column is clamped at its own
-				// minimum, further dragging keeps enlarging `delta` with nothing left of
-				// it reflected in newW, and mirroring the raw delta anyway grew the
-				// neighbor with no corresponding shrink on this side, drifting the
-				// table's total width. Clamping the mirrored amount the same way this
-				// column's own width already is makes the neighbor stop moving too.
-				const actualDelta = newW - startW;
-				nextCol.style.setProperty('width', `${Math.max(colMinWidth(), startNextW - actualDelta)}px`);
-			}
+			// Only this column's own width changes — every other column (and the
+			// table's overall width) grows/shrinks by exactly that amount, matching
+			// both Excel's own column-resize behaviour and how row-resize already
+			// works here (bindResizeHandle below never touches any other row).
+			// Reported after an earlier version mirrored the shrink/growth onto the
+			// immediate neighbor to keep the table's total width constant — visibly
+			// inconsistent with both of those.
 			const sum = Array.from(tbl.querySelectorAll<HTMLElement>('col'))
 				.reduce((s, c) => s + (parseInt(c.style.width) || 0), 0);
 			tbl.style.setProperty('width', `${sum}px`);
@@ -140,14 +130,6 @@ export function setupColResize(
 			if (delta === 0) return;
 			const newW = Math.max(MIN, startW + delta);
 			void onStructuralOp({ type: 'set-col-width', colId: col.id, width: newW });
-			if (nextCol && startNextW !== null && nextColIdx >= 0) {
-				const nextColDef = model.columns[nextColIdx];
-				if (nextColDef) {
-					// Same clamped-mirror reasoning as onMove above.
-					const actualDelta = newW - startW;
-					void onStructuralOp({ type: 'set-col-width', colId: nextColDef.id, width: Math.max(colMinWidth(), startNextW - actualDelta) });
-				}
-			}
 		};
 
 		handle.addEventListener('pointermove', onMove);
