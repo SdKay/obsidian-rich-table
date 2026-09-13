@@ -31,6 +31,7 @@
   <a href="#设置">设置</a> ·
   <a href="#功能与计划">功能</a> ·
   <a href="#格式说明">格式</a> ·
+  <a href="#导出为-xlsx">导出为 .xlsx</a> ·
   <a href="#外部-xlsx">外部 .xlsx</a> ·
   <a href="README.md">English</a>
 </p>
@@ -333,13 +334,14 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
 <tr><td>标签页——单击切换，双击重命名，拖拽重排，右键设置颜色 / 删除</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="6"><b>整表操作</b></td>
+  <td rowspan="7"><b>整表操作</b></td>
   <td>锁定——🔒 关闭该表格的所有图形化编辑</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>折叠——隐藏表体，保留标题与表头行</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>状态栏——显示行列总数，选中范围时显示大小和求和/平均值；自带滚动条可拖拽调整占位宽度；可设为常驻或仅 hover 显示</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>生成快照——把当前表格导出成清晰的 PNG（复制到剪贴板或保存）或 SVG，不包含 hover 才显示的界面元素，即便表格被滚动/限高也会导出完整内容</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>导出为 <code>.xlsx</code>（见<a href="#导出为-xlsx">导出为 .xlsx</a>）——仅限原生（非引用外部文件）表格；可选目标文件夹/文件名，工作簿会导出全部 sheet</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>让表格对应一份外部 <code>.xlsx</code> 文件（见<a href="#外部-xlsx">外部 .xlsx</a>）——文件在外部被修改会自动刷新，改名/移动也会自动跟踪，一键用默认程序打开或转换为普通表格</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>直接在 Obsidian 里编辑那份外部 <code>.xlsx</code> 文件的单元格内容和合并（见<a href="#外部-xlsx">外部 .xlsx</a>）——直接写回文件本身，不经过笔记；样式/排序/行列等其它编辑暂不支持</td><td align="center">✅</td><td align="center">—</td></tr>
 
@@ -414,6 +416,15 @@ YAML 头部是**唯一的数据来源**——所有编辑都通过表格界面�
 > **从 v0.x 升级？** 旧格式表格会自动显示升级提示横幅，点击**转换到新版格式**一键迁移，或点击**继续使用旧版**保持原样只读浏览。
 
 ---
+
+## 导出为 .xlsx
+
+任何原生表格（使用代码块自身 `columns`/`rows`，不是引用外部文件——引用外部文件的情况见下面的[外部 .xlsx](#外部-xlsx)）都可以通过表格左侧工具栏那个带向上箭头的文件夹图标导出成一份真正的 `.xlsx` 文件。弹出的窗口里有两种互相独立的完成方式，任选一种：
+
+- **Vault 内**——一个文件夹输入框（带 vault 内文件夹自动补全）和一个文件名（默认用表格自己的标题，没有标题就用笔记名），配一个自己的**导出**按钮。
+- **自定义位置**（仅桌面端）——一个**选择位置…**按钮，会调出系统自己的保存对话框；在那里确认位置的那一刻就直接导出了，不需要再点第二次。这是 Electron 的一项能力，Obsidian 官方并未正式支持，属于尽力而为的便利功能——上面 vault 内的方式始终可用，移动端也只有这一种选择方式。
+
+如果是多 sheet 的工作簿，会把每个 sheet 都导出进同一个文件，各自成为一个 xlsx 工作表。单元格内容、合并单元格、背景色/文字颜色、粗体/斜体、字号、列宽/行高都会带入导出的文件。在 Obsidian 里手动调整过大小的列/行会保留原样；没调整过的列/行会按内容（最长一行，中文按双倍宽度计算）估算出合适的宽度/高度，而不是套用 Excel 那种固定不变的默认值，这样打开文件时文字不会被裁切掩盖。笔记本身不会被改动——导出只会写入新的 `.xlsx` 文件。如果导出到一个已经存在的路径，会先询问是否覆盖。
 
 ## 外部 .xlsx
 

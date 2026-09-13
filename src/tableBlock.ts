@@ -26,6 +26,8 @@ import { reserveSelectorLeftPad } from './renderGeometry';
 import { openXlsxFilePicker } from './xlsxFilePicker';
 import { captureTablePng, captureTableSvg } from './tableSnapshot';
 import type { SnapshotKind } from './renderTypes';
+import { exportModelToXlsx, exportWorkbookToXlsx } from './xlsxExport';
+import { XlsxSaveModal, ConfirmOverwriteModal, vaultFileExists } from './xlsxSaveModal';
 
 /**
  * Module-level snapshot cache keyed by "sourcePath:lineStart". Each entry is a
@@ -433,6 +435,14 @@ export class TableBlock extends MarkdownRenderChild {
 					// onOp itself stays undefined and every other editing affordance
 					// stays off for this table.
 					(this.isXlsxBacked && editAllowed && !isOldFormat) ? (op) => this.handleStructuralOp(op) : undefined,
+					// Export-to-xlsx — the mirror-image gate of onOpenExternalFile/
+					// onDetachFromXlsx above: THIS table is exactly the ones those two
+					// are absent for (a native table, never xlsx-backed) — exporting
+					// a table that's already backed by a real .xlsx file would just be
+					// writing that same file's content back out under a new name,
+					// which the existing "open in default app"/"convert to plain table"
+					// buttons already cover more directly.
+					(!this.isXlsxBacked && !isEmpty && !isOldFormat) ? () => void this.exportToXlsx() : undefined,
 				);
 			}
 
@@ -1070,6 +1080,98 @@ export class TableBlock extends MarkdownRenderChild {
 			}
 		} catch (err) {
 			new Notice(`${t('snapshotFailed')}: ${err instanceof Error ? err.message : String(err)}`);
+		}
+	}
+
+	/** The left-toolbar "Export as .xlsx" button (renderer.ts's onExportXlsx)
+	 *  — only ever wired for a native (non xlsx-backed) table, see that
+	 *  callback's own doc comment. Opens `XlsxSaveModal` to pick a
+	 *  destination, builds the bytes via `xlsxExport.ts` (every sheet of
+	 *  `this.workbook` if present, otherwise just `this.model` — deliberately
+	 *  NOT `activeModel`, which would only export whichever sheet happens to
+	 *  be active right now), then writes them either through
+	 *  `vault.createBinary` (a vault-relative destination — the common case,
+	 *  and the only one on mobile) or a raw `fs.writeFile` (a destination
+	 *  outside the vault, only reachable via the native save dialog on
+	 *  desktop — see `XlsxSaveModal`'s own doc comment for why an out-of-vault
+	 *  path can't go through the vault API at all). */
+	private async exportToXlsx(): Promise<void> {
+		const defaultFolder = this.sourcePath.includes('/') ? this.sourcePath.slice(0, this.sourcePath.lastIndexOf('/')) : '';
+		const noteBasename = this.sourcePath.split('/').pop()?.replace(/\.md$/, '') ?? 'table';
+		const activeTitle = (this.workbook ?? this.model)?.title;
+		const defaultFilename = `${(activeTitle || noteBasename).trim()}.xlsx`;
+
+		new XlsxSaveModal(this.plugin.app, defaultFolder, defaultFilename, (result) => {
+			void this.runXlsxExport(result);
+		}).open();
+	}
+
+	private async runXlsxExport(result: { vaultPath?: string; absolutePath?: string }): Promise<void> {
+		try {
+			// A single-sheet model has no sheet-identity field of its own (that's
+			// exactly what distinguishes it from a WorkbookV3's SheetDefV2 — see
+			// model.ts) — reuse the same title-or-note-basename fallback exportToXlsx
+			// already computed for the default FILENAME, as the one sheet's title.
+			const noteBasename = this.sourcePath.split('/').pop()?.replace(/\.md$/, '') ?? 'table';
+			const sheetTitle = (this.model?.title || noteBasename).trim();
+			const bytes = this.workbook ? await exportWorkbookToXlsx(this.workbook)
+				: this.model ? await exportModelToXlsx(this.model, sheetTitle)
+				: undefined;
+			if (!bytes) return;
+			const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+
+			if (result.absolutePath) {
+				await this.writeXlsxExportToAbsolutePath(result.absolutePath, buffer);
+				return;
+			}
+
+			const vaultPath = result.vaultPath;
+			if (!vaultPath) return;
+			if (await vaultFileExists(this.plugin.app, vaultPath)) {
+				new ConfirmOverwriteModal(this.plugin.app, vaultPath, () => {
+					void this.writeXlsxExportOverwriting(vaultPath, buffer);
+				}).open();
+				return;
+			}
+			await this.createXlsxExportFile(vaultPath, buffer);
+		} catch (err) {
+			new Notice(`${t('exportXlsxFailed')}: ${err instanceof Error ? err.message : String(err)}`);
+		}
+	}
+
+	/** `absolutePath` is only ever set by `XlsxSaveModal`'s native-dialog
+	 *  branch, itself already gated behind `Platform.isDesktopApp` (see that
+	 *  class's own doc comment) — this function's own `Platform.isDesktop`
+	 *  early-exit is what `obsidianmd/no-nodejs-modules` requires as the FIRST
+	 *  statement of an enclosing function before it accepts a Node builtin
+	 *  `require()` at all (a guard anywhere else in the function body, even
+	 *  one that's equally correct at runtime, doesn't satisfy the rule's
+	 *  static check). */
+	private async writeXlsxExportToAbsolutePath(absolutePath: string, buffer: ArrayBuffer): Promise<void> {
+		if (!Platform.isDesktop) return;
+		// eslint-disable-next-line @typescript-eslint/no-require-imports -- same reasoning as openXlsxFileExternally's require('electron'); a dynamic import() does not resolve in Obsidian's desktop runtime. Bare 'fs/promises' (not 'node:fs/promises') — only the unprefixed form is in esbuild.config.mjs's builtinModules external list.
+		const fs = require('fs/promises') as typeof import('fs/promises');
+		await fs.writeFile(absolutePath, Buffer.from(buffer));
+		new Notice(`${t('exportXlsxSaved')}: ${absolutePath}`);
+	}
+
+	private async createXlsxExportFile(vaultPath: string, buffer: ArrayBuffer): Promise<void> {
+		const folder = vaultPath.includes('/') ? vaultPath.slice(0, vaultPath.lastIndexOf('/')) : '';
+		if (folder && !this.plugin.app.vault.getAbstractFileByPath(folder)) {
+			await this.plugin.app.vault.createFolder(folder);
+		}
+		await this.plugin.app.vault.createBinary(vaultPath, buffer);
+		new Notice(`${t('exportXlsxSaved')}: ${vaultPath}`);
+	}
+
+	private async writeXlsxExportOverwriting(vaultPath: string, buffer: ArrayBuffer): Promise<void> {
+		try {
+			const existing = this.plugin.app.vault.getAbstractFileByPath(vaultPath);
+			if (existing instanceof TFile) await this.plugin.app.vault.modifyBinary(existing, buffer);
+			else await this.createXlsxExportFile(vaultPath, buffer);
+			new Notice(`${t('exportXlsxSaved')}: ${vaultPath}`);
+		} catch (err) {
+			new Notice(`${t('exportXlsxFailed')}: ${err instanceof Error ? err.message : String(err)}`);
 		}
 	}
 

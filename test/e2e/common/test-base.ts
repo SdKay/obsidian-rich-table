@@ -94,7 +94,7 @@ export const test = base.extend<{
 	 *  → plain byte array) BEFORE the block's first render, for a block whose
 	 *  YAML references an `xlsxSource` — see writeBinaryAndNotify above for
 	 *  why a byte array, not ArrayBuffer/Uint8Array. */
-	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]> }) => Promise<RenderBlockResult>;
+	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string }) => Promise<RenderBlockResult>;
 }>({
 	renderReal: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
@@ -242,13 +242,13 @@ export const test = base.extend<{
 	renderBlock: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
 
-		const helper = async (blockSource: string, opts?: { binaryFiles?: Record<string, number[]> }): Promise<RenderBlockResult> => {
+		const helper = async (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string }): Promise<RenderBlockResult> => {
 			await page.goto(`file://${SHELL}`);
 			await page.addScriptTag({ path: BUNDLE });
 
-			await page.evaluate(({ src, binaryFiles }) => {
+			await page.evaluate(({ src, binaryFiles, sourcePath }) => {
 				const R = window.RichTableReal;
-				const NOTE = 'note.md';
+				const NOTE = sourcePath ?? 'note.md';
 				const vault = new R.FakeVault();
 				// A note with the block preceded by a line of prose, so lineStart is
 				// non-zero and an off-by-one in the line splice can't pass unnoticed.
@@ -299,7 +299,7 @@ export const test = base.extend<{
 					return container;
 				};
 				w.__btMount();
-			}, { src: blockSource, binaryFiles: opts?.binaryFiles });
+			}, { src: blockSource, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath });
 
 			// The first paint is async (a cell at a time), so wait for either
 			// outcome — a rendered table, or (an xlsx-backed block whose file

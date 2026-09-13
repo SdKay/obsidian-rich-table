@@ -26,3 +26,4 @@ export class Modal {
 }
 export function setIcon() {}
 export function MarkdownRenderer() {}
+export function getLanguage(): string { return 'en'; }

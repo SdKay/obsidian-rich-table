@@ -100,6 +100,13 @@ export async function renderTable(
 	 *  edits, below) and onMergeOp (existing-merge unmerge, below) ever get
 	 *  built from this. */
 	onXlsxWrite?: OpHandler,
+	/** Left-toolbar "Export as .xlsx" button — same no-edit-state-gate
+	 *  treatment as onSnapshot above (exporting is read-only, so it doesn't
+	 *  care whether the table is locked/collapsed/etc.); gated instead on
+	 *  tableBlock.ts's side to ONLY a native table, never an xlsx-backed one
+	 *  (which already has its own "open in default app"/"convert to plain
+	 *  table" buttons for essentially the same destination). */
+	onExportXlsx?: () => void,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
@@ -2111,6 +2118,18 @@ export async function renderTable(
 				menu.addItem(i => i.setTitle(t('snapshotSaveSvg')).setIcon('file-code').onClick(() => onSnapshot('save-svg')));
 				showMenuPinned(menu, evt);
 			});
+		}
+
+		// Export-to-xlsx button — right next to Snapshot, same "applies
+		// regardless of edit/lock state" reasoning; only ever present for a
+		// native (non xlsx-backed) table, see onExportXlsx's own doc comment.
+		if (onExportXlsx) {
+			const exportBtn = ctrlCol.createDiv({
+				cls: 'bt-ctrl-btn',
+				attr: { 'aria-label': t('exportToXlsx'), 'data-tooltip-position': 'right' },
+			});
+			setIcon(exportBtn, 'folder-up');
+			exportBtn.addEventListener('click', () => onExportXlsx());
 		}
 
 		// Position the column just left of the row selector (or, on a locked table

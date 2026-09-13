@@ -31,6 +31,7 @@
   <a href="#settings">Settings</a> ·
   <a href="#features--roadmap">Features</a> ·
   <a href="#format">Format</a> ·
+  <a href="#export-as-xlsx">Export as .xlsx</a> ·
   <a href="#external-xlsx">External .xlsx</a> ·
   <a href="README_CN.md">中文</a>
 </p>
@@ -330,13 +331,14 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Tabs — click to switch, double-click to rename, drag to reorder, right-click for color / delete</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="6"><b>Whole table</b></td>
+  <td rowspan="7"><b>Whole table</b></td>
   <td>Lock — 🔒 disables every graphical edit for that table</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; pinned or hover-only</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Snapshot — export the current table as a sharp PNG (copy to clipboard, or save) or SVG, hover-only chrome excluded and the full table captured even if it's scrolled/bounded</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Export as <code>.xlsx</code> (see <a href="#export-as-xlsx">Export as .xlsx</a>) — a native (non xlsx-backed) table only; pick a destination folder/filename, every sheet if it's a workbook</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Back a table with an external <code>.xlsx</code> file (see <a href="#external-xlsx">External .xlsx</a>) — auto-refreshes on external edits, tracks the file if renamed, one click to open it in Excel/LibreOffice or convert to a plain table</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Edit that external <code>.xlsx</code> file's cell content and merges directly from Obsidian (see <a href="#external-xlsx">External .xlsx</a>) — writes straight to the file, not the note; other edits (style, sort, rows/columns) stay view-only for now</td><td align="center">✅</td><td align="center">—</td></tr>
 
@@ -412,6 +414,14 @@ The YAML front-matter is the **only data source** — everything is edited throu
 
 ---
 
+## Export as .xlsx
+
+Any native table (one using the block's own `columns`/`rows` — not backed by an external file, see [External .xlsx](#external-xlsx) below for that case) can be exported to a real `.xlsx` file via the folder-with-an-up-arrow icon in the table's left toolbar. The modal has two independent ways to finish, pick whichever fits:
+
+- **In this vault** — a folder field (with vault-folder autocomplete) and a file name (defaulting to the table's own title, or the note's name if it has none), then its own **Export** button.
+- **Custom location** (desktop only) — one **Choose location…** button that opens your system's own save dialog; exporting happens the instant you confirm a location there, no separate Export click needed. This uses an Electron capability Obsidian doesn't officially document, so it's a best-effort convenience — the vault section above always works regardless, and is the only option on mobile.
+
+A multi-sheet workbook exports every sheet into the one file, each becoming its own xlsx worksheet. Cell content, merges, background/text color, bold/italic, font size, and column/row sizing all carry over into the exported file. A column/row you've resized in Obsidian keeps that exact size; any column/row you haven't gets a width/height estimated from its own content (longest line, CJK counted double-width) instead of Excel's flat default, so cell text isn't clipped the moment you open the file. The note itself is never touched — the export writes only the new `.xlsx` file. Exporting to a path that already exists asks to confirm before overwriting it.
 
 ## External .xlsx
 

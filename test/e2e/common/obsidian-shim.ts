@@ -39,6 +39,13 @@ export function getLanguage(): string {
 	return 'en';
 }
 
+/** Faithful re-implementation of the real utility's own documented behaviour
+ *  (collapse "\" to "/", drop a trailing slash, collapse repeated slashes) —
+ *  xlsxSaveModal.ts calls the real one to sanitise a user-typed folder path. */
+export function normalizePath(path: string): string {
+	return path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '').replace(/^\.\//, '');
+}
+
 /**
  * Faithful in the one respect the plugin relies on: registered callbacks run
  * exactly once on unload, and children unload with their parent. Hover-pin
@@ -233,7 +240,106 @@ export class TFile {
 export class MarkdownView { }
 export class Plugin extends Component { }
 export class PluginSettingTab { }
-export class Setting { constructor(_el?: HTMLElement) { /* settings UI isn't exercised */ } }
+
+/**
+ * Faithful enough for xlsxSaveModal.ts's own usage (name/addText/addButton) —
+ * real DOM elements, real click/input wiring, unlike the earlier no-op stub
+ * this replaced (which only needed to exist for settings.ts's import to
+ * resolve; nothing tested a settings-tab row through it). `ButtonComponent`'s
+ * setCta/setClass are real class-toggles too, so a test CAN assert on them if
+ * it ever needs to, though none currently does.
+ */
+export class TextComponent {
+	inputEl = document.createElement('input');
+	private onChangeCb: ((value: string) => void) | null = null;
+	constructor() {
+		this.inputEl.type = 'text';
+		this.inputEl.addEventListener('input', () => this.onChangeCb?.(this.inputEl.value));
+	}
+	setPlaceholder(text: string): this { this.inputEl.placeholder = text; return this; }
+	setValue(value: string): this { this.inputEl.value = value; return this; }
+	getValue(): string { return this.inputEl.value; }
+	onChange(cb: (value: string) => void): this { this.onChangeCb = cb; return this; }
+}
+
+export class ButtonComponent {
+	buttonEl = document.createElement('button');
+	setButtonText(text: string): this { this.buttonEl.textContent = text; return this; }
+	setCta(): this { this.buttonEl.classList.add('mod-cta'); return this; }
+	setWarning(): this { this.buttonEl.classList.add('mod-warning'); return this; }
+	setClass(cls: string): this { this.buttonEl.classList.add(cls); return this; }
+	onClick(cb: (evt: MouseEvent) => unknown): this { this.buttonEl.addEventListener('click', (evt) => void cb(evt)); return this; }
+}
+
+export class Setting {
+	settingEl = document.createElement('div');
+	nameEl = document.createElement('div');
+	controlEl = document.createElement('div');
+	constructor(containerEl?: HTMLElement) {
+		this.settingEl.className = 'setting-item';
+		this.settingEl.append(this.nameEl, this.controlEl);
+		containerEl?.appendChild(this.settingEl);
+	}
+	setName(name: string): this { this.nameEl.textContent = name; return this; }
+	setDesc(desc: string): this {
+		const el = document.createElement('div');
+		el.textContent = desc;
+		this.settingEl.appendChild(el);
+		return this;
+	}
+	setHeading(): this { this.settingEl.classList.add('setting-item-heading'); return this; }
+	addText(cb: (c: TextComponent) => void): this {
+		const c = new TextComponent();
+		cb(c);
+		this.controlEl.appendChild(c.inputEl);
+		return this;
+	}
+	addButton(cb: (c: ButtonComponent) => void): this {
+		const c = new ButtonComponent();
+		cb(c);
+		this.controlEl.appendChild(c.buttonEl);
+		return this;
+	}
+}
+
+/**
+ * Real DOM attach/detach, matching the one respect every caller in this
+ * codebase relies on: `open()` makes `contentEl` (and anything a test
+ * queries through it) actually present in the document, `close()` removes
+ * it — same as the real Modal's overlay lifecycle, just with no backdrop/
+ * animation chrome, which no test here needs.
+ */
+export class Modal {
+	app: App;
+	contentEl = document.createElement('div');
+	titleEl = document.createElement('div');
+	modalEl = document.createElement('div');
+	constructor(app: App) {
+		this.app = app;
+		this.modalEl.className = 'modal';
+		this.modalEl.append(this.titleEl, this.contentEl);
+	}
+	setTitle(title: string): this { this.titleEl.textContent = title; return this; }
+	open(): void {
+		document.body.appendChild(this.modalEl);
+		void this.onOpen();
+	}
+	close(): void {
+		this.modalEl.remove();
+		this.onClose();
+	}
+	onOpen(): void | Promise<void> { /* subclasses override */ }
+	onClose(): void { /* subclasses override */ }
+}
+
+/** Faithful, not a stub: folderInputSuggest.ts's real getSuggestions() reads
+ *  `app.vault.getAllFolders`, so a test can drive the actual production
+ *  suggest logic end to end. */
+export class TFolder {
+	children: unknown[] = [];
+	constructor(public path: string) { }
+	isRoot(): boolean { return this.path === '' || this.path === '/'; }
+}
 
 /** The plugin subclasses this for wikilink autocomplete; nothing needs to popup. */
 export class AbstractInputSuggest<T> {
@@ -310,14 +416,34 @@ export class FakeVault extends FakeEvents {
 	 *  the NEXT modifyBinary call for it throw instead of succeeding, matching
 	 *  the real Vault.modifyBinary rejecting on an OS-level file lock. */
 	lockedBinaryPaths = new Set<string>();
+	/** Folders created via createFolder OR implied by an existing file's own
+	 *  path (a real vault always has every ancestor folder of a file that
+	 *  exists in it) — backs getAllFolders/getAbstractFileByPath's folder
+	 *  branch. Seeded with '' (the root) since every vault has one. */
+	private folders = new Set<string>(['']);
+	/** Backs the desktop-only native-save-dialog path in xlsxSaveModal.ts —
+	 *  a plain object (not a real FileSystemAdapter instance) is enough since
+	 *  every call site only ever reads .getBasePath(), never `instanceof`s it. */
+	adapter = { getBasePath: () => '/fake/vault' };
+
+	private ensureFolder(path: string): void {
+		let p = path;
+		while (p && !this.folders.has(p)) {
+			this.folders.add(p);
+			p = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
+		}
+	}
 
 	/**
-	 * Returns a real TFile, not a look-alike: the write-back path guards with
-	 * `instanceof TFile` and simply returns when it fails, so a plain object with
-	 * the right shape makes every write silently do nothing — no error, no clue.
+	 * Returns a real TFile (or TFolder), not a look-alike: the write-back path
+	 * guards with `instanceof TFile` and simply returns when it fails, so a
+	 * plain object with the right shape makes every write silently do nothing
+	 * — no error, no clue.
 	 */
-	getAbstractFileByPath(path: string): TFile | null {
-		return this.files.has(path) || this.binaryFiles.has(path) ? new TFile(path) : null;
+	getAbstractFileByPath(path: string): TFile | TFolder | null {
+		if (this.files.has(path) || this.binaryFiles.has(path)) return new TFile(path);
+		if (this.folders.has(path)) return new TFolder(path);
+		return null;
 	}
 	async read(file: TFile): Promise<string> {
 		return this.files.get(file.path) ?? '';
@@ -333,15 +459,33 @@ export class FakeVault extends FakeEvents {
 		this.files.set(file.path, next);
 		return next;
 	}
-	/** Backs tableBlock.ts's captureSnapshot save-png path. */
+	/** Backs tableBlock.ts's captureSnapshot save-png path AND the xlsx-export
+	 *  feature's vault-relative write path. Throws on an existing path — same
+	 *  as the real Vault.createBinary — so exportToXlsx's own overwrite-
+	 *  confirmation flow (checked via getAbstractFileByPath BEFORE this is
+	 *  ever called) has something real to be protecting against. */
 	async createBinary(path: string, data: ArrayBuffer): Promise<TFile> {
+		if (this.binaryFiles.has(path) || this.files.has(path)) throw new Error(`FakeVault.createBinary: ${path} already exists`);
+		this.ensureFolder(path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
 		this.binaryFiles.set(path, data);
 		return new TFile(path);
 	}
 	/** Backs tableBlock.ts's captureSnapshot save-svg path. */
 	async create(path: string, data: string): Promise<TFile> {
+		this.ensureFolder(path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
 		this.files.set(path, data);
 		return new TFile(path);
+	}
+	/** Backs the xlsx-export feature's own explicit folder creation (its own
+	 *  getAbstractFileByPath check already avoids calling this redundantly). */
+	async createFolder(path: string): Promise<TFolder> {
+		this.ensureFolder(path);
+		return new TFolder(path);
+	}
+	/** Backs folderInputSuggest.ts's real getSuggestions() — driven end to end
+	 *  by an e2e test typing into the export modal's folder field. */
+	getAllFolders(includeRoot = false): TFolder[] {
+		return [...this.folders].filter(p => includeRoot || p !== '').map(p => new TFolder(p));
 	}
 	/** Test helper: simulate an external tool overwriting a binary file's bytes,
 	 *  then firing the same 'modify' event Obsidian's own file-watcher would. */
