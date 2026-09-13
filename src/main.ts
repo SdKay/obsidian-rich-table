@@ -1,7 +1,7 @@
 import { Editor, MarkdownView, Plugin } from 'obsidian';
 import { BetterTableSettingTab, DEFAULT_SETTINGS } from './settings';
 import { ChoiceRegistry } from './choiceRegistry';
-import { TableBlock } from './tableBlock';
+import { TableBlock, refreshAllTableBlocks } from './tableBlock';
 import type { BetterTableSettings } from './model';
 import { planRichTableBlockInsertion } from './insertRichTableBlock';
 import { planMarkdownTableConversion, type MarkdownTableConversionPlan } from './convertMarkdownTable';
@@ -144,5 +144,10 @@ export default class BetterTablePlugin extends Plugin {
 				view.previewMode.rerender(true);
 			}
 		});
+		// Live Preview tables aren't touched by the rerender above (CM6 widgets,
+		// not part of the reading-view pane it tears down) — refresh every
+		// currently-mounted table directly so e.g. a left-toolbar button
+		// visibility change takes effect immediately there too.
+		refreshAllTableBlocks();
 	}
 }

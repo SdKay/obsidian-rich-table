@@ -1,13 +1,14 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import type BetterTablePlugin from './main';
-import type { BetterTableSettings, ChoiceType } from './model';
-import { t } from './i18n';
+import { CTRL_COL_BUTTONS_BY_SCENARIO, ctrlColButtonIcon, type BetterTableSettings, type ChoiceType, type CtrlColButtonId } from './model';
+import { t, ctrlColButtonLabel, ctrlColScenarioLabel } from './i18n';
 import { ChangelogModal } from './changelogModal';
 
 export const DEFAULT_SETTINGS: BetterTableSettings = {
 	customChoices: [],
 	allowReadingViewEdit: false,
 	singleClickEdit: false,
+	ctrlColHiddenButtons: { locked: [], unlocked: [], xlsxRef: [] },
 };
 
 export class BetterTableSettingTab extends PluginSettingTab {
@@ -52,6 +53,42 @@ export class BetterTableSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		// ── Left-toolbar button visibility, per scenario ─────────────────────
+		// A dense chip grid (icon + label + checkbox per button, several per row)
+		// instead of one full-width Setting row per button — with up to 12
+		// buttons in the "unlocked" group alone, one-per-line burned a full
+		// screen's worth of scroll for what's fundamentally a small set of
+		// on/off switches. The icon is the same one the real ctrlCol button
+		// uses (model.ts's ctrlColButtonIcon) so the row is recognizable at a
+		// glance instead of by label text alone.
+		new Setting(containerEl).setName(t('settingCtrlColHeading')).setHeading().setDesc(t('settingCtrlColDesc'));
+
+		const scenarios: ('locked' | 'unlocked' | 'xlsxRef')[] = ['locked', 'unlocked', 'xlsxRef'];
+		for (const scenario of scenarios) {
+			new Setting(containerEl).setName(ctrlColScenarioLabel(scenario)).setHeading();
+			const grid = containerEl.createDiv({ cls: 'bt-ctrlcol-grid' });
+			for (const id of CTRL_COL_BUTTONS_BY_SCENARIO[scenario]) {
+				// A plain checkbox <label>, not a full Setting/ToggleComponent —
+				// the latter's own row styling (built for one full-width Setting
+				// per line) fights the dense chip layout this section wants;
+				// same "raw checkbox input" pattern renderPanel.ts's cell-style
+				// panel already uses for its own compact on/off rows.
+				const chip = grid.createEl('label', { cls: 'bt-ctrlcol-chip' });
+				const iconEl = chip.createSpan({ cls: 'bt-ctrlcol-chip-icon' });
+				setIcon(iconEl, ctrlColButtonIcon(id, scenario));
+				chip.createSpan({ cls: 'bt-ctrlcol-chip-label', text: ctrlColButtonLabel(id) });
+				const checkbox = chip.createEl('input', { attr: { type: 'checkbox' }, cls: 'bt-ctrlcol-chip-toggle' });
+				checkbox.checked = !this.plugin.settings.ctrlColHiddenButtons[scenario].includes(id);
+				checkbox.addEventListener('change', () => {
+					const hidden = this.plugin.settings.ctrlColHiddenButtons[scenario];
+					this.plugin.settings.ctrlColHiddenButtons[scenario] = checkbox.checked
+						? hidden.filter((x: CtrlColButtonId) => x !== id)
+						: [...hidden, id];
+					void this.plugin.saveSettings();
+				});
+			}
+		}
 
 		// ── Built-in types (informational) ───────────────────────────────────
 		new Setting(containerEl).setName(t('settingBuiltinTypes')).setHeading();

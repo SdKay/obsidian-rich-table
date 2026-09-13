@@ -85,6 +85,11 @@ export interface RenderBlockResult {
 	/** Every `new Notice(...)` message shown so far, in order — obsidian-shim.ts's
 	 *  `Notice.shown` static array, read fresh (not snapshotted at mount time). */
 	getNotices: () => Promise<string[]>;
+	/** Mutates `__btPlugin.settings` in place with `patch`, then calls the real
+	 *  `refreshAllTableBlocks()` — the exact sequence main.ts's `saveSettings()`
+	 *  runs after a settings-tab change, for asserting an already-mounted table
+	 *  (no `reprocess()`, no new instance) picks up the new setting live. */
+	changeSettingsAndRefresh: (patch: Record<string, unknown>) => Promise<void>;
 }
 
 export const test = base.extend<{
@@ -94,7 +99,7 @@ export const test = base.extend<{
 	 *  → plain byte array) BEFORE the block's first render, for a block whose
 	 *  YAML references an `xlsxSource` — see writeBinaryAndNotify above for
 	 *  why a byte array, not ArrayBuffer/Uint8Array. */
-	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string }) => Promise<RenderBlockResult>;
+	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown> }) => Promise<RenderBlockResult>;
 }>({
 	renderReal: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
@@ -242,11 +247,11 @@ export const test = base.extend<{
 	renderBlock: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
 
-		const helper = async (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string }): Promise<RenderBlockResult> => {
+		const helper = async (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown> }): Promise<RenderBlockResult> => {
 			await page.goto(`file://${SHELL}`);
 			await page.addScriptTag({ path: BUNDLE });
 
-			await page.evaluate(({ src, binaryFiles, sourcePath }) => {
+			await page.evaluate(({ src, binaryFiles, sourcePath, settings }) => {
 				const R = window.RichTableReal;
 				const NOTE = sourcePath ?? 'note.md';
 				const vault = new R.FakeVault();
@@ -266,7 +271,12 @@ export const test = base.extend<{
 				w.__btPlugin = {
 					app: { vault, metadataCache: new R.FakeMetadataCache(vault), fileManager: new R.FakeFileManager() },
 					choiceRegistry: new R.ChoiceRegistry([]),
-					settings: { allowReadingViewEdit: true, singleClickEdit: false },
+					settings: {
+						allowReadingViewEdit: true,
+						singleClickEdit: false,
+						ctrlColHiddenButtons: { locked: [], unlocked: [], xlsxRef: [] },
+						...(settings ?? {}),
+					},
 				};
 				// Recomputes the fence's line range from whatever the note CURRENTLY
 				// holds, rather than freezing lineStart/lineEnd at mount time —
@@ -299,7 +309,7 @@ export const test = base.extend<{
 					return container;
 				};
 				w.__btMount();
-			}, { src: blockSource, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath });
+			}, { src: blockSource, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath, settings: opts?.settings });
 
 			// The first paint is async (a cell at a time), so wait for either
 			// outcome — a rendered table, or (an xlsx-backed block whose file
@@ -351,6 +361,14 @@ export const test = base.extend<{
 					const w = window as unknown as { RichTableReal: { Notice: { shown: string[] } } };
 					return w.RichTableReal.Notice.shown;
 				}),
+				changeSettingsAndRefresh: (patch) => page.evaluate((patch) => {
+					const w = window as unknown as {
+						__btPlugin: { settings: Record<string, unknown> };
+						RichTableReal: { refreshAllTableBlocks(): void };
+					};
+					Object.assign(w.__btPlugin.settings, patch);
+					w.RichTableReal.refreshAllTableBlocks();
+				}, patch),
 			};
 		};
 

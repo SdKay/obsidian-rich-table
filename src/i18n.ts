@@ -1,4 +1,5 @@
 import { getLanguage } from 'obsidian';
+import type { CtrlColButtonId } from './model';
 
 export function isZh(): boolean {
 	return getLanguage().startsWith('zh');
@@ -199,6 +200,29 @@ const EN = {
 		'and the style panel opens with Ctrl/Cmd+click instead of double-click. Speeds up ' +
 		'rapid consecutive editing. When off (default), single click enters edit after a short ' +
 		'delay and double click opens the style panel.',
+	settingCtrlColHeading: 'Left-toolbar buttons',
+	settingCtrlColDesc:
+		'Choose which left-toolbar buttons show, separately for a locked table, an unlocked ' +
+		'table, and a table backed by an external .xlsx file — each scenario only ever offers ' +
+		'the buttons that actually apply to it.',
+	ctrlColScenarioLocked:   'Locked table',
+	ctrlColScenarioUnlocked: 'Unlocked table',
+	ctrlColScenarioXlsxRef:  'External .xlsx table',
+	ctrlColBtnOpenExternal: 'Open in default app',
+	ctrlColBtnDetachXlsx:   'Convert to plain table',
+	ctrlColBtnLock:         'Lock / unlock',
+	ctrlColBtnAutoFit:      'Auto-fit all',
+	ctrlColBtnTranspose:    'Transpose',
+	ctrlColBtnSelectAll:    'Select all',
+	ctrlColBtnTheme:        'Change theme',
+	ctrlColBtnAggregate:    'Summary row',
+	ctrlColBtnCollapse:     'Collapse / expand',
+	ctrlColBtnViewSettings: 'View settings',
+	ctrlColBtnViews:        'Views',
+	ctrlColBtnNewSheet:     'New sheet',
+	ctrlColBtnSnapshot:     'Snapshot',
+	ctrlColBtnExportXlsx:   'Export as .xlsx',
+
 	settingBuiltinTypes:     'Built-in types',
 	settingDatePickerDesc:   'Date picker (YYYY-MM-DD)',
 	settingCustomTypes:      'Custom types',
@@ -385,6 +409,27 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	settingSingleClickEditName: '单击即可编辑',
 	settingSingleClickEditDesc:
 		'开启后，单击单元格会立即进入编辑(无需区分双击，响应更快)，样式面板通过 Ctrl/Cmd+点击 打开。关闭时（默认），单击进入编辑（稍有迟缓），双击打开样式面板。',
+	settingCtrlColHeading: '左侧工具栏按钮',
+	settingCtrlColDesc:
+		'分别为锁定表格、未锁定表格、引用外部 .xlsx 的表格选择要显示哪些左侧工具栏按钮——每种场景只会列出该场景下实际可用的按钮。',
+	ctrlColScenarioLocked:   '锁定表格',
+	ctrlColScenarioUnlocked: '未锁定表格',
+	ctrlColScenarioXlsxRef:  '外部 .xlsx 表格',
+	ctrlColBtnOpenExternal: '用默认应用打开',
+	ctrlColBtnDetachXlsx:   '转为普通表格',
+	ctrlColBtnLock:         '锁定/解锁',
+	ctrlColBtnAutoFit:      '自动调整全部',
+	ctrlColBtnTranspose:    '行列转置',
+	ctrlColBtnSelectAll:    '全选',
+	ctrlColBtnTheme:        '切换主题',
+	ctrlColBtnAggregate:    '统计行',
+	ctrlColBtnCollapse:     '收起/展开',
+	ctrlColBtnViewSettings: '视图设置',
+	ctrlColBtnViews:        '视图',
+	ctrlColBtnNewSheet:     '新建 sheet',
+	ctrlColBtnSnapshot:     '生成快照',
+	ctrlColBtnExportXlsx:   '导出为 .xlsx',
+
 	settingBuiltinTypes:     '内置类型',
 	settingDatePickerDesc:   '日期选择器（YYYY-MM-DD）',
 	settingCustomTypes:      '自定义类型',
@@ -530,4 +575,30 @@ export function calendarMoreEventsLabel(n: number): string {
  *  as ViewDefV2's own name field, model.ts. */
 export function sheetFallbackName(oneBasedIndex: number): string {
 	return isZh() ? `表 ${oneBasedIndex}` : `Sheet ${oneBasedIndex}`;
+}
+
+/** Settings tab label for one ctrlCol button checkbox — CtrlColButtonId → EN/ZH text. */
+export function ctrlColButtonLabel(id: CtrlColButtonId): string {
+	const KEYS: { [K in CtrlColButtonId]: keyof typeof EN } = {
+		openExternal: 'ctrlColBtnOpenExternal',
+		detachXlsx:   'ctrlColBtnDetachXlsx',
+		lock:         'ctrlColBtnLock',
+		autoFit:      'ctrlColBtnAutoFit',
+		transpose:    'ctrlColBtnTranspose',
+		selectAll:    'ctrlColBtnSelectAll',
+		theme:        'ctrlColBtnTheme',
+		aggregate:    'ctrlColBtnAggregate',
+		collapse:     'ctrlColBtnCollapse',
+		viewSettings: 'ctrlColBtnViewSettings',
+		views:        'ctrlColBtnViews',
+		newSheet:     'ctrlColBtnNewSheet',
+		snapshot:     'ctrlColBtnSnapshot',
+		exportXlsx:   'ctrlColBtnExportXlsx',
+	};
+	return t(KEYS[id]);
+}
+
+/** Settings tab heading label for one of the three ctrlCol scenarios. */
+export function ctrlColScenarioLabel(scenario: 'locked' | 'unlocked' | 'xlsxRef'): string {
+	return t(scenario === 'locked' ? 'ctrlColScenarioLocked' : scenario === 'unlocked' ? 'ctrlColScenarioUnlocked' : 'ctrlColScenarioXlsxRef');
 }

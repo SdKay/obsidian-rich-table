@@ -2285,6 +2285,50 @@
 	pointer-events: none;
 }
 
+/* Settings — ctrlCol button visibility chips */
+.bt-ctrlcol-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-4);
+}
+
+.bt-ctrlcol-chip {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-1) var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	cursor: pointer;
+	/* Roughly a quarter-width column on a typical settings-pane width, so four
+	 * chips share a row instead of one giant Setting per button — the whole
+	 * point of this layout over the previous one-row-per-button list. */
+	flex: 1 1 160px;
+}
+
+.bt-ctrlcol-chip-icon {
+	display: flex;
+	color: var(--text-muted);
+}
+
+.bt-ctrlcol-chip-icon svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.bt-ctrlcol-chip-label {
+	flex: 1 1 auto;
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.bt-ctrlcol-chip-toggle {
+	margin: 0;
+}
+
 /* Settings — custom types */
 .bt-custom-types-list {
 	display: flex;

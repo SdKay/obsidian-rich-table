@@ -35,5 +35,6 @@ export { cellEffectiveStyle, applyColStyle, applyStyleRulesV2, applyResolvedStyl
 // stand-in is enough to exercise the parts that historically caused trouble:
 // rewriting the note, and staying visually continuous across the rebuild Obsidian
 // performs afterwards.
-export { TableBlock } from '../../../src/tableBlock';
+export { TableBlock, refreshAllTableBlocks } from '../../../src/tableBlock';
+export { BetterTableSettingTab, DEFAULT_SETTINGS } from '../../../src/settings';
 export { FakeVault, FakeMetadataCache, FakeFileManager, Notice } from './obsidian-shim';

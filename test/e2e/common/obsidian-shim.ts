@@ -271,6 +271,21 @@ export class ButtonComponent {
 	onClick(cb: (evt: MouseEvent) => unknown): this { this.buttonEl.addEventListener('click', (evt) => void cb(evt)); return this; }
 }
 
+/** Real checkbox input, not a stub — settings.ts's ctrlCol visibility toggles
+ *  (and any future addToggle usage) need a genuine checked/change round trip
+ *  for an e2e test to drive them the way a user's click would. */
+export class ToggleComponent {
+	toggleEl = document.createElement('input');
+	private onChangeCb: ((value: boolean) => void) | null = null;
+	constructor() {
+		this.toggleEl.type = 'checkbox';
+		this.toggleEl.addEventListener('change', () => this.onChangeCb?.(this.toggleEl.checked));
+	}
+	setValue(value: boolean): this { this.toggleEl.checked = value; return this; }
+	getValue(): boolean { return this.toggleEl.checked; }
+	onChange(cb: (value: boolean) => void): this { this.onChangeCb = cb; return this; }
+}
+
 export class Setting {
 	settingEl = document.createElement('div');
 	nameEl = document.createElement('div');
@@ -298,6 +313,12 @@ export class Setting {
 		const c = new ButtonComponent();
 		cb(c);
 		this.controlEl.appendChild(c.buttonEl);
+		return this;
+	}
+	addToggle(cb: (c: ToggleComponent) => void): this {
+		const c = new ToggleComponent();
+		cb(c);
+		this.controlEl.appendChild(c.toggleEl);
 		return this;
 	}
 }

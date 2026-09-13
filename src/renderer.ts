@@ -5,7 +5,7 @@ import {
 	collapsedRowsLabel, statusBarStatsLabel,
 } from './i18n';
 import { BUILTIN_THEMES } from './themes/index';
-import type { TableModelV2, AggType } from './model';
+import type { TableModelV2, AggType, CtrlColButtonId } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
 import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
@@ -107,6 +107,19 @@ export async function renderTable(
 	 *  (which already has its own "open in default app"/"convert to plain
 	 *  table" buttons for essentially the same destination). */
 	onExportXlsx?: () => void,
+	/** Per-scenario left-toolbar button visibility (settings.ts's
+	 *  "Left-toolbar buttons" section, model.ts's CtrlColButtonId) — ids in
+	 *  this set are skipped when building ctrlCol below, regardless of
+	 *  whether their own callback is defined. tableBlock.ts derives this set
+	 *  from BetterTableSettings.ctrlColHiddenButtons[scenario], picking the
+	 *  scenario (locked/unlocked/xlsxRef) the SAME way it already derives every
+	 *  other per-scenario callback gate above. Deliberately a plain Set, not
+	 *  threaded through onOp/onToggleLock/etc. themselves — hiding a button is
+	 *  a display-only preference, not a change to what operations are actually
+	 *  ALLOWED (e.g. hiding "lock" doesn't stop onToggleLock from working if
+	 *  reached some other way), so it stays a separate, additive filter over
+	 *  the same gates rather than replacing any of them. */
+	hiddenCtrlColButtons?: ReadonlySet<CtrlColButtonId>,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
@@ -1868,6 +1881,10 @@ export async function renderTable(
 	// undefined there) — exactly the case that should still offer a snapshot.
 	{
 		const ctrlCol = root.createDiv({ cls: 'bt-ctrl-col' + (model.locked ? ' is-locked' : '') });
+		// See hiddenCtrlColButtons' own doc comment — a display-only filter
+		// layered on top of every button's existing callback-presence gate,
+		// never a substitute for it.
+		const shown = (id: CtrlColButtonId): boolean => !hiddenCtrlColButtons?.has(id);
 
 		// Open-in-default-app button — first in column, ahead of lock: for an
 		// xlsx-backed table this is the one action that matters more than
@@ -1875,7 +1892,7 @@ export async function renderTable(
 		// THIS view, which an xlsx-backed table never offers at all). Not
 		// gated on model.collapsed — collapsing hides the rendered body, but
 		// has nothing to do with the underlying file this button opens.
-		if (onOpenExternalFile) {
+		if (onOpenExternalFile && shown('openExternal')) {
 			const openBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('openInDefaultApp'), 'data-tooltip-position': 'right' },
@@ -1887,7 +1904,7 @@ export async function renderTable(
 		// Convert-to-plain-table button — second, right after open-in-default-
 		// app: the other xlsx-only action, so the two sit together ahead of
 		// everything else. Same "not gated on collapsed" reasoning as above.
-		if (onDetachFromXlsx) {
+		if (onDetachFromXlsx && shown('detachXlsx')) {
 			const detachBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('detachFromXlsx'), 'data-tooltip-position': 'right' },
@@ -1898,7 +1915,7 @@ export async function renderTable(
 
 		// Lock button — hidden while collapsed: only the expand
 		// button is shown, since the other buttons act on the now-invisible body.
-		if (onToggleLock && !model.collapsed) {
+		if (onToggleLock && !model.collapsed && shown('lock')) {
 			const lockBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn' + (model.locked ? ' is-locked' : ''),
 				attr: {
@@ -1912,7 +1929,7 @@ export async function renderTable(
 		}
 
 		// Autofit button — second in column. Hidden while collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed) {
+		if (onStructuralOp && !model.collapsed && shown('autoFit')) {
 			const autoFitBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('autoFitAll'), 'data-tooltip-position': 'right' },
@@ -1944,7 +1961,7 @@ export async function renderTable(
 		// unwanted transpose is undone the same way any other structural op is
 		// (Obsidian's own file history), not a second click. Hidden while
 		// collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed) {
+		if (onStructuralOp && !model.collapsed && shown('transpose')) {
 			const transposeBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('transposeTable'), 'data-tooltip-position': 'right' },
@@ -1958,7 +1975,7 @@ export async function renderTable(
 		// would, so every range-level action (merge/hide/delete rows or columns,
 		// align, style, copy) is reachable without dragging corner-to-corner by
 		// hand. Hidden while collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed) {
+		if (onStructuralOp && !model.collapsed && shown('selectAll')) {
 			const selectAllBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('selectAllOpenMenu'), 'data-tooltip-position': 'right' },
@@ -1973,7 +1990,7 @@ export async function renderTable(
 		}
 
 		// Theme picker button — third in column. Hidden while collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed) {
+		if (onStructuralOp && !model.collapsed && shown('theme')) {
 			const THEMES: { id: string | null; label: string }[] = [
 				{ id: null, label: t('themeDefault') },
 				...BUILTIN_THEMES.map(th => ({
@@ -2004,7 +2021,7 @@ export async function renderTable(
 		// this is just a second, table-wide-only entry point to the same state,
 		// for when the user wants to add a summary row without first selecting
 		// a column. Hidden while collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed) {
+		if (onStructuralOp && !model.collapsed && shown('aggregate')) {
 			const aggBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('aggMore'), 'data-tooltip-position': 'right' },
@@ -2025,7 +2042,7 @@ export async function renderTable(
 		}
 
 		// Collapse/expand button — fifth in column
-		if (onStructuralOp) {
+		if (onStructuralOp && shown('collapse')) {
 			const collapseBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: {
@@ -2041,7 +2058,7 @@ export async function renderTable(
 		// auto) + the only entry points for adding a title / footer when the
 		// table has none yet (once present, the inline title/footer editors take
 		// over). Hidden while collapsed (body/footer aren't shown then).
-		if (onStructuralOp && !model.collapsed) {
+		if (onStructuralOp && !model.collapsed && shown('viewSettings')) {
 			const settingsBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('viewSettings'), 'data-tooltip-position': 'right' },
@@ -2077,7 +2094,7 @@ export async function renderTable(
 		// Views switcher — last in column. Shares buildViewSwitcherMenu with the
 		// Kanban toolbar's own views button (renderKanban.ts) so both surfaces
 		// offer the exact same set of views/actions.
-		if (onStructuralOp) {
+		if (onStructuralOp && shown('views')) {
 			const viewsBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('views'), 'data-tooltip-position': 'right' },
@@ -2091,7 +2108,7 @@ export async function renderTable(
 		// it already is one, appends another sheet). Absent once the table
 		// already has its own bottom sheet-tab-bar (that bar's own "+" takes
 		// over — see tableBlock.ts).
-		if (onCreateSheet) {
+		if (onCreateSheet && shown('newSheet')) {
 			const addSheetBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('newSheet'), 'data-tooltip-position': 'right' },
@@ -2105,7 +2122,7 @@ export async function renderTable(
 		// lock/xlsx state, so it reads as a step apart from the editing-
 		// focused tools above rather than competing with them for the most
 		// prominent (top) spot.
-		if (onSnapshot) {
+		if (onSnapshot && shown('snapshot')) {
 			const snapshotBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('snapshotButton'), 'data-tooltip-position': 'right' },
@@ -2123,7 +2140,7 @@ export async function renderTable(
 		// Export-to-xlsx button — right next to Snapshot, same "applies
 		// regardless of edit/lock state" reasoning; only ever present for a
 		// native (non xlsx-backed) table, see onExportXlsx's own doc comment.
-		if (onExportXlsx) {
+		if (onExportXlsx && shown('exportXlsx')) {
 			const exportBtn = ctrlCol.createDiv({
 				cls: 'bt-ctrl-btn',
 				attr: { 'aria-label': t('exportToXlsx'), 'data-tooltip-position': 'right' },

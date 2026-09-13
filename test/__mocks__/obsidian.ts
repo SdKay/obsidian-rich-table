@@ -24,6 +24,7 @@ export class Modal {
 	open() {}
 	close() {}
 }
+export class PluginSettingTab {}
 export function setIcon() {}
 export function MarkdownRenderer() {}
 export function getLanguage(): string { return 'en'; }

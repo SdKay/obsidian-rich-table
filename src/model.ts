@@ -286,6 +286,74 @@ export interface ChoiceType {
 	options: ChoiceOption[];
 }
 
+/** Every left-toolbar (`.bt-ctrl-col`) button renderTable() can ever build —
+ *  see CTRL_COL_BUTTONS_BY_SCENARIO below for which ones actually CAN appear
+ *  in a given scenario (most are mutually exclusive by construction: e.g.
+ *  `openExternal`/`detachXlsx` only exist for an xlsx-backed table, the rest
+ *  only for a native one). */
+export type CtrlColButtonId =
+	| 'openExternal' | 'detachXlsx' | 'lock' | 'autoFit' | 'transpose' | 'selectAll'
+	| 'theme' | 'aggregate' | 'collapse' | 'viewSettings' | 'views' | 'newSheet'
+	| 'snapshot' | 'exportXlsx';
+
+/**
+ * The three mutually-exclusive states a table's ctrlCol can render in, and
+ * exactly which button ids can EVER appear in each one — derived directly
+ * from renderer.ts's own gating (each button's `if (...)` condition). Used
+ * both to build the settings tab's three checkbox groups (settings.ts) and,
+ * implicitly, to document why hiding e.g. `autoFit` in the `xlsxRef` group
+ * would be meaningless — that id simply isn't offered there to begin with.
+ *
+ *  - `locked`: a native (non xlsx-backed) table with `locked: true` —
+ *    onStructuralOp is undefined, so only the always-available buttons
+ *    (lock-to-unlock, snapshot, export) ever render.
+ *  - `unlocked`: a native table with `locked: false` (or absent) — every
+ *    editing-affordance button renders.
+ *  - `xlsxRef`: a table backed by `xlsxSource` (view-only, phase 1) — has
+ *    neither onStructuralOp nor onToggleLock, only its own xlsx-specific
+ *    open/detach buttons plus the universal snapshot button.
+ */
+export const CTRL_COL_BUTTONS_BY_SCENARIO: { [K in 'locked' | 'unlocked' | 'xlsxRef']: CtrlColButtonId[] } = {
+	locked:   ['lock', 'snapshot', 'exportXlsx'],
+	unlocked: ['lock', 'autoFit', 'transpose', 'selectAll', 'theme', 'aggregate', 'collapse', 'viewSettings', 'views', 'newSheet', 'snapshot', 'exportXlsx'],
+	xlsxRef:  ['openExternal', 'detachXlsx', 'snapshot'],
+};
+
+/** The exact Lucide icon name each button's own `setIcon()` call uses in
+ *  renderer.ts, so the settings tab's toggle for a button can show the same
+ *  icon next to it — kept here (not settings.ts) since it's a property of
+ *  the button id itself, same as CTRL_COL_BUTTONS_BY_SCENARIO above.
+ *  `lock`'s two icons (renderer.ts swaps between them based on
+ *  `model.locked`) are both listed since which one applies depends on which
+ *  scenario the settings tab is currently rendering — see
+ *  ctrlColButtonIcon() below, the only place that reads this map. */
+const CTRL_COL_BUTTON_ICON: Record<CtrlColButtonId, string> = {
+	openExternal: 'external-link',
+	detachXlsx:   'unlink',
+	lock:         'lock-open',
+	autoFit:      'maximize-2',
+	transpose:    'flip-horizontal-2',
+	selectAll:    'table',
+	theme:        'palette',
+	aggregate:    'sigma',
+	collapse:     'fold-vertical',
+	viewSettings: 'settings-2',
+	views:        'layout-grid',
+	newSheet:     'copy-plus',
+	snapshot:     'camera',
+	exportXlsx:   'folder-up',
+};
+
+/** Settings-tab icon for one button, given which scenario group it's shown
+ *  under — `lock` is the one id whose real ctrlCol icon depends on
+ *  `model.locked` (renderer.ts), which the settings tab has a direct stand-in
+ *  for: the `locked` scenario group always means "shows the locked-padlock
+ *  icon here", `unlocked` always means "shows the open-padlock icon here". */
+export function ctrlColButtonIcon(id: CtrlColButtonId, scenario: 'locked' | 'unlocked' | 'xlsxRef'): string {
+	if (id === 'lock') return scenario === 'locked' ? 'lock' : 'lock-open';
+	return CTRL_COL_BUTTON_ICON[id];
+}
+
 export interface BetterTableSettings {
 	customChoices: ChoiceType[];
 	/**
@@ -303,6 +371,14 @@ export interface BetterTableSettings {
 	 * after a 200ms delay, double click opens the style panel.
 	 */
 	singleClickEdit: boolean;
+	/** Per-scenario left-toolbar button visibility (see CtrlColButtonId/
+	 *  CTRL_COL_BUTTONS_BY_SCENARIO above) — each array lists the ids HIDDEN
+	 *  in that scenario; absent/empty means every button for that scenario
+	 *  shows, the pre-existing (and still default) behaviour. The lock button
+	 *  itself is includable here like any other — a user can hide it too, at
+	 *  the cost of needing to hand-edit `locked: false` in the block's own
+	 *  YAML to unlock a table with no button left to do it. */
+	ctrlColHiddenButtons: { locked: CtrlColButtonId[]; unlocked: CtrlColButtonId[]; xlsxRef: CtrlColButtonId[] };
 	/** Last plugin version this install has shown the changelog modal for —
 	 *  absent on a brand-new install, which shows nothing (there's no "update"
 	 *  to summarize yet), just records the current version as the baseline. */

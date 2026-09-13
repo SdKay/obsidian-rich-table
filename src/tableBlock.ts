@@ -2,7 +2,7 @@ import { type EventRef, FileSystemAdapter, MarkdownPostProcessorContext, Markdow
 import { isZh, t, tableVersionTooHighMsg } from './i18n';
 import { CURRENT_TABLE_VERSION, MIN_STABLE_VERSION, getTableVersion, migrateSource } from './tableVersion';
 import type BetterTablePlugin from './main';
-import type { SheetDefV2, TableModelV2, WorkbookV3 } from './model';
+import type { CtrlColButtonId, SheetDefV2, TableModelV2, WorkbookV3 } from './model';
 import { parseTable, parseSource } from './parser';
 import { serializeTable, serializeWorkbook } from './serializer';
 import { renderTable } from './renderer';
@@ -39,6 +39,29 @@ import { XlsxSaveModal, ConfirmOverwriteModal, vaultFileExists } from './xlsxSav
  * reach the old instance's DOM, so the old one publishes here and the new one reads.
  */
 const renderCache = new Map<string, HTMLElement>();
+
+/**
+ * Every currently-mounted TableBlock, so a plugin-settings change (e.g. the
+ * new "Left-toolbar buttons" visibility toggles) can refresh already-open
+ * tables immediately instead of only taking effect on the NEXT edit or note
+ * reopen. Reading View already gets this via main.ts's own
+ * `previewMode.rerender(true)` after every save, which tears down and
+ * rebuilds the whole preview pane — but Live Preview's CodeMirror widgets are
+ * untouched by that, and settings that only affect a *rendered* affordance
+ * (button visibility) don't otherwise invalidate anything CM6 would notice on
+ * its own. A plain `Set`, not anything keyed — main.ts just wants "everyone,
+ * refresh," and TableBlock's own `unload()` cleanup (registered below) is
+ * what keeps this from ever holding a stale/torn-down instance.
+ */
+const liveInstances = new Set<TableBlock>();
+
+/** Re-renders every currently-mounted table in place — main.ts's saveSettings
+ *  calls this after every settings save, alongside its existing Reading View
+ *  rerender, so a Live Preview table reflects e.g. a newly hidden/shown
+ *  left-toolbar button without needing an edit or a note reopen to trigger one. */
+export function refreshAllTableBlocks(): void {
+	for (const block of liveInstances) void block.refresh();
+}
 
 /**
  * Inject a live-DOM snapshot into a freshly-handed (blank) container as a
@@ -174,6 +197,13 @@ export class TableBlock extends MarkdownRenderChild {
 		private readonly cacheKey: string,
 	) {
 		super(container);
+		// See liveInstances' own doc comment — added/removed here rather than in
+		// onload()/onunload() so a table that's mounted but never separately
+		// unloaded (there is no other onload/onunload override on this class)
+		// still gets exactly one add/remove pair, matching every other
+		// per-instance registration below.
+		liveInstances.add(this);
+		this.register(() => { liveInstances.delete(this); });
 		// Registered once here, not per-render(): both callbacks read the
 		// CURRENT field value at unload time regardless of when they were
 		// registered, so there's nothing to gain from re-registering them on
@@ -403,6 +433,14 @@ export class TableBlock extends MarkdownRenderChild {
 			// this one just stays reachable without needing the tab bar in view.
 			const onCreateSheet = onWorkbookOp ? () => onWorkbookOp({ type: 'create-sheet' }) : undefined;
 
+			// Which of settings.ts's three ctrlCol scenarios this table currently is —
+			// same precedence renderTable()'s own button gates already imply (an
+			// xlsx-backed table has neither onStructuralOp nor onToggleLock at all,
+			// so it's never "locked"/"unlocked" in this sense regardless of `locked`
+			// on its shell model).
+			const ctrlColScenario: 'locked' | 'unlocked' | 'xlsxRef' = this.isXlsxBacked ? 'xlsxRef' : locked ? 'locked' : 'unlocked';
+			const hiddenCtrlColButtons = new Set<CtrlColButtonId>(this.plugin.settings.ctrlColHiddenButtons[ctrlColScenario]);
+
 			// isEmpty's "active" is a stand-in default-template model purely for
 			// version-detection plumbing (see getEmptyTemplate) — the empty-block
 			// banner below renders its own multi-template preview, so skip this
@@ -443,6 +481,7 @@ export class TableBlock extends MarkdownRenderChild {
 					// which the existing "open in default app"/"convert to plain table"
 					// buttons already cover more directly.
 					(!this.isXlsxBacked && !isEmpty && !isOldFormat) ? () => void this.exportToXlsx() : undefined,
+					hiddenCtrlColButtons,
 				);
 			}
 
@@ -851,6 +890,16 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  which sheet to reactivate. */
 	private async switchXlsxSheet(sheetId: string): Promise<void> {
 		this.xlsxActiveSheetId = sheetId;
+		await this.render();
+	}
+
+	/** liveInstances/refreshAllTableBlocks' entry point — same in-place
+	 *  "re-run render() on this exact instance" shape as switchXlsxSheet just
+	 *  above, since nothing here needs a fresh instance/container the way a
+	 *  real write-back does: only which buttons/behaviour render() itself
+	 *  chooses (from `this.plugin.settings`, read fresh on every call) needs
+	 *  to change, not the underlying model. */
+	async refresh(): Promise<void> {
 		await this.render();
 	}
 
