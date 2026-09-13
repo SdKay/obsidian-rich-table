@@ -117,6 +117,10 @@ const EN = {
 	// Auto-fit all
 	autoFitAll: 'Auto-fit all column widths and row heights',
 
+	// Zoom (status bar widget)
+	zoomOut: 'Zoom out',
+	zoomIn:  'Zoom in',
+
 	// Transpose
 	transposeTable: 'Transpose rows and columns',
 
@@ -344,6 +348,9 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	unlockTable: '解锁表格（启用图形化编辑）',
 
 	autoFitAll: '自动调整所有列宽和行高',
+
+	zoomOut: '缩小',
+	zoomIn:  '放大',
 
 	transposeTable: '行列转置',
 

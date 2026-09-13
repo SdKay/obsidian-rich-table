@@ -30,6 +30,7 @@ export function bindScrollSync(
 	root: HTMLElement,
 	isActive: () => boolean,
 	consumers: Array<(geom: VisibleGeom) => void>,
+	zoom = 1,
 ): void {
 	let scheduled = false;
 	wrapper.addEventListener('scroll', () => {
@@ -42,7 +43,7 @@ export function bindScrollSync(
 			// subsequent atomic swap may have already detached this closure's
 			// root by the time the frame actually runs.
 			if (!root.isConnected) return;
-			const geom = computeVisibleGeom(table, root, wrapper);
+			const geom = computeVisibleGeom(table, root, wrapper, zoom);
 			for (const consumer of consumers) consumer(geom);
 		});
 	});

@@ -113,6 +113,7 @@ function clearFreeze(table: HTMLTableElement): void {
 function snapshotTable(
 	table: HTMLTableElement, thead: HTMLElement, tbody: HTMLElement,
 	freezeRows: number | undefined, freezeCols: number | undefined,
+	zoom: number,
 	cache?: ThemeCache,
 ): TableSnapshot<HTMLElement> {
 	const tableStyle = getComputedStyle(table);
@@ -148,7 +149,7 @@ function snapshotTable(
 			if (ci === undefined || ci >= freezeCols) continue;
 			// Measured off the <col>, which is never sticky, so its rect is always the
 			// column's true layout box even while its cells are stuck elsewhere.
-			snapshot.colOffsets.set(ci, scrollContentOffset(col, 'x'));
+			snapshot.colOffsets.set(ci, scrollContentOffset(col, 'x', zoom));
 		}
 	}
 
@@ -164,7 +165,7 @@ function snapshotTable(
 		const frozenRow = freezeRows !== undefined && rowIdx <= freezeRows;
 		// Safe to read the row's live rect: nothing has been written yet this pass,
 		// and a sticky element never changes any other element's layout position.
-		if (frozenRow) snapshot.rowOffsets.set(rowIdx, scrollContentOffset(tr, 'y'));
+		if (frozenRow) snapshot.rowOffsets.set(rowIdx, scrollContentOffset(tr, 'y', zoom));
 
 		for (const cell of Array.from(tr.children) as HTMLTableCellElement[]) {
 			const colIdx = cell.dataset.col !== undefined ? parseInt(cell.dataset.col) : undefined;
@@ -257,7 +258,7 @@ function planKey(plan: FreezePlan<HTMLElement>): string {
 	]);
 }
 
-export function applyFreeze(table: HTMLTableElement, thead: HTMLElement, tbody: HTMLElement, model: TableModelV2): void {
+export function applyFreeze(table: HTMLTableElement, thead: HTMLElement, tbody: HTMLElement, model: TableModelV2, liveZoom?: number): void {
 	const { freezeRows, freezeCols } = resolveFreeze(model);
 	const sig = themeSignature(table);
 	let cache = themeCache.get(table);
@@ -276,7 +277,19 @@ export function applyFreeze(table: HTMLTableElement, thead: HTMLElement, tbody: 
 	// during a column-width or row-height drag — the one situation where a pass
 	// both reuses the cache and has a new geometry to write.
 	if (!cache) clearFreeze(table);
-	const snapshot = snapshotTable(table, thead, tbody, freezeRows, freezeCols, cache);
+	// Takes the CALLER's live zoom factor rather than re-deriving one from
+	// model.zoom: this runs from a ResizeObserver that can fire mid-drag,
+	// while the zoom control's live-preview has already changed root's real
+	// CSS zoom but model.zoom (only updated by the eventual commit + full
+	// re-render) hasn't caught up yet — re-deriving from model.zoom here
+	// would then divide by a stale factor for the exact same reason
+	// renderer.ts's own closure-local `zoom` had to stop being a `const`. See
+	// that doc comment for the diagnostic-confirmed symptom (a pinned width
+	// squeezed by the stale/live ratio). Falls back to model.zoom for the
+	// handful of direct test call sites that have no live renderer.ts
+	// closure to read from and only care about the model's own committed value.
+	const zoom = liveZoom ?? (model.zoom ?? 100) / 100;
+	const snapshot = snapshotTable(table, thead, tbody, freezeRows, freezeCols, zoom, cache);
 	const plan = planFreeze(snapshot, model);
 
 	// IDEMPOTENCE. This runs from a ResizeObserver on every geometry-affecting

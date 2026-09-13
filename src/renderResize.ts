@@ -19,6 +19,7 @@ export function setupColResize(
 	model: TableModelV2,
 	onStructuralOp: StructuralOpHandler,
 	component?: Component,
+	zoom = 1,
 ): void {
 	const col = model.columns[colIdx];
 	const allCols = ownCols(tbl).filter(c => c.dataset.col !== undefined);
@@ -43,15 +44,20 @@ export function setupColResize(
 	// kept needing another special case for another scroll/view-size
 	// combination; matching the table's own DOM-nested geometry sidesteps the
 	// whole class of bug instead).
+	// parentRect/tblRect are visual (getBoundingClientRect); --ri-* are
+	// consumed as logical left/top/height, and colRightX (from style.width) is
+	// already logical — divide every visual difference/size by zoom before
+	// mixing it in, same correction shape as scrollContentOffset's own
+	// (renderGeometry.ts's NO_ZOOM doc comment).
 	const makeColLine = (): HTMLElement => {
 		const parent = tbl.parentElement!;
 		const parentRect = parent.getBoundingClientRect();
 		const tblRect = tbl.getBoundingClientRect();
 		const line = parent.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-col' });
 		line.setCssProps({
-			'--ri-x':      `${tblRect.left - parentRect.left + colRightX(tbl, colIdx)}px`,
-			'--ri-top':    `${tblRect.top - parentRect.top}px`,
-			'--ri-height': `${tblRect.height}px`,
+			'--ri-x':      `${(tblRect.left - parentRect.left) / zoom + colRightX(tbl, colIdx)}px`,
+			'--ri-top':    `${(tblRect.top - parentRect.top) / zoom}px`,
+			'--ri-height': `${tblRect.height / zoom}px`,
 		});
 		return line;
 	};
@@ -102,7 +108,10 @@ export function setupColResize(
 			// class of issue as row-resize's own Math.round just below,
 			// applied here for consistency rather than because it was ever
 			// independently re-derived as necessary for THIS code path.
-			const delta = Math.round(ev.clientX - startX);
+			// clientX deltas are visual; startW/MIN/newW are all logical (style.width) —
+			// divide the delta by zoom before adding it to a logical size, same
+			// correction shape used throughout renderer.ts (NO_ZOOM's doc comment).
+			const delta = Math.round((ev.clientX - startX) / zoom);
 			const newW  = Math.max(MIN, startW + delta);
 			thisCol.style.setProperty('width', `${newW}px`);
 			// Only this column's own width changes — every other column (and the
@@ -119,7 +128,7 @@ export function setupColResize(
 
 			if (colLine) {
 				const parentLeft = tbl.parentElement!.getBoundingClientRect().left;
-				colLine.setCssProps({ '--ri-x': `${tbl.getBoundingClientRect().left - parentLeft + colRightX(tbl, colIdx)}px` });
+				colLine.setCssProps({ '--ri-x': `${(tbl.getBoundingClientRect().left - parentLeft) / zoom + colRightX(tbl, colIdx)}px` });
 			}
 			// Grid auto-updates edge-add strip sizes — no manual repositioning needed.
 			tbl.dispatchEvent(new CustomEvent('bt-layout-changed'));
@@ -129,7 +138,7 @@ export function setupColResize(
 			handle.removeEventListener('pointermove', onMove);
 			colDragging = false;
 			hideColLine();
-			const delta = Math.round(ev.clientX - startX);
+			const delta = Math.round((ev.clientX - startX) / zoom);
 			if (delta === 0) return;
 			const newW = Math.max(MIN, startW + delta);
 			void onStructuralOp({ type: 'set-col-width', colId: col.id, width: newW });
@@ -149,6 +158,7 @@ export function bindResizeHandle(
 	onCommit: (size: number) => void,
 	component: Component,
 	onDrag?: () => void,
+	zoom = 1,
 ): void {
 	// Shared hover+drag indicator line
 	let rowLine: HTMLElement | null = null;
@@ -178,16 +188,19 @@ export function bindResizeHandle(
 	// setupColResize's makeColLine for why this — DOM-nested in the table's
 	// own coordinate space and clipping ancestor — replaced a viewport-rect,
 	// wrapper/add-strip-aware version of this same line).
+	// Same visual-vs-logical correction as setupColResize's makeColLine above —
+	// every operand here is getBoundingClientRect-derived (visual); --ri-* are
+	// consumed as logical top/left/width.
 	const makeRowLine = (anchor: HTMLElement | undefined): HTMLElement => {
 		const parent = table.parentElement!;
 		const parentRect = parent.getBoundingClientRect();
 		const tblRect = table.getBoundingClientRect();
 		const line = parent.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-row' });
-		const borderY = (anchor ? anchor.getBoundingClientRect().bottom : tblRect.bottom) - parentRect.top;
+		const borderY = ((anchor ? anchor.getBoundingClientRect().bottom : tblRect.bottom) - parentRect.top) / zoom;
 		line.setCssProps({
 			'--ri-y':     `${borderY}px`,
-			'--ri-left':  `${tblRect.left - parentRect.left}px`,
-			'--ri-width': `${tblRect.width}px`,
+			'--ri-left':  `${(tblRect.left - parentRect.left) / zoom}px`,
+			'--ri-width': `${tblRect.width / zoom}px`,
 		});
 		return line;
 	};
@@ -228,13 +241,16 @@ export function bindResizeHandle(
 			const scrollEl = activeDocument.scrollingElement;
 			const savedScrollTop = scrollEl?.scrollTop;
 
-			const delta = ev.clientY - startCoord;
+			// clientY delta is visual; actualStart/lastSize are logical (offsetHeight/
+			// cssVar) — divide the delta by zoom, same correction as setupColResize's
+			// own onMove above.
+			const delta = (ev.clientY - startCoord) / zoom;
 			lastSize = Math.max(minSize, Math.round(actualStart + delta));
 			for (const cell of targets) cell.style.setProperty(cssVar, `${lastSize}px`);
 			// Track actual cell bottom edge live — handles content min-height correctly
 			if (rowLine && anchor) {
 				const parentTop = table.parentElement!.getBoundingClientRect().top;
-				rowLine.setCssProps({ '--ri-y': `${anchor.getBoundingClientRect().bottom - parentTop}px` });
+				rowLine.setCssProps({ '--ri-y': `${(anchor.getBoundingClientRect().bottom - parentTop) / zoom}px` });
 			}
 			onDrag?.();
 			// Row height change shifts cell geometry → rebuild selector strips to follow

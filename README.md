@@ -178,6 +178,10 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 > 🎬 *Demo GIF coming soon*
 
+**21 · Zoom** — Excel-style −/slider/+ control in the status bar, between the row/column totals and the scrollbar; scales the whole table — content, images, cell sizes — from 25% to 400%, saved with the table
+
+> 🎬 *Demo GIF coming soon*
+
 ---
 
 ## Keyboard
@@ -332,12 +336,13 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Tabs — click to switch, double-click to rename, drag to reorder, right-click for color / delete</td><td align="center">✅</td><td align="center">—</td></tr>
 
 <tr>
-  <td rowspan="7"><b>Whole table</b></td>
+  <td rowspan="8"><b>Whole table</b></td>
   <td>Lock — 🔒 disables every graphical edit for that table</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; pinned or hover-only</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Zoom — Excel-style −/slider/+ control in the status bar scales the whole table (content, images, cell sizes) 25%–400%, persisted per table</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Snapshot — export the current table as a sharp PNG (copy to clipboard, or save) or SVG, hover-only chrome excluded and the full table captured even if it's scrolled/bounded</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Export as <code>.xlsx</code> (see <a href="#export-as-xlsx">Export as .xlsx</a>) — a native (non xlsx-backed) table only; pick a destination folder/filename, every sheet if it's a workbook</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Back a table with an external <code>.xlsx</code> file (see <a href="#external-xlsx">External .xlsx</a>) — auto-refreshes on external edits, tracks the file if renamed, one click to open it in Excel/LibreOffice or convert to a plain table</td><td align="center">✅</td><td align="center">—</td></tr>

@@ -1,5 +1,6 @@
 import type { StructuralOpHandler } from './renderTypes';
 import { ownCells, ownCols } from './renderOwnScope';
+import { measureZoomFactor } from './renderGeometry';
 
 /**
  * Extra headroom added on top of a choice pill's measured `offsetWidth`. The
@@ -50,7 +51,7 @@ export function colMinWidth(): number {
  * browser's own native table-layout:auto already picks up the wider pill on
  * its own.
  */
-export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: HTMLElement, onStructuralOp: StructuralOpHandler): void {
+export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: HTMLElement, onStructuralOp: StructuralOpHandler, zoom = 1): void {
 	const table = cellEl.closest('table');
 	const colIdxAttr = cellEl.dataset.col;
 	if (!table || colIdxAttr === undefined) return;
@@ -60,7 +61,11 @@ export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: 
 	// table-layout:auto and needs no help from here either.
 	if (!colEl || colEl.dataset.auto || (table as HTMLElement).style.tableLayout !== 'fixed') return;
 
-	const currentWidth = parseInt(colEl.style.width) || cellEl.getBoundingClientRect().width;
+	// The getBoundingClientRect() fallback is visual; colEl.style.width (the
+	// normal case) is already logical — divide only the visual fallback by
+	// zoom, same correction as scrollContentOffset's own (renderGeometry.ts's
+	// NO_ZOOM doc comment).
+	const currentWidth = parseInt(colEl.style.width) || cellEl.getBoundingClientRect().width / zoom;
 	const view = activeDocument.defaultView;
 	const style = view ? view.getComputedStyle(cellEl) : null;
 	const padH = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24;
@@ -85,6 +90,7 @@ export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: 
 export function autoFitAllColWidths(
 	tbl: HTMLElement,
 	cols: { colIdx: number; minW: number }[],
+	zoom = 1,
 ): Map<number, number> {
 	const results = new Map<number, number>();
 	for (const { colIdx, minW } of cols) results.set(colIdx, minW);
@@ -171,7 +177,11 @@ export function autoFitAllColWidths(
 	}
 	for (const { colIdx, el } of medias) {
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
-		grow(colIdx, el.getBoundingClientRect().width + padH + borderH);
+		// getBoundingClientRect() is visual; padH/borderH (from getComputedStyle,
+		// unaffected by zoom) and the eventual col width write are logical —
+		// divide only the visual term, same correction as scrollContentOffset's
+		// own (renderGeometry.ts's NO_ZOOM doc comment).
+		grow(colIdx, el.getBoundingClientRect().width / zoom + padH + borderH);
 	}
 	for (const { colIdx, el } of textSpans) {
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
@@ -187,7 +197,8 @@ export function autoFitAllColWidths(
 		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
 		const range = activeDocument.createRange();
 		range.selectNodeContents(el);
-		const rw = range.getBoundingClientRect().width;
+		// Same visual-vs-logical correction as the medias branch above.
+		const rw = range.getBoundingClientRect().width / zoom;
 		if (rw > 0) grow(colIdx, rw + padH + borderH);
 	}
 
@@ -229,7 +240,14 @@ export function applyAutoColWidths(table: HTMLElement): void {
 		.filter((c): c is { colEl: HTMLElement; colIdx: number } => c.colIdx >= 0);
 	if (autoCols.length === 0) return;
 
-	const fits = autoFitAllColWidths(table, autoCols.map(c => ({ colIdx: c.colIdx, minW: colMinWidth() })));
+	// Measured back off `table` itself (this call site — tableBlock.ts's
+	// post-swap pass — has no access to renderer.ts's own closure-local
+	// `zoom`) — safe here since `table` is always attached with real,
+	// non-zero content by this point (see measureZoomFactor's own doc comment
+	// on why that's specifically NOT safe for an arbitrary/possibly-zero-sized
+	// element).
+	const zoom = measureZoomFactor(table);
+	const fits = autoFitAllColWidths(table, autoCols.map(c => ({ colIdx: c.colIdx, minW: colMinWidth() })), zoom);
 	for (const { colEl, colIdx } of autoCols) {
 		colEl.style.setProperty('width', `${fits.get(colIdx) ?? colMinWidth()}px`);
 	}
@@ -269,6 +287,9 @@ export function applyCodeLineHeightFix(table: HTMLElement): void {
 	if (!code) return;
 	const line = code.closest('p') ?? code.parentElement;
 	if (!line) return;
+	// Measured back off `table` itself — same reasoning as applyAutoColWidths'
+	// own call to measureZoomFactor just above.
+	const zoom = measureZoomFactor(table);
 	// Measure the line's TRUE rendered height via a plain, padding-free probe
 	// inserted right next to the code element, in the same line box — reading
 	// `line-height` off computed style is unreliable here: its computed value
@@ -285,12 +306,17 @@ export function applyCodeLineHeightFix(table: HTMLElement): void {
 	// synchronously, in the same tick, well before the next paint.
 	const probe = createSpan({ text: ' ' });
 	code.after(probe);
+	// Both operands below are visual (getBoundingClientRect); the comparison
+	// between them is unit-consistent either way, but the value actually
+	// WRITTEN (--bt-cell-line-height, consumed as logical line-height) needs
+	// dividing by zoom — same correction shape as scrollContentOffset's own
+	// (renderGeometry.ts's NO_ZOOM doc comment).
 	const currentLineHeight = probe.getBoundingClientRect().height;
 	probe.remove();
 	if (!currentLineHeight) return;
 	const codeHeight = code.getBoundingClientRect().height;
 	if (codeHeight <= currentLineHeight) return; // already fits — the common case for most themes
-	table.style.setProperty('--bt-cell-line-height', `${codeHeight}px`);
+	table.style.setProperty('--bt-cell-line-height', `${codeHeight / zoom}px`);
 }
 
 /** A column's right edge, in px offset from the table's own left border edge, summing <col> widths in DOM order. */

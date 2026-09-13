@@ -17,6 +17,7 @@ import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
 import { growColForChoiceValue } from './renderAutofit';
 import { isInsideNestedTable } from './renderOwnScope';
+import { measureZoomFactor } from './renderGeometry';
 
 /**
  * Single source of truth for a cell's click→primary-action / panel-action wiring,
@@ -578,7 +579,11 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 							// possible label up front (colMinWidth) — grow reactively
 							// instead, right when a value that actually needs more room
 							// is picked. Never shrinks.
-							if (onStructuralOp) growColForChoiceValue(el, col.id, pill, onStructuralOp);
+							// Measured back off `el` itself (this cell's own click handler has
+						// no access to renderer.ts's closure-local `zoom`) — safe here
+						// since the cell the user just clicked is, by definition, laid
+						// out and visible.
+						if (onStructuralOp) growColForChoiceValue(el, col.id, pill, onStructuralOp, measureZoomFactor(el));
 								});
 					});
 				}

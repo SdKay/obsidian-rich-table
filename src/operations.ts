@@ -78,6 +78,11 @@ export type StructuralOpV2 =
 	/** Width in px of the status bar's scrollbar section; null resets to the
 	 *  fixed initial width (see model.ts). */
 	| { type: 'set-status-bar-scroll-width'; width: number | null }
+	/** Whole-table visual zoom as a percentage; null resets to 100 (see
+	 *  model.ts's own doc comment). Clamped to [ZOOM_MIN, ZOOM_MAX] by the
+	 *  reducer (renderZoom.ts), same "clamp centrally, once" reasoning as
+	 *  every other numeric field here. */
+	| { type: 'set-zoom'; percent: number | null }
 	/** merges, if present, are rectangles 0-indexed and relative to the pasted
 	 *  block's own top-left (values[0][0]) — the read-back counterpart to a
 	 *  copied range's own merges (renderClipboard.ts's buildRangeHtml /
@@ -117,6 +122,17 @@ export type StructuralOpV2 =
 	 *  mapping (old header row becomes a new label column; old columns
 	 *  become new rows, named from what used to be their header text). */
 	| { type: 'transpose' };
+
+/** Zoom range for `set-zoom` — same bounds the left-toolbar zoom control
+ *  (renderer.ts) and the status-bar zoom widget clamp their own step/drag/
+ *  typed-input interactions to, so a value can never even be OFFERED that
+ *  the reducer would then silently re-clamp to something else. 25% is a
+ *  usable floor (much below that and even a large table's text becomes
+ *  illegible); 400% covers "zoom in on one dense cell" without inviting a
+ *  layout so oversized it stops being useful as a table view at all. */
+export const ZOOM_MIN = 25;
+export const ZOOM_MAX = 400;
+export const ZOOM_DEFAULT = 100;
 
 export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): void {
 	switch (op.type) {
@@ -510,6 +526,10 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		case 'set-status-bar-scroll-width':
 			if (op.width === null || !(op.width > 0)) delete model.statusBarScrollWidth;
 			else model.statusBarScrollWidth = Math.round(op.width);
+			break;
+		case 'set-zoom':
+			if (op.percent === null || op.percent === ZOOM_DEFAULT) delete model.zoom;
+			else model.zoom = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, op.percent)));
 			break;
 		case 'set-sort':
 			if (op.sort) model.sort = op.sort; else delete model.sort;

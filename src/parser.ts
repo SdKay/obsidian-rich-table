@@ -20,6 +20,7 @@ import type {
 } from './model';
 import { genId } from './idGen';
 import { recomputeFormulas } from './formula';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT } from './operations';
 
 const AGG_TYPES: AggType[] = ['sum', 'avg', 'min', 'max', 'count'];
 
@@ -49,6 +50,7 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 	const viewWidth  = parseViewSize(yaml?.viewWidth);
 	const viewHeight = parseViewSize(yaml?.viewHeight);
 	const statusBarScrollWidth = parseViewSize(yaml?.statusBarScrollWidth);
+	const zoom = parseZoom(yaml?.zoom);
 
 	return {
 		columns,
@@ -69,6 +71,7 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 		...(viewHeight !== undefined ? { viewHeight } : {}),
 		...(yaml?.statusBarMode === 'pinned' || yaml?.statusBarMode === 'hover' ? { statusBarMode: yaml.statusBarMode } : {}),
 		...(statusBarScrollWidth !== undefined ? { statusBarScrollWidth } : {}),
+		...(zoom !== undefined ? { zoom } : {}),
 		// Only meaningful alongside a matching views[] entry — an activeViewId
 		// pointing nowhere behaves exactly like it being absent (default table).
 		...(typeof yaml?.activeViewId === 'string' && views.some(v => v.id === yaml.activeViewId)
@@ -267,6 +270,16 @@ function parseFreezeCount(raw: unknown): number | undefined {
 // (= auto). Rounded to an integer so a dragged fractional value serializes cleanly.
 function parseViewSize(raw: unknown): number | undefined {
 	return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.round(raw) : undefined;
+}
+
+/** A hand-written `zoom: 100` (or one outside [ZOOM_MIN, ZOOM_MAX]) is
+ *  clamped/normalized the same way the reducer's own `set-zoom` case does —
+ *  YAML is user-editable text, so a note hand-edited to `zoom: 9999` should
+ *  render exactly as if the zoom control itself had been clamped there,
+ *  not silently accept an absurd value just because it bypassed the UI. */
+function parseZoom(raw: unknown): number | undefined {
+	if (typeof raw !== 'number' || !Number.isFinite(raw) || raw === ZOOM_DEFAULT) return undefined;
+	return Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, raw)));
 }
 
 function parseViews(raw: unknown): ViewDefV2[] {

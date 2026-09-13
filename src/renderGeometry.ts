@@ -1,6 +1,51 @@
 import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
 
 /**
+ * `renderZoom.ts`'s `zoom` (CSS `zoom`, not `transform`) scales every
+ * descendant's RENDERED size — `getBoundingClientRect()` reports the scaled
+ * (visual) box — while every OTHER geometry primitive that matters here
+ * (`style.width`, `scrollLeft`/`scrollWidth`/`clientWidth`, an inline
+ * `--css-var: <n>px` this file itself writes) stays in unscaled (logical)
+ * px. `computeVisibleGeom`/`scrollContentOffset` are the two shared "where is
+ * this element" answers every positioning consumer in this codebase already
+ * goes through (see this file's own top-of-file doc comment on why there's
+ * exactly one of each) — dividing their VISUAL (getBoundingClientRect-
+ * derived) measurements by `zoom` here, once, is what keeps every existing
+ * consumer's `1 unit = 1 logical px` assumption true again without that
+ * consumer needing to know zoom exists at all.
+ *
+ * `zoom` is a plain factor (1 = no zoom), not measured from the DOM —
+ * renderer.ts is the one place that ever SETS the CSS `zoom` property (from
+ * `model.zoom`), so it already knows the exact factor with no ambiguity;
+ * measuring it back out via `getComputedStyle` was tried and rejected: a
+ * plain descendant's OWN computed `zoom` value does not reflect an ancestor's
+ * zoom at all (confirmed empirically — only the ratio of
+ * `getBoundingClientRect()` to `offsetWidth`/`offsetHeight` recovers the true
+ * effective factor, and that ratio is undefined/unreliable for a
+ * currently-zero-sized element, e.g. a hover-only strip before its first
+ * layout). A plain passed-in number sidesteps both problems entirely.
+ */
+export const NO_ZOOM = 1;
+
+/**
+ * Fallback for the few call sites (`reserveSelectorLeftPad` below) that have
+ * no access to renderer.ts's own closure-local `zoom` number and therefore
+ * can't be handed the factor directly — measures it back off `root` itself
+ * via the ratio of its rendered (visual) size to its logical size. Safe
+ * specifically HERE because `root` always contains a real, already-laid-out
+ * table with non-zero height by the time this runs (unlike an arbitrary
+ * currently-zero-sized element, e.g. a hover-only strip before first layout,
+ * where this same ratio would be 0/0 — see NO_ZOOM's own doc comment for why
+ * that degenerate case is why every OTHER consumer takes zoom as a plain
+ * parameter instead of measuring it locally).
+ */
+export function measureZoomFactor(root: HTMLElement): number {
+	const offset = root.offsetHeight;
+	if (offset === 0) return NO_ZOOM;
+	return root.getBoundingClientRect().height / offset;
+}
+
+/**
  * The one place that answers "where is this element within the scrolling
  * content?" — shared by the frozen region (renderFreeze.ts) and the row/column
  * selector strips (renderer.ts), because those two have to agree exactly.
@@ -41,15 +86,21 @@ import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
  * a sub-pixel tiling mismatch between adjacent frozen columns — somewhere for
  * scrolling content to show through — in exchange for nothing.
  */
-export function scrollContentOffset(el: HTMLElement, axis: 'x' | 'y'): number {
+export function scrollContentOffset(el: HTMLElement, axis: 'x' | 'y', zoom: number = NO_ZOOM): number {
 	const scroller = el.closest<HTMLElement>('.bt-table-wrapper');
 	if (!scroller) return 0;
 	const box = scroller.getBoundingClientRect();
 	const cs = getComputedStyle(scroller);
 	const rect = el.getBoundingClientRect();
+	// scrollLeft/scrollTop and the computed border width are already logical
+	// (unaffected by `zoom` — confirmed empirically, see NO_ZOOM's own doc
+	// comment); only the two getBoundingClientRect() reads are visual, so only
+	// their DIFFERENCE (which is what actually needs dividing) goes through
+	// `/ zoom` — dividing the pre-summed result would incorrectly scale the
+	// already-logical scroll/border terms too.
 	return axis === 'x'
-		? rect.x + scroller.scrollLeft - (box.x + (parseFloat(cs.borderLeftWidth) || 0))
-		: rect.y + scroller.scrollTop - (box.y + (parseFloat(cs.borderTopWidth) || 0));
+		? (rect.x - box.x) / zoom + scroller.scrollLeft - (parseFloat(cs.borderLeftWidth) || 0)
+		: (rect.y - box.y) / zoom + scroller.scrollTop - (parseFloat(cs.borderTopWidth) || 0);
 }
 
 export interface VisibleGeom {
@@ -80,7 +131,7 @@ export interface VisibleGeom {
  *              (overflow:hidden on the col strip). rowOffset is its vertical
  *              mirror, for the row selector's own inner-scroll tracking.
  */
-export function computeVisibleGeom(table: HTMLElement, root: HTMLElement, wrapper: HTMLElement): VisibleGeom {
+export function computeVisibleGeom(table: HTMLElement, root: HTMLElement, wrapper: HTMLElement, zoom: number = NO_ZOOM): VisibleGeom {
 	const tr = table.getBoundingClientRect();
 	const rr = root.getBoundingClientRect();
 	const wr = wrapper.getBoundingClientRect();
@@ -88,16 +139,24 @@ export function computeVisibleGeom(table: HTMLElement, root: HTMLElement, wrappe
 	const visRight  = Math.min(tr.right, wr.right);
 	const visTop    = Math.max(tr.top, wr.top);
 	const visBottom = Math.min(tr.bottom, wr.bottom);
+	// tr/rr/wr themselves stay VISUAL (raw getBoundingClientRect) — some callers
+	// (e.g. the "did root grow taller than wrapper by an anomalous amount"
+	// check) compare two of these rects directly against each other, which is
+	// self-consistent without any zoom correction at all. Every DERIVED field
+	// below is a DIFFERENCE between two visual rects, which is exactly the
+	// quantity `/ zoom` recovers as a true logical distance — same reasoning
+	// as scrollContentOffset's own correction, and the one this function's own
+	// callers actually consume as "an offset/size in root's logical px".
 	return {
 		tr, rr, wr,
-		tt: tr.top - rr.top,
-		th: tr.height,
-		vl: visLeft - rr.left,
-		vw: Math.max(0, visRight - visLeft),
-		colOffset: tr.left - visLeft,
-		vt: visTop - rr.top,
-		vh: Math.max(0, visBottom - visTop),
-		rowOffset: tr.top - visTop,
+		tt: (tr.top - rr.top) / zoom,
+		th: tr.height / zoom,
+		vl: (visLeft - rr.left) / zoom,
+		vw: Math.max(0, visRight - visLeft) / zoom,
+		colOffset: (tr.left - visLeft) / zoom,
+		vt: (visTop - rr.top) / zoom,
+		vh: Math.max(0, visBottom - visTop) / zoom,
+		rowOffset: (tr.top - visTop) / zoom,
 	};
 }
 
@@ -126,10 +185,14 @@ export function reserveSelectorLeftPad(root: HTMLElement): void {
 	if (!wrapper) return;
 	const hasSelectors = !!root.querySelector('.bt-col-selector, .bt-row-selector');
 	const leftNeed = hasSelectors ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
+	const zoom = measureZoomFactor(root);
 	const wr0 = wrapper.getBoundingClientRect();
 	const rr0 = root.getBoundingClientRect();
 	const currentPad = parseFloat(root.style.getPropertyValue('--bt-sel-pad-left')) || 0;
-	const leftRoom = (wr0.left - rr0.left) - currentPad;
+	// (wr0.left - rr0.left) is visual; currentPad is the logical px this
+	// function itself already wrote — same unit-consistency correction as
+	// renderer.ts's own reserveLeftPad (see that function's own comment).
+	const leftRoom = (wr0.left - rr0.left) / zoom - currentPad;
 	const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
 	if (leftPad !== currentPad) root.setCssProps({ '--bt-sel-pad-left': `${leftPad}px` });
 }

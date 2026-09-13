@@ -1,5 +1,14 @@
 /* Rich Table plugin */
 
+/* Never zoomed — see renderer.ts's own doc comment on `shell` for why the
+ * status bar (its other child, alongside .bt-render-root) has to live
+ * outside the zoomed subtree. Plain block, no layout properties of its own
+ * beyond what's needed to stack the two children vertically — .bt-render-root
+ * itself keeps every other layout rule it already had. */
+.bt-render-root-shell {
+	display: block;
+}
+
 .bt-render-root {
 	position: relative;
 	/* Selector strip layout constants — keep in sync with src/selectorLayout.ts */
@@ -340,7 +349,12 @@
 	opacity: 0;
 	transition: opacity 0.12s;
 }
-.bt-render-root:hover .bt-view-resize { opacity: 1; }
+/* Keyed on .bt-render-root-shell, not .bt-render-root itself: the shell wraps
+ * BOTH root and the status bar (bt-view-resize-b lives inside the latter),
+ * as two siblings — see renderer.ts's own shell doc comment for why the
+ * status bar had to move out of root. A root-only :hover rule would drop
+ * this the moment the cursor crosses from the table into the status bar. */
+.bt-render-root-shell:hover .bt-view-resize { opacity: 1; }
 .bt-view-resize-b { left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 .bt-view-resize-r { top: 0; bottom: 0; right: 0; width: 6px; cursor: ew-resize; }
 .bt-view-resize-br { right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; }
@@ -399,13 +413,18 @@
  * 在极少数时机（尚未桥接完成）下可能读不到值，calc() 的 fallback 必须与基准主题
  * 默认值一致（0px，而非旧的 -9px），否则会短暂出现标题压进表格的重叠。
  * --bt-title-mb-adj: JS 在 hover 时设为 -mb-pull（动态抵消，而非固定值），让标题
- * 紧贴 col-selector 顶部，不会在主题的拉近值之上再叠加一段空隙。 */
+ * 紧贴 col-selector 顶部，不会在主题的拉近值之上再叠加一段空隙。
+ * --bt-title-sel-pad: renderer.ts 在创建 titleEl 时设一次、之后不再改动（跟
+ * --bt-sel-pad "只设一次，永不收回" 是同一套道理）——列选择条固定悬浮在表格正上方
+ * SEL_TOTAL 高度那道缝里，标题挪进 root 内部之后这道缝必须由标题自己的
+ * margin-bottom 留出来，而不能再指望 root 的 padding-top（那样只会把标题往下推，
+ * 缝隙留在标题上方而不是标题和表格之间，导致条把标题整个盖住）。*/
 .bt-table-title {
 	text-align: center;
 	font-size: var(--h4-size, 1.1em);
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
-	margin: 0 0 calc(var(--bt-title-mb-pull, 0px) + var(--bt-title-mb-adj, 0px));
+	margin: 0 0 calc(var(--bt-title-mb-pull, 0px) + var(--bt-title-mb-adj, 0px) + var(--bt-title-sel-pad, 0px));
 	line-height: 1.4;
 }
 
@@ -690,7 +709,10 @@
 .bt-ctrl-col::-webkit-scrollbar {
 	display: none;
 }
-.bt-render-root:hover .bt-ctrl-col { opacity: 1; }
+/* Same reasoning as .bt-view-resize's own comment above — keyed on the
+ * shell, not root, since the status bar (also part of "the table" for
+ * hover purposes) is root's sibling now, not its descendant. */
+.bt-render-root-shell:hover .bt-ctrl-col { opacity: 1; }
 .bt-ctrl-col.is-locked             { opacity: 1; }   /* stay visible when locked */
 .bt-ctrl-btn {
 	width: var(--bt-sel-cell);
@@ -2766,6 +2788,64 @@
 	padding: 0 var(--size-4-2);
 	white-space: nowrap;
 }
+/* Static separator right before the zoom widget — same vertical-line look as
+ * statusDivider's own ::after, but this one never drags (it's just visual
+ * grouping, not a resize handle). */
+.bt-status-sep {
+	flex: 0 0 1px;
+	align-self: stretch;
+	margin: 5px 0;
+	background: var(--background-modifier-border);
+}
+/* Zoom widget — between stats and the divider/scrollbar section, matching
+ * Excel's own status-bar zoom control layout (-, slider, +, percent). */
+.bt-status-zoom {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	padding: 0 var(--size-4-2);
+	white-space: nowrap;
+}
+.bt-status-zoom-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	user-select: none;
+	line-height: 1;
+}
+.bt-status-zoom-btn:hover {
+	background: var(--background-modifier-hover);
+}
+.bt-status-zoom-slider {
+	width: 80px;
+	margin: 0;
+}
+.bt-status-zoom-value {
+	/* Just enough for the widest value ("400%") — 3.5em left a wide blank
+	 * strip between the + button and the (right-aligned) text for every
+	 * narrower value, reported as "缩放按钮+和后面的百分比按钮中间有挺大一块空白". */
+	min-width: 2.6em;
+	text-align: right;
+	cursor: pointer;
+}
+.bt-status-zoom-value:hover {
+	color: var(--text-normal);
+}
+.bt-status-zoom-input {
+	width: 2.6em;
+	text-align: right;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	color: inherit;
+	font: inherit;
+}
+
 /* Drag target between the tabs/stats area and the scrollbar section — widens
  * .bt-status-scroll's reserved width (--bt-status-scroll-w) at the expense
  * of .bt-status-tabs' flexible space, or the reverse. The visible grip is a

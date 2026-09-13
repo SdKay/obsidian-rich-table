@@ -47,6 +47,7 @@ export interface TableSpec {
 	footer?: string;
 	statusBarMode?: 'pinned' | 'hover';
 	statusBarScrollWidth?: number;
+	zoom?: number;
 }
 
 export function tableSource(spec: TableSpec): string {
@@ -81,6 +82,7 @@ export function tableSource(spec: TableSpec): string {
 		['theme', spec.theme], ['freezeRows', spec.freezeRows], ['freezeCols', spec.freezeCols],
 		['viewWidth', spec.viewWidth], ['viewHeight', spec.viewHeight], ['locked', spec.locked],
 		['statusBarMode', spec.statusBarMode], ['statusBarScrollWidth', spec.statusBarScrollWidth],
+		['zoom', spec.zoom],
 	] as const) {
 		if (value !== undefined) lines.push(`${key}: ${value}`);
 	}

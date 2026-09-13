@@ -21,6 +21,7 @@ import { enterLineEdit } from './renderEditMode';
 import { colMinWidth } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
 import { scrollContentOffset, computeVisibleGeom as computeVisibleGeomPure, type VisibleGeom } from './renderGeometry';
+import { applyZoom, zoomFactor, renderZoomControl } from './renderZoom';
 import { bindScrollSync } from './renderScrollSync';
 import { type CellOpEntry, openCellPanel, buildAlignCellOp } from './renderPanel';
 import { renderRow, triggerPrimaryAction } from './renderCell';
@@ -230,23 +231,6 @@ export async function renderTable(
 	// handle's existing gate.
 	let mountHeightResizeHandle  = (_container: HTMLElement) => { /* assigned in drag-resize-handle block if editable */ };
 
-	// Title
-	if (model.title) {
-		const titleEl = container.createDiv({ cls: 'bt-table-title' });
-		titleEl.createSpan({ text: model.title });
-		if (onStructuralOp) {
-			titleEl.addClass('bt-text-editable');
-			titleEl.setAttribute('aria-label', t('clickToEditTitle'));
-			titleEl.setAttribute('data-tooltip-position', 'top');
-			titleEl.addEventListener('click', () => {
-				if (titleEl.hasClass('bt-editing')) return;
-				enterLineEdit(titleEl, model.title ?? '', newVal => {
-					void onStructuralOp({ type: 'set-title', title: newVal || undefined });
-				});
-			});
-		}
-	}
-
 	// Footer — hidden while collapsed, along with the table body. Extracted so
 	// both the plain-table path and the Kanban-view early-return (which skips
 	// virtually everything else table-specific below) can share it. `parent`
@@ -299,12 +283,83 @@ export async function renderTable(
 		const remembered = takeSelectedCell(cacheKey);
 		if (remembered) restoredSel = clampToValidCell(model, occupied, remembered);
 	}
+	// Outer shell, NEVER zoomed — hosts `root` (the actual zoomed subtree:
+	// table, toolbar, title) and the status bar as two plain siblings. Exists
+	// solely so the status bar's own zoom control (mounted inside it, below)
+	// isn't itself a descendant of the element it's dragging the zoom of: a
+	// native <input type=range> maps mouse position to value against its OWN
+	// on-screen track geometry, and that geometry is exactly what changes,
+	// mid-drag, the instant `root`'s zoom changes — confirmed via direct
+	// probe: an ancestor whose zoom an input's own 'input' handler changes
+	// runs away almost immediately (a 20px real mouse move produced a value
+	// jump equivalent to 100%→212%) purely from the track rescaling under the
+	// cursor, with no bug in the value math itself. Keeping the control
+	// outside the zoomed subtree removes the feedback loop entirely, which is
+	// also the more intuitive behaviour (Excel's own status bar never scales
+	// itself along with the sheet).
+	const shell = container.createDiv({ cls: 'bt-render-root-shell' });
 	// Root container with position:relative so all overlay elements (selectors,
 	// edge-add strips) can use position:absolute and stay naturally inside
 	// Obsidian's content pane — no viewport coordinate math needed.
 	const themeClass = model.theme ? `bt-render-root bt-theme-${model.theme}` : 'bt-render-root';
-	const root = container.createDiv({ cls: themeClass + (model.collapsed ? ' bt-collapsed' : '') });
+	const root = shell.createDiv({ cls: themeClass + (model.collapsed ? ' bt-collapsed' : '') });
 	onRootReady?.(root);
+	applyZoom(root, model.zoom);
+
+	// Title — a child of `root`, not `container`, so it scales together with
+	// the table under zoom (the user's own framing: "标题也跟着一起缩放"). Was a
+	// sibling of root when zoom didn't exist yet; moving it inside is safe —
+	// nothing in this file, tableBlock.ts, or tableSnapshot.ts keys off titleEl
+	// being outside root: the snapshot/PNG-export path (tableSnapshot.ts)
+	// already clones `root` itself — an inside title is simply included in
+	// that clone for free, which is the right outcome (the title names the
+	// table; it belongs in a picture of it) rather than something to guard
+	// against.
+	//
+	// TOP_STRIP_PAD's reservation (below) DOES still care about DOM position,
+	// though — it used to land as root's own padding-top, which sat directly
+	// above root's ONLY content (the table) back when title was root's
+	// sibling. With title now root's first child, that same padding pushes
+	// the title down instead of opening a gap where the column-selector strip
+	// actually anchors (just above the table) — reported as the strip
+	// covering the title outright on hover. So: with a title present, the
+	// reservation moves onto the TITLE's own margin-bottom via
+	// --bt-title-sel-pad (stacking with --bt-title-mb-pull/-adj the same way
+	// those two already stack with each other), leaving root's padding-top at
+	// 0; TOP_STRIP_PAD itself already special-cases model.title to 0 for
+	// exactly the same reason (see its own comment) — this just moves WHERE
+	// that reserved space lands instead of dropping it outright.
+	if (model.title) {
+		const titleEl = root.createDiv({ cls: 'bt-table-title' });
+		titleEl.createSpan({ text: model.title });
+		titleEl.setCssProps({ '--bt-title-sel-pad': `${SEL_TOTAL}px` });
+		if (onStructuralOp) {
+			titleEl.addClass('bt-text-editable');
+			titleEl.setAttribute('aria-label', t('clickToEditTitle'));
+			titleEl.setAttribute('data-tooltip-position', 'top');
+			titleEl.addEventListener('click', () => {
+				if (titleEl.hasClass('bt-editing')) return;
+				enterLineEdit(titleEl, model.title ?? '', newVal => {
+					void onStructuralOp({ type: 'set-title', title: newVal || undefined });
+				});
+			});
+		}
+	}
+
+	// The factor every zoom-aware geometry correction below divides by — see
+	// renderGeometry.ts's own NO_ZOOM doc comment for why this is threaded as
+	// a plain number rather than measured back off the DOM. `let`, not `const`:
+	// the zoom control's live-drag preview (renderZoomControl's `applyLive`
+	// below) changes the real CSS `zoom` on `root` immediately, without
+	// waiting for the commit + full re-render that would otherwise refresh
+	// this closure with a new value — so this needs to be kept in sync at the
+	// same moment, or every ResizeObserver-driven geometry pass that fires
+	// during the drag (rebuild()'s auto-column-width pin, applyFreeze) divides
+	// by a now-stale factor. Confirmed via diagnostic logging: a table's
+	// pinned width jumped by exactly (live%/stale%) — e.g. 1228px → 1365px,
+	// a ratio of 100/90 — squeezing an auto-width column into a visible,
+	// self-correcting wrap until the eventual commit's fresh render fixed it.
+	let zoom = zoomFactor(model.zoom);
 
 	// ── Kanban/Calendar view: an alternate render mode for the SAME rows/
 	// columns — see ViewDefV2 in model.ts. Deliberately bails out of the
@@ -384,11 +439,16 @@ export async function renderTable(
 		const framed = typeof model.viewWidth === 'number' && !model.locked && wr.width < rr.width - 0.5;
 		root.toggleClass('bt-view-framed', framed);
 		if (!framed) return;
+		// --vf-* are consumed as left/top/right/bottom (logical px, positioned
+		// relative to `root`) — the differences below are visual (both operands
+		// from getBoundingClientRect), so they need the same `/ zoom` correction
+		// as scrollContentOffset's own (see NO_ZOOM's doc comment); `framed`
+		// above is a same-unit width comparison and needs none.
 		root.setCssProps({
-			'--vf-l': `${wr.left - rr.left}px`,
-			'--vf-t': `${wr.top - rr.top}px`,
-			'--vf-r': `${wr.right - rr.left}px`,
-			'--vf-b': `${wr.bottom - rr.top}px`,
+			'--vf-l': `${(wr.left - rr.left) / zoom}px`,
+			'--vf-t': `${(wr.top - rr.top) / zoom}px`,
+			'--vf-r': `${(wr.right - rr.left) / zoom}px`,
+			'--vf-b': `${(wr.bottom - rr.top) / zoom}px`,
 		});
 	};
 	// Deferred: renderTable() still builds into a detached tree at this point
@@ -482,16 +542,21 @@ export async function renderTable(
 				e.stopPropagation();
 				handle.setPointerCapture(e.pointerId);
 				const startX = e.clientX, startY = e.clientY;
+				// r is VISUAL (getBoundingClientRect) but --bt-view-width/-height are
+				// consumed as LOGICAL px (the property they size, unaffected by zoom)
+				// — divide both r and every clientX/clientY delta below by zoom before
+				// using them, same correction shape as scrollContentOffset's own (see
+				// renderGeometry.ts's NO_ZOOM doc comment).
 				const r = wrapper.getBoundingClientRect();
-				let newW = r.width, newH = r.height;
+				let newW = r.width / zoom, newH = r.height / zoom;
 				const onMove = (ev: PointerEvent) => {
 					if (mode !== 'h') {
-						newW = Math.max(80, r.width + (ev.clientX - startX));
+						newW = Math.max(80, r.width / zoom + (ev.clientX - startX) / zoom);
 						wrapper.addClass('bt-view-fixed-w');
 						wrapper.setCssProps({ '--bt-view-width': `${Math.round(newW)}px` });
 					}
 					if (mode !== 'w') {
-						newH = Math.max(60, r.height + (ev.clientY - startY));
+						newH = Math.max(60, r.height / zoom + (ev.clientY - startY) / zoom);
 						wrapper.addClass('bt-view-fixed-h');
 						wrapper.setCssProps({ '--bt-view-height': `${Math.round(newH)}px` });
 					}
@@ -544,8 +609,11 @@ export async function renderTable(
 	// own doc comment for the field-by-field meaning. Pulled out to a pure,
 	// parameterized function there (shared with bindScrollSync, below) since
 	// every caller here wants this closure's own table/root/wrapper anyway;
-	// this local alias keeps every existing zero-arg call site unchanged.
-	const computeVisibleGeom = () => computeVisibleGeomPure(table, root, wrapper);
+	// this local alias keeps every existing zero-arg call site unchanged. The
+	// closure's own `zoom` factor flows through here too, for the same reason —
+	// every one of THOSE call sites gets the correction for free without
+	// individually knowing zoom exists.
+	const computeVisibleGeom = () => computeVisibleGeomPure(table, root, wrapper, zoom);
 
 	// How far left of the table's visible edge the ctrl column needs to clear.
 	// The full SEL_TOTAL+AUTOFIT_OFFSET amount is sized to sit just left of the
@@ -581,7 +649,17 @@ export async function renderTable(
 	// table renders (see reserveSelectorLeftPad/statusBarPinned above, which
 	// deliberately don't distinguish the two at all).
 	const isNested = !!cacheKey?.includes(NESTED_CACHE_KEY_MARKER);
-	const TOP_STRIP_PAD = SEL_TOTAL + (model.title || isNested ? 0 : 28);
+	// With a title, the SEL_TOTAL portion of this reservation moves onto the
+	// title's own margin-bottom instead (see titleEl's own --bt-title-sel-pad,
+	// set right after it's created below) — root's padding-top only carries
+	// it when there's NO title, i.e. root's padding-top actually sits
+	// directly above the table (its only content in that case). Without this
+	// split, the reservation stacked onto root's padding-top unconditionally
+	// pushed the title itself down by SEL_TOTAL instead of opening a gap
+	// where the column-selector strip actually anchors (just above the
+	// table), which the strip then rendered directly over — reported as the
+	// title being covered by the strip on hover.
+	const TOP_STRIP_PAD = model.title ? 0 : SEL_TOTAL + (isNested ? 0 : 28);
 
 	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
 	// its container flush-left, leaving no natural margin for the row selector +
@@ -613,7 +691,11 @@ export async function renderTable(
 		// first paint and then snapped back off-screen the moment the pointer
 		// actually entered the table.
 		const currentPad = parseFloat(root.style.getPropertyValue('--bt-sel-pad-left')) || 0;
-		const leftRoom = (wr0.left - rr0.left) - currentPad;
+		// (wr0.left - rr0.left) is visual (both getBoundingClientRect); currentPad
+		// is the LOGICAL px this function itself already wrote into --bt-sel-pad-left
+		// — dividing only the visual term keeps the subtraction in one consistent
+		// (logical) unit, same correction shape as scrollContentOffset's own.
+		const leftRoom = (wr0.left - rr0.left) / zoom - currentPad;
 		const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
 		if (leftPad === currentPad) return;
 		// A manually-set view width (--bt-view-width) is a FIXED, border-box width
@@ -1443,9 +1525,11 @@ export async function renderTable(
 	renderFooter(wrapper);
 
 	// ── Status bar (FR-017) ───────────────────────────────────────────────────
-	// Sibling of wrapper, not a child of it — the status bar sits below the
-	// scrollable region, not inside it (Excel's own status bar isn't part of
-	// the scrolling grid either). Left section (sheet tabs, wired up once a
+	// A sibling of `root` under `shell`, NOT a child of root — the status bar
+	// sits below the scrollable region, not inside it (Excel's own status bar
+	// isn't part of the scrolling grid either), and, since it hosts the zoom
+	// control, must not itself be inside the zoomed subtree (see shell's own
+	// doc comment above for why). Left section (sheet tabs, wired up once a
 	// workbook exists — see tableBlock.ts) and stats share the space left of
 	// the divider; the divider and the custom scrollbar's track/thumb (wired
 	// up once native scroll hiding + sync land) are pure skeleton for now.
@@ -1462,7 +1546,7 @@ export async function renderTable(
 	// hard-won fixes for (see CLAUDE.md) — toggling any real layout size on
 	// hover is the thing that caused those, not toggling opacity.
 	const statusBarPinned = model.statusBarMode !== 'hover';
-	const statusBar        = root.createDiv({ cls: 'bt-status-bar' + (statusBarPinned ? '' : ' bt-status-mode-hover') });
+	const statusBar        = shell.createDiv({ cls: 'bt-status-bar' + (statusBarPinned ? '' : ' bt-status-mode-hover') });
 	// The height-resize handle belongs to the status bar's own bottom edge now
 	// (Task 8), not root's — a no-op when the table is locked (no
 	// onStructuralOp), leaving only the read-only stats behind, same as every
@@ -1470,6 +1554,21 @@ export async function renderTable(
 	mountHeightResizeHandle(statusBar);
 	const statusTabs       = statusBar.createDiv({ cls: 'bt-status-tabs' });
 	const statusStats      = statusBar.createDiv({ cls: 'bt-status-stats' });
+	// Static separator (no drag, unlike statusDivider below) — visually sets
+	// the zoom widget apart from the row/col stats to its left, matching the
+	// same vertical-line language statusDivider already uses one section over.
+	statusBar.createDiv({ cls: 'bt-status-sep', attr: { 'aria-hidden': 'true' } });
+	// Live-drag preview touches the real `zoom` CSS property on `root`
+	// (applyZoom) AND the closure-local `zoom` NUMBER above, in the same tick —
+	// every ResizeObserver-driven geometry pass in this file (rebuild()'s
+	// auto-column-width pin, applyFreeze) can fire mid-drag, well before the
+	// eventual commit's full re-render, and must divide by the CURRENT factor,
+	// not the one this closure was built with. Leaving the number stale here
+	// was the exact bug this comment used to describe as an accepted
+	// tradeoff — confirmed via diagnostic logging to actually corrupt a pinned
+	// column width (squeeze it into a visible, self-correcting wrap) rather
+	// than just "lag a little", so it isn't a tradeoff worth keeping.
+	renderZoomControl(statusBar, () => model.zoom ?? 100, onStructuralOp, (percent) => { applyZoom(root, percent); zoom = zoomFactor(percent); });
 	const statusDivider    = statusBar.createDiv({ cls: 'bt-status-divider', attr: { 'aria-hidden': 'true' } });
 	const statusScroll     = statusBar.createDiv({ cls: 'bt-status-scroll' });
 	if (model.statusBarScrollWidth) statusScroll.setCssProps({ '--bt-status-scroll-w': `${model.statusBarScrollWidth}px` });
@@ -1571,11 +1670,17 @@ export async function renderTable(
 		statusDivider.addEventListener('pointerdown', (e: PointerEvent) => {
 			e.preventDefault();
 			statusDivider.setPointerCapture(e.pointerId);
+			// barRect is visual (getBoundingClientRect); MIN_SCROLL_W/80 are logical
+			// design constants and --bt-status-scroll-w is consumed as a logical
+			// flex-basis width — divide the visual reads by zoom before mixing them
+			// with those, same correction shape as scrollContentOffset's own
+			// (NO_ZOOM's doc comment).
 			const barRect = statusBar.getBoundingClientRect();
-			const maxScrollW = Math.max(MIN_SCROLL_W, barRect.width - 80);
-			let newW = statusScroll.getBoundingClientRect().width;
+			const barRight = barRect.right / zoom;
+			const maxScrollW = Math.max(MIN_SCROLL_W, barRect.width / zoom - 80);
+			let newW = statusScroll.getBoundingClientRect().width / zoom;
 			const onMove = (ev: PointerEvent) => {
-				newW = Math.max(MIN_SCROLL_W, Math.min(maxScrollW, barRect.right - ev.clientX));
+				newW = Math.max(MIN_SCROLL_W, Math.min(maxScrollW, barRight - ev.clientX / zoom));
 				statusScroll.setCssProps({ '--bt-status-scroll-w': `${Math.round(newW)}px` });
 				scheduleSyncScrollThumb();
 			};
@@ -1664,7 +1769,7 @@ export async function renderTable(
 			// mouse move, imperceptible next to a permanently corrupted line.
 			clearHover();
 			lastHoverCell = null;
-			applyFreeze(table, thead, tbody, model);
+			applyFreeze(table, thead, tbody, model, zoom);
 		});
 	});
 	freezeResizeObs.observe(table);
@@ -1797,7 +1902,7 @@ export async function renderTable(
 			// visible viewport — a no-op for a table that itself needs the full
 			// viewport (wide table, horizontal scroll), since the cap then
 			// exceeds what left:0/right:0 would render anyway.
-			addRowBtn.setCssProps({ '--strip-max-width': `${contentRow.getBoundingClientRect().width}px` });
+			addRowBtn.setCssProps({ '--strip-max-width': `${contentRow.getBoundingClientRect().width / zoom}px` });
 			// Expose full table geometry so themes can compute table-local cursor coordinates.
 			// Themes subtract these from --bt-mx/--bt-my to get cursor position within
 			// the table's own coordinate space (e.g. for cursor-glow on row hover) — this
@@ -2212,11 +2317,13 @@ export async function renderTable(
 
 	// ── Row / column selector strips (Excel-style whole-row/column selection) ──
 	if (onStructuralOp) {
-		// Capture the title element (previous sibling of root, if present) so we can
-		// neutralise its -9px margin while the selector is visible — without this the
-		// col-selector strip at root's top overlaps the title's last 9px of content.
-		const prev = root.previousElementSibling;
-		const titleEl = (prev instanceof HTMLElement && prev.hasClass('bt-table-title')) ? prev : null;
+		// Capture the title element (root's own first child, if present) so we
+		// can neutralise its -9px margin while the selector is visible —
+		// without this the col-selector strip at root's top overlaps the
+		// title's last 9px of content. A direct child query, not a sibling
+		// lookup: titleEl lives INSIDE root (so it scales together with the
+		// table under zoom), not as root's previous sibling.
+		const titleEl = root.querySelector<HTMLElement>(':scope > .bt-table-title');
 
 		const colSel = root.createDiv({ cls: 'bt-col-selector' });
 		const rowSel = root.createDiv({ cls: 'bt-row-selector' });
@@ -2235,7 +2342,7 @@ export async function renderTable(
 		model.columns.forEach((c, ci) => {
 			if (c.hidden) return;
 			const h = colTrack.createDiv({ cls: 'bt-sel-resize-col', attr: { 'aria-hidden': 'true' } });
-			setupColResize(h, table, ci, getRegistry, model, onStructuralOp, component);
+			setupColResize(h, table, ci, getRegistry, model, onStructuralOp, component, zoom);
 			colResizeHandles.set(ci, h);
 		});
 		const rowResizeHandles = new Map<number, HTMLElement>();
@@ -2247,6 +2354,8 @@ export async function renderTable(
 				h, table, `data-row="${displayIdx}"`, '--bt-row-height', 24,
 				(height) => void onStructuralOp({ type: 'set-row-height', rowId: row.id, height }),
 				component,
+				undefined,
+				zoom,
 			);
 			h.addEventListener('dblclick', (e: MouseEvent) => {
 				e.stopPropagation();
@@ -2319,11 +2428,11 @@ export async function renderTable(
 						const ci = cell.dataset.col;
 						if (ci === undefined) continue;
 						if (cell.colSpan > 1) {
-							spanned.push({ startCol: parseInt(ci), span: cell.colSpan, width: cell.getBoundingClientRect().width });
+							spanned.push({ startCol: parseInt(ci), span: cell.colSpan, width: cell.getBoundingClientRect().width / zoom });
 							continue;
 						}
 						if (measured.has(ci)) continue;
-						measured.set(ci, cell.getBoundingClientRect().width);
+						measured.set(ci, cell.getBoundingClientRect().width / zoom);
 					}
 				}
 				for (const { startCol, span, width } of spanned) {
@@ -2401,7 +2510,7 @@ export async function renderTable(
 				// drifted off its own column. See renderGeometry.ts for why this is
 				// one shared function rather than two call sites that are "obviously"
 				// equal.
-				const colX = scrollContentOffset(c, 'x');
+				const colX = scrollContentOffset(c, 'x', zoom);
 				if (c.dataset.col !== undefined) {
 					// Visible column — one cell per physical column
 					const ci = parseInt(c.dataset.col);
@@ -2425,6 +2534,8 @@ export async function renderTable(
 						attr: { draggable: 'true', 'aria-label': t('dragReorderCol') },
 					});
 					setIcon(colGrip, 'grip-vertical');
+					// colX is already zoom-corrected (scrollContentOffset above); w is
+					// from style.width (already logical) — no further correction needed.
 					colGrip.setCssProps({ '--cdx': `${colX + w / 2}px` });
 					colGrip.addEventListener('dragstart', (evt: DragEvent) => {
 						selDragging = false;
@@ -2455,8 +2566,12 @@ export async function renderTable(
 			for (const tr of allTrs) {
 				if (!tr) continue;
 				const trRect = tr.getBoundingClientRect();
-				const rowTop = trRect.top - tableTop;
-				const rowH   = trRect.height;
+				// Both operands are visual (getBoundingClientRect); rowTop/rowH feed
+				// --rt/--rh below, consumed as logical top/height — divide the
+				// difference/size by zoom, same correction shape as
+				// scrollContentOffset's own (NO_ZOOM's doc comment).
+				const rowTop = (trRect.top - tableTop) / zoom;
+				const rowH   = trRect.height / zoom;
 				if (tr.hasClass('bt-row-indicator')) {
 					// Hidden row groups get no selector-strip cell — the in-table
 					// row itself is the single "click to show" entry point.
@@ -2555,7 +2670,7 @@ export async function renderTable(
 				if (!h) continue;
 				// The seam this handle drags is the column's RIGHT edge, measured
 				// through the shared helper for the same reason as --cl above.
-				h.setCssProps({ '--rx': `${scrollContentOffset(c, 'x') + (parseFloat(c.style.width) || 0)}px` });
+				h.setCssProps({ '--rx': `${scrollContentOffset(c, 'x', zoom) + (parseFloat(c.style.width) || 0)}px` });
 				// A frozen column's real cell doesn't move on horizontal scroll, so
 				// neither may the hover zone that resizes it — reparent it outside
 				// colTrack (same partition as the label cells above) instead of
@@ -2578,7 +2693,7 @@ export async function renderTable(
 					// frozen row's resize zone must stay on its boundary instead of
 					// being carried away from it by the track's transform (same
 					// reparent-outside-the-track treatment as the column seams above).
-					h.setCssProps({ '--ry': `${scrollContentOffset(tr, 'y') + tr.getBoundingClientRect().height}px` });
+					h.setCssProps({ '--ry': `${scrollContentOffset(tr, 'y', zoom) + tr.getBoundingClientRect().height / zoom}px` });
 					const rowResizeFrozen = freezeRows !== undefined && ri + 1 <= freezeRows;
 					h.toggleClass('bt-sel-cell-frozen', rowResizeFrozen);
 					const rowDesiredParent = rowResizeFrozen ? rowSel : rowTrack;
@@ -3175,12 +3290,23 @@ export async function renderTable(
 			wrapper, table, root,
 			() => colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible') || isEdgeStripsVisible(),
 			[positionSelectors, repositionCtrlCol, repositionEdgeStrips],
+			zoom,
 		);
 	}
 
 	// ── Show/hide overlays on mouse enter/leave ───────────────────────────────
 	// With CSS Grid, root already includes all strip areas — hovering them fires
 	// enter/leave naturally. No viewport math or rAF throttling needed.
+	//
+	// Listens on `shell`, not `root`: the status bar is now shell's child but
+	// root's SIBLING (see shell's own doc comment — it moved out specifically
+	// so its zoom control isn't a descendant of the zoom it's dragging), so a
+	// mouse move from the table straight down into the status bar crosses
+	// root's own boundary on the way — root-scoped listeners would fire a
+	// spurious mouseleave/mouseenter pair mid-move, collapsing every hover-only
+	// strip for a moment even though the cursor never actually left the
+	// table's overall footprint. `shell` contains both, so that transition
+	// never crosses ITS boundary at all.
 	//
 	// Gated on `onStructuralOp || onToggleLock`, not `onStructuralOp` alone: the
 	// ctrl column (lock/auto-fit/theme icons) stays visible on a LOCKED table via
@@ -3196,7 +3322,7 @@ export async function renderTable(
 	// stay gated on onStructuralOp specifically — those exist to run editing-only
 	// actions that a locked table shouldn't offer at all.
 	if (onStructuralOp || onToggleLock) {
-		root.addEventListener('mouseenter', () => {
+		shell.addEventListener('mouseenter', () => {
 			// Runs unconditionally: needed for the ctrl column's own positioning
 			// even when nothing else in this handler applies (locked table).
 			reserveLeftPad();
@@ -3224,17 +3350,17 @@ export async function renderTable(
 			}
 		});
 		// A menu/panel we opened (Menu, cell/filter panel) always renders outside
-		// root's own DOM subtree (appended to document.body), so moving the mouse
+		// shell's own DOM subtree (appended to document.body), so moving the mouse
 		// onto it fires a real mouseleave here. While one is open, defer hiding
 		// until it actually closes (onHoverUnpinned below) instead of collapsing
 		// the strips out from under the user's cursor and re-showing them the
 		// moment the mouse comes back — that jump was the reported bad UX.
-		root.addEventListener('mouseleave', () => {
+		shell.addEventListener('mouseleave', () => {
 			if (isHoverPinned()) return;
 			hideEdgeStrips(); hideSelectors(); hideStatusBar();
 		});
 		component?.register(onHoverUnpinned(() => {
-			if (!root.matches(':hover')) { hideEdgeStrips(); hideSelectors(); hideStatusBar(); }
+			if (!shell.matches(':hover')) { hideEdgeStrips(); hideSelectors(); hideStatusBar(); }
 		}));
 		if (onStructuralOp) {
 			// Reserve the top strip padding from the very first paint, not just
@@ -3272,9 +3398,13 @@ export async function renderTable(
 			// with the main thread for the time it needs to resolve the vault write.
 			if (root.hasClass('bt-write-pending')) return;
 			if (!rootRect) rootRect = root.getBoundingClientRect();
+			// e.clientX/Y and rootRect are both visual; --bt-mx/-my are consumed by
+			// theme CSS as logical px (e.g. `left`/`background-position` inside this
+			// same zoomed subtree) — same correction shape as scrollContentOffset's
+			// own (NO_ZOOM's doc comment).
 			root.setCssProps({
-				'--bt-mx': `${Math.round(e.clientX - rootRect.left)}px`,
-				'--bt-my': `${Math.round(e.clientY - rootRect.top )}px`,
+				'--bt-mx': `${Math.round((e.clientX - rootRect.left) / zoom)}px`,
+				'--bt-my': `${Math.round((e.clientY - rootRect.top ) / zoom)}px`,
 			});
 		});
 		root.addEventListener('mouseleave', () => {

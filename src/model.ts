@@ -218,6 +218,20 @@ export interface TableModelV2 {
 	 *  scrollbar), dragged via the divider between it and the sheet-tabs/stats
 	 *  area on the left. Absent = a fixed initial width. */
 	statusBarScrollWidth?: number;
+	/** Visual zoom, as a percentage (100 = actual size) — applied as a native
+	 *  CSS `zoom` on the rendered root (renderer.ts). Unlike `transform:
+	 *  scale()`, `zoom` reserves real, visually-scaled layout space for its
+	 *  subtree, so content after the table is pushed down/right correctly
+	 *  instead of overlapping — the tradeoff is that a too-narrow view can
+	 *  reflow/rewrap at the new effective size, which is expected and
+	 *  accepted (same as the browser's own page-zoom). Absent = 100 — an old
+	 *  table with no zoom field renders identically to before this feature
+	 *  existed. Clamped to [ZOOM_MIN, ZOOM_MAX] wherever it's set
+	 *  (operations.ts's `set-zoom` reducer). Same per-sheet treatment as
+	 *  viewWidth/viewHeight: lives on TableModelV2 itself, so a workbook's
+	 *  SheetDefV2 inherits its own independent zoom automatically via that
+	 *  extension, with no separate multi-sheet-aware plumbing needed. */
+	zoom?: number;
 	/** When present, this table's `columns`/`rows`/`merges`/`styles` are NOT the
 	 *  data source — they're read (view-only, phase 1) from an external .xlsx
 	 *  file instead, resolved the same way a wikilink target resolves (relative
