@@ -51,23 +51,72 @@
 
 ## 为什么选择 Rich Table？
 
-| 功能 | 原生表格 | Rich Table |
-| --- | --- | --- |
-| 单元格合并 | ✗ | ✓ |
-| 点击单元格内联编辑 | ✗ | ✓ |
-| 单元格内 `[[双链]]` 自动补全 | ✗ | ✓ |
-| 单元格内数学公式（KaTeX） | ✗ | ✓ |
-| 单元格内列表、加粗、链接、图片 | ✗ | ✓ |
-| 多行内容 | ✗ | ✓ |
-| 类型列（状态、优先级…） | ✗ | ✓ |
-| 单元格样式（背景色/字号…） | ✗ | ✓ |
-| 列对齐方式（左/居中/右） | ✗ | ✓ |
-| 表格标题与底部备注 | ✗ | ✓ |
-| 拖拽排序行 / 列 | ✗ | ✓ |
-| 拖拽调整列宽 / 行高 | ✗ | ✓ |
-| 插入 / 隐藏 / 删除行列 | ✗ | ✓ |
-| 按值筛选行 | ✗ | ✓ |
-| 单表锁定 | ✗ | ✓ |
+与 Obsidian 原生 Markdown 表格、以及其他几款社区表格插件（含维护状态各异的项目）的详细对比。评估基于 2026-09 各仓库的公开 README/文档，具体功能可能随版本更新变化。
+
+图例：🟢 完全支持　🔴 不支持　🟡 部分支持 / 有限制
+
+<table>
+<thead>
+<tr>
+<th colspan="2">维度</th>
+<th><a href="https://github.com/SdKay/obsidian-rich-table">Rich Table</a></th>
+<th><a href="https://www.markdownguide.org/extended-syntax/#tables">原生 Markdown 表格</a></th>
+<th><a href="https://github.com/tgrosinger/advanced-tables-obsidian">Advanced Tables</a></th>
+<th><a href="https://github.com/aidenlx/table-extended">Table Extended</a></th>
+<th><a href="https://github.com/niconekoru/obsidan-advanced-table-xt">Advanced Table XT</a></th>
+<th><a href="https://github.com/pistacchio/obsidian-enhanced-tables">Enhanced Tables</a></th>
+<th><a href="https://github.com/moranrs/table-master">Table Master</a></th>
+<th><a href="https://github.com/yaye-work/obsidian-better-tables">Better Tables</a></th>
+<th><a href="https://github.com/maniarasan-zuper/smart-table">Smart Table</a></th>
+</tr>
+</thead>
+<tbody>
+
+<tr><td rowspan="2"><b>数据格式与存储</b></td><td>数据载体</td><td>YAML 代码块</td><td>MD 原生</td><td>MD 原生</td><td>MD（MMD6）</td><td>MD 原生</td><td>MD + YAML config</td><td>MD 原生</td><td>MD + 隐藏注释</td><td>JSON 代码块</td></tr>
+<tr><td>Obsidian外使用？</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟡</td><td>🔴</td></tr>
+
+<tr><td rowspan="7"><b>单元格内容能力</b></td><td>单元格内联点击编辑</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🟢</td><td>🟢</td><td>🟢</td></tr>
+<tr><td>富文本（粗体/链接/图片等）</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟡</td><td>🟢</td><td>🟡</td><td>🔴</td></tr>
+<tr><td>cell 内 list</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟡</td><td>🟢</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>双链自动补全</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🔴</td></tr>
+<tr><td>LaTeX 数学公式</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>多行内容</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🔴</td></tr>
+<tr><td><b>类型化列（状态/优先级/日期…）</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td></tr>
+
+<tr><td rowspan="6"><b>结构编辑</b></td><td><b>单元格合并 / 拆分</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td></tr>
+<tr><td><b>拖拽调整列宽/行高</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td></tr>
+<tr><td><b>自动调整行高列宽</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td><b>拖拽排序行/列</b></td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟢</td></tr>
+<tr><td>插入/删除/隐藏行列</td><td>🟢</td><td>🟡</td><td>🟢</td><td>🟡</td><td>🟡</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟢</td></tr>
+<tr><td>整表转置（行列互换）</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="8"><b>数据操作</b></td><td>排序</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🔴</td><td>🟢</td></tr>
+<tr><td><b>按值筛选行</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td></tr>
+<tr><td><b>单元格公式</b></td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>汇总 / 统计行</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>从 Excel / 网页粘贴表格</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>导出 CSV</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td></tr>
+<tr><td><b>导出 / 载入 .xlsx</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>嵌套表格</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="5"><b>样式与外观</b></td><td>单元格 / 行 / 列自定义样式</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🟢</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>内置主题</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td><b>列对齐方式</b></td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟢</td></tr>
+<tr><td><b>表格标题 / 底部备注</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🔴</td><td>🔴</td></tr>
+<tr><td><b>整表缩放</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="3"><b>交互与可用性</b></td><td>键盘方向键 / Tab / Enter 导航</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🔴</td></tr>
+<tr><td><b>冻结行/列</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>表格锁定</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="3"><b>其他特性</b></td><td><b>多 Sheet 工作簿</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>看板（Kanban）/ 日历视图</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>表格快照导出（PNG/SVG）</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="1"><b>项目健康度</b></td><td>统计于2026.09.16</td><td>持续维护</td><td>—</td><td>2026-05</td><td>2022-01</td><td>2026-06</td><td>2024-03</td><td>2026-05</td><td>2026-07</td><td>2026-08</td></tr>
+
+</tbody>
+</table>
 
 ---
 
@@ -516,6 +565,12 @@ theme: plain      # 彩虹渐变表头 + 动态边框
 [AGPL-3.0](LICENSE)——衍生作品须以相同协议开源。
 
 **商业授权**请联系：sdkxyx@gmail.com
+
+---
+
+## 致谢
+
+.xlsx 的解析与写入基于 [@office-kit/xlsx](https://github.com/office-kit/xlsx) 开源库实现。
 
 ---
 

@@ -51,23 +51,72 @@ Rich, interactive tables for Obsidian — with cell merges, inline editing, wiki
 
 ## Why Rich Table?
 
-| Feature | Native tables | Rich Table |
-| --- | --- | --- |
-| Cell merging | ✗ | ✓ |
-| Click-to-edit cells inline | ✗ | ✓ |
-| `[[wikilink]]` autocomplete in cells | ✗ | ✓ |
-| Math formulas (KaTeX) in cells | ✗ | ✓ |
-| Lists, bold, italic, links, images in cells | ✗ | ✓ |
-| Multi-line cell content | ✗ | ✓ |
-| Typed columns (status, priority…) | ✗ | ✓ |
-| Per-cell style (bg color, font size…) | ✗ | ✓ |
-| Column alignment (left / center / right) | ✗ | ✓ |
-| Table title & footer notes | ✗ | ✓ |
-| Drag to reorder rows / columns | ✗ | ✓ |
-| Drag to resize column width / row height | ✗ | ✓ |
-| Insert / hide / delete rows & columns | ✗ | ✓ |
-| Row filtering by value | ✗ | ✓ |
-| Per-table lock | ✗ | ✓ |
+A detailed comparison against Obsidian's native Markdown tables and several community table plugins (maintenance status varies). Based on each project's public README/docs as of 2026-09 — feature sets may change with newer releases.
+
+Legend: 🟢 fully supported　🔴 not supported　🟡 partial support / limited
+
+<table>
+<thead>
+<tr>
+<th colspan="2">Dimension</th>
+<th><a href="https://github.com/SdKay/obsidian-rich-table">Rich Table</a></th>
+<th><a href="https://www.markdownguide.org/extended-syntax/#tables">Native MD table</a></th>
+<th><a href="https://github.com/tgrosinger/advanced-tables-obsidian">Advanced Tables</a></th>
+<th><a href="https://github.com/aidenlx/table-extended">Table Extended</a></th>
+<th><a href="https://github.com/niconekoru/obsidan-advanced-table-xt">Advanced Table XT</a></th>
+<th><a href="https://github.com/pistacchio/obsidian-enhanced-tables">Enhanced Tables</a></th>
+<th><a href="https://github.com/moranrs/table-master">Table Master</a></th>
+<th><a href="https://github.com/yaye-work/obsidian-better-tables">Better Tables</a></th>
+<th><a href="https://github.com/maniarasan-zuper/smart-table">Smart Table</a></th>
+</tr>
+</thead>
+<tbody>
+
+<tr><td rowspan="2"><b>Data Format &amp; Storage</b></td><td>Data carrier</td><td>YAML code block</td><td>Native MD</td><td>Native MD</td><td>MD (MMD6)</td><td>Native MD</td><td>MD + YAML config</td><td>Native MD</td><td>MD + hidden comment</td><td>JSON code block</td></tr>
+<tr><td>Obsidian-only?</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟡</td><td>🔴</td></tr>
+
+<tr><td rowspan="7"><b>Cell Content</b></td><td>Click-to-edit cells inline</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🟢</td><td>🟢</td><td>🟢</td></tr>
+<tr><td>Rich text (bold/links/images…)</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟡</td><td>🟢</td><td>🟡</td><td>🔴</td></tr>
+<tr><td>Lists inside a cell</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟡</td><td>🟢</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Wikilink autocomplete</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🔴</td></tr>
+<tr><td>LaTeX math formulas</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Multi-line content</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🔴</td></tr>
+<tr><td><b>Typed columns (status/priority/date…)</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td></tr>
+
+<tr><td rowspan="6"><b>Structural Editing</b></td><td><b>Cell merge / split</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td></tr>
+<tr><td><b>Drag-resize column width/row height</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td></tr>
+<tr><td><b>Auto-fit row height/column width</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td><b>Drag-reorder rows/columns</b></td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟢</td></tr>
+<tr><td>Insert/delete/hide rows &amp; columns</td><td>🟢</td><td>🟡</td><td>🟢</td><td>🟡</td><td>🟡</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟢</td></tr>
+<tr><td>Transpose whole table</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="8"><b>Data Operations</b></td><td>Sorting</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🔴</td><td>🟢</td></tr>
+<tr><td><b>Row filtering by value</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟢</td></tr>
+<tr><td><b>Cell formulas</b></td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Summary / aggregate rows</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Paste table from Excel/web</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Export CSV</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td></tr>
+<tr><td><b>Export / link .xlsx</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Nested tables</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="5"><b>Style &amp; Appearance</b></td><td>Per-cell/row/column custom style</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🟢</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Built-in themes</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td><b>Column alignment</b></td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🟢</td></tr>
+<tr><td><b>Table title / footer note</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟡</td><td>🔴</td><td>🔴</td></tr>
+<tr><td><b>Whole-table zoom</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="3"><b>Interaction &amp; Usability</b></td><td>Keyboard arrow/Tab/Enter navigation</td><td>🟢</td><td>🔴</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🟢</td><td>🟢</td><td>🔴</td></tr>
+<tr><td><b>Freeze rows/columns</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Table lock</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="3"><b>Other Features</b></td><td><b>Multi-sheet workbook</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Kanban / calendar view</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+<tr><td>Table snapshot export (PNG/SVG)</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
+
+<tr><td rowspan="1"><b>Project Health</b></td><td>As of 2026-09-16</td><td>actively maintained</td><td>—</td><td>2026-05</td><td>2022-01</td><td>2026-06</td><td>2024-03</td><td>2026-05</td><td>2026-07</td><td>2026-08</td></tr>
+
+</tbody>
+</table>
 
 ---
 
@@ -514,6 +563,12 @@ A manually-set per-cell style (via the style panel) always wins over both themes
 [AGPL-3.0](LICENSE) — derivatives must be open-sourced under the same license.
 
 For **commercial licensing**: sdkxyx@gmail.com
+
+---
+
+## Acknowledgements
+
+.xlsx parsing/writing is powered by [@office-kit/xlsx](https://github.com/office-kit/xlsx).
 
 ---
 
