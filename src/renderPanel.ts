@@ -71,6 +71,13 @@ export interface CellPanelConfig {
 	inheritedStyle?: { bg?: string; color?: string; size?: number; bold?: boolean; italic?: boolean };
 	showTextColor:   boolean;
 	showBoldItalic?: boolean; // default true; false for typed cells where pill overrides bold/italic
+	/** Default true. False hides the whole background/text-color/size/bold/
+	 *  italic section and its Apply/Clear footer outright, rather than showing
+	 *  controls that silently do nothing on Apply — for an xlsx-backed table
+	 *  (phase 1 of xlsx WRITE support, see CLAUDE.md), which can read/display a
+	 *  cell's existing style (xlsxSource.ts already resolves font/fill into
+	 *  StyleRuleV2 on load) but has no write path back to the file for it yet. */
+	styleEditable?: boolean;
 	cellOps:       CellOpEntry[];
 	typeSection?:  {
 		colIdx:          number;
@@ -83,17 +90,23 @@ export interface CellPanelConfig {
 }
 
 
-/** Standard cell-op buttons for a data cell (row/col insert/delete/hide + optional unmerge). */
+/** Standard cell-op buttons for a data cell (row/col insert/delete/hide + optional unmerge).
+ *  `onStructuralOp` is optional so an xlsx-backed table (phase 1 of xlsx WRITE
+ *  support — see CLAUDE.md) can call this with just `onMergeOp`: only the
+ *  unmerge entry (if a merge exists) comes back, none of the row/col/style
+ *  ops below, which have no xlsx equivalent yet. */
 export function dataCellOps(
 	rowIdx: number, colIdx: number,
-	model: TableModelV2, onStructuralOp: StructuralOpHandler,
+	model: TableModelV2, onStructuralOp: StructuralOpHandler | undefined, onMergeOp?: StructuralOpHandler,
 ): CellOpEntry[] {
 	const ops: CellOpEntry[] = [];
 	const merge = getMergeOrigin(rowIdx, colIdx, model);
-	if (merge && (merge.endRow > merge.startRow || merge.endCol > merge.startCol)) {
+	const mergeHandler = onStructuralOp ?? onMergeOp;
+	if (merge && (merge.endRow > merge.startRow || merge.endCol > merge.startCol) && mergeHandler) {
 		ops.push({ icon: 'table-2', label: t('unmergeCells'),
-			action: () => void onStructuralOp({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
+			action: () => void mergeHandler({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
 	}
+	if (!onStructuralOp) return ops;
 
 	const r1 = merge?.startRow ?? rowIdx;
 	const r2 = merge?.endRow   ?? rowIdx;
@@ -410,56 +423,68 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 		panel.createDiv({ cls: 'bt-cp-divider' });
 	}
 
-	// Style section
-	const styleEl  = panel.createDiv({ cls: 'bt-cp-style' });
-	const bgRow    = styleEl.createDiv({ cls: 'bt-cp-style-row' });
-	bgRow.createSpan({ cls: 'bt-cp-style-label', text: t('background') });
-	const bgWrap   = bgRow.createDiv({ cls: 'bt-sp-color-wrap' });
-	const bgEnable = bgWrap.createEl('input', { attr: { type: 'checkbox' } });
-	const bgPicker = bgWrap.createEl('input', { cls: 'bt-sp-color', attr: { type: 'color', value: existingStyle.bg ?? '#ffffff' } });
-	bgEnable.checked  = !!existingStyle.bg;
-	bgPicker.disabled = !bgEnable.checked;
-
+	// Style section — entirely skipped (no controls, no Apply/Clear footer) when
+	// styleEditable is false, rather than rendering controls whose Apply would
+	// silently do nothing. See CellPanelConfig's own doc comment on the field.
+	const styleEditable = config.styleEditable !== false;
+	let bgEnable: HTMLInputElement | null = null;
+	let bgPicker: HTMLInputElement | null = null;
 	let colorEnable: HTMLInputElement | null = null;
 	let colorPicker: HTMLInputElement | null = null;
-	if (showTextColor) {
-		const colorRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
-		colorRow.createSpan({ cls: 'bt-cp-style-label', text: t('textColor') });
-		const colorWrap = colorRow.createDiv({ cls: 'bt-sp-color-wrap' });
-		colorEnable = colorWrap.createEl('input', { attr: { type: 'checkbox' } });
-		colorPicker = colorWrap.createEl('input', { cls: 'bt-sp-color', attr: { type: 'color', value: existingStyle.color ?? '#000000' } });
-		colorEnable.checked  = !!existingStyle.color;
-		colorPicker.disabled = !colorEnable.checked;
-	}
-
-	const sizeRow   = styleEl.createDiv({ cls: 'bt-cp-style-row' });
-	sizeRow.createSpan({ cls: 'bt-cp-style-label', text: t('fontSize') });
-	const sizeWrap  = sizeRow.createDiv({ cls: 'bt-sp-size-wrap' });
-	const sizeInput = sizeWrap.createEl('input', { cls: 'bt-sp-size',
-		attr: { type: 'number', min: '8', max: '72', step: '1', placeholder: 'Default',
-		        value: existingStyle.size != null ? String(existingStyle.size) : '' },
-	});
-	sizeWrap.createSpan({ text: 'px' });
-
+	let sizeInput: HTMLInputElement | null = null;
 	let boldCheck: HTMLInputElement | null = null;
 	let italicCheck: HTMLInputElement | null = null;
-	if (config.showBoldItalic !== false) {
-		const boldRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
-		boldRow.createSpan({ cls: 'bt-cp-style-label', text: t('bold') });
-		boldCheck = boldRow.createEl('input', { attr: { type: 'checkbox' } });
-		boldCheck.checked = !!existingStyle.bold;
+	let clearBtn: HTMLButtonElement | null = null;
+	let applyBtn: HTMLButtonElement | null = null;
 
-		const italicRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
-		italicRow.createSpan({ cls: 'bt-cp-style-label', text: t('italic') });
-		italicCheck = italicRow.createEl('input', { attr: { type: 'checkbox' } });
-		italicCheck.checked = !!existingStyle.italic;
+	if (styleEditable) {
+		const styleEl = panel.createDiv({ cls: 'bt-cp-style' });
+		const bgRow    = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+		bgRow.createSpan({ cls: 'bt-cp-style-label', text: t('background') });
+		const bgWrap   = bgRow.createDiv({ cls: 'bt-sp-color-wrap' });
+		bgEnable = bgWrap.createEl('input', { attr: { type: 'checkbox' } });
+		bgPicker = bgWrap.createEl('input', { cls: 'bt-sp-color', attr: { type: 'color', value: existingStyle.bg ?? '#ffffff' } });
+		bgEnable.checked  = !!existingStyle.bg;
+		bgPicker.disabled = !bgEnable.checked;
+
+		if (showTextColor) {
+			const colorRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+			colorRow.createSpan({ cls: 'bt-cp-style-label', text: t('textColor') });
+			const colorWrap = colorRow.createDiv({ cls: 'bt-sp-color-wrap' });
+			colorEnable = colorWrap.createEl('input', { attr: { type: 'checkbox' } });
+			colorPicker = colorWrap.createEl('input', { cls: 'bt-sp-color', attr: { type: 'color', value: existingStyle.color ?? '#000000' } });
+			colorEnable.checked  = !!existingStyle.color;
+			colorPicker.disabled = !colorEnable.checked;
+		}
+
+		const sizeRow   = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+		sizeRow.createSpan({ cls: 'bt-cp-style-label', text: t('fontSize') });
+		const sizeWrap  = sizeRow.createDiv({ cls: 'bt-sp-size-wrap' });
+		sizeInput = sizeWrap.createEl('input', { cls: 'bt-sp-size',
+			attr: { type: 'number', min: '8', max: '72', step: '1', placeholder: 'Default',
+			        value: existingStyle.size != null ? String(existingStyle.size) : '' },
+		});
+		sizeWrap.createSpan({ text: 'px' });
+
+		if (config.showBoldItalic !== false) {
+			const boldRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+			boldRow.createSpan({ cls: 'bt-cp-style-label', text: t('bold') });
+			boldCheck = boldRow.createEl('input', { attr: { type: 'checkbox' } });
+			boldCheck.checked = !!existingStyle.bold;
+
+			const italicRow  = styleEl.createDiv({ cls: 'bt-cp-style-row' });
+			italicRow.createSpan({ cls: 'bt-cp-style-label', text: t('italic') });
+			italicCheck = italicRow.createEl('input', { attr: { type: 'checkbox' } });
+			italicCheck.checked = !!existingStyle.italic;
+		}
+
+		const styleFoot = styleEl.createDiv({ cls: 'bt-cp-style-footer' });
+		clearBtn = styleFoot.createEl('button', { cls: 'bt-sp-clear-btn', text: t('clearFormat') });
+		applyBtn = styleFoot.createEl('button', { cls: 'bt-sp-apply',     text: t('apply') });
 	}
 
-	const styleFoot = styleEl.createDiv({ cls: 'bt-cp-style-footer' });
-	const clearBtn  = styleFoot.createEl('button', { cls: 'bt-sp-clear-btn', text: t('clearFormat') });
-	const applyBtn  = styleFoot.createEl('button', { cls: 'bt-sp-apply',     text: t('apply') });
-
 	const preview = () => {
+		if (!bgEnable || !bgPicker || !sizeInput) return;
 		// When a checkbox is unchecked, fall back to the inherited value.
 		const bv = bgEnable.checked ? bgPicker.value : (inheritedStyle.bg ?? null);
 		const cv = colorEnable?.checked && colorPicker ? colorPicker.value : (inheritedStyle.color ?? null);
@@ -481,11 +506,11 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 			e.toggleClass('bt-italic', !!(italicCheck?.checked || (inheritedStyle.italic && !italicCheck?.checked)));
 		}
 	};
-	bgEnable.addEventListener('change', () => { bgPicker.disabled = !bgEnable.checked; preview(); });
-	bgPicker.addEventListener('input', preview);
+	bgEnable?.addEventListener('change', () => { if (bgPicker && bgEnable) bgPicker.disabled = !bgEnable.checked; preview(); });
+	bgPicker?.addEventListener('input', preview);
 	colorEnable?.addEventListener('change', () => { if (colorPicker) colorPicker.disabled = !colorEnable?.checked; preview(); });
 	colorPicker?.addEventListener('input', preview);
-	sizeInput.addEventListener('input', preview);
+	sizeInput?.addEventListener('input', preview);
 	boldCheck?.addEventListener('change', preview);
 	italicCheck?.addEventListener('change', preview);
 
@@ -542,21 +567,22 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 	// silent commit of the live preview. thisClose already calls unpin()
 	// itself, so this one registration covers both.
 	component.register(thisClose);
-	clearBtn.addEventListener('click', () => { onApplyStyle(null, null, null, null, null); close(false); });
-	applyBtn.addEventListener('click', () => {
+	clearBtn?.addEventListener('click', () => { onApplyStyle(null, null, null, null, null); close(false); });
+	applyBtn?.addEventListener('click', () => {
 		onApplyStyle(
-			bgEnable.checked ? bgPicker.value : null,
+			bgEnable?.checked ? (bgPicker?.value ?? null) : null,
 			colorEnable?.checked ? (colorPicker?.value ?? null) : null,
-			sizeInput.value.trim() ? parseInt(sizeInput.value.trim(), 10) : null,
+			sizeInput?.value.trim() ? parseInt(sizeInput.value.trim(), 10) : null,
 			boldCheck ? (boldCheck.checked ? true : null) : null,
 			italicCheck ? (italicCheck.checked ? true : null) : null,
 		);
 		close(false);
 	});
 	// Enter in the panel (not in size input) confirms; handled here for when a
-	// panel control has focus.
+	// panel control has focus. A no-op when styleEditable is false (applyBtn is
+	// null, nothing to confirm).
 	panel.addEventListener('keydown', (evt: KeyboardEvent) => {
-		if (evt.key === 'Enter' && evt.target !== sizeInput) { evt.preventDefault(); applyBtn.click(); }
+		if (evt.key === 'Enter' && evt.target !== sizeInput) { evt.preventDefault(); applyBtn?.click(); }
 	});
 	detachGlobalListeners = bindPanelDismiss(component, panel, () => close(true));
 

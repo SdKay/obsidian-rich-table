@@ -305,6 +305,11 @@ export class FakeVault extends FakeEvents {
 	files = new Map<string, string>();
 	/** Binary (.xlsx) files, seeded directly by a test — see readBinary. */
 	binaryFiles = new Map<string, ArrayBuffer>();
+	/** Test-only knob for simulating a file locked by another program (e.g. the
+	 *  real .xlsx open in Excel) — see modifyBinary. A path in this set makes
+	 *  the NEXT modifyBinary call for it throw instead of succeeding, matching
+	 *  the real Vault.modifyBinary rejecting on an OS-level file lock. */
+	lockedBinaryPaths = new Set<string>();
 
 	/**
 	 * Returns a real TFile, not a look-alike: the write-back path guards with
@@ -343,6 +348,20 @@ export class FakeVault extends FakeEvents {
 	writeBinaryAndNotify(path: string, buf: ArrayBuffer): void {
 		this.binaryFiles.set(path, buf);
 		this.trigger('modify', new TFile(path));
+	}
+	/** Real vault.modifyBinary equivalent — an in-place content write to an
+	 *  EXISTING file (unlike createBinary, which is for a brand-new one).
+	 *  Fires 'modify' the same way Obsidian's own vault mutation does, since
+	 *  tableBlock.ts's xlsx WRITE path (phase 1 of xlsx write support) relies
+	 *  on exactly that event to trigger the existing refreshXlsxWatch/
+	 *  scheduleXlsxRefresh cycle — its OWN write looks indistinguishable from
+	 *  an external tool's, by design (see handleXlsxWrite's own doc comment). */
+	async modifyBinary(file: TFile, data: ArrayBuffer): Promise<void> {
+		if (this.lockedBinaryPaths.has(file.path)) {
+			throw new Error(`EBUSY: resource busy or locked, open '${file.path}'`);
+		}
+		this.binaryFiles.set(file.path, data);
+		this.trigger('modify', file);
 	}
 	/** Test helper: simulate a rename in the file system (move the binary
 	 *  content under a new path, then fire 'rename' the way Obsidian would). */

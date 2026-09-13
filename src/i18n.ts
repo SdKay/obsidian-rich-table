@@ -63,6 +63,7 @@ const EN = {
 	snapshotCopied:      'Copied to clipboard',
 	snapshotSaved:       'Saved',
 	snapshotFailed:      'Snapshot failed',
+	xlsxWriteFailed:     'Could not save to the .xlsx file (it may be open in another program)',
 
 	// Editable title / footer
 	clickToEditTitle:  'Click to edit title',
@@ -258,6 +259,7 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	snapshotCopied:      '已复制到剪贴板',
 	snapshotSaved:       '已保存',
 	snapshotFailed:      '生成快照失败',
+	xlsxWriteFailed:     '无法保存到该 .xlsx 文件（可能正被其他程序占用）',
 
 	clickToEditTitle:  '点击编辑标题',
 	clickToEditFooter: '点击编辑备注',

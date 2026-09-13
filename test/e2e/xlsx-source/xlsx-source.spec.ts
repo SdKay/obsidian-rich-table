@@ -1,5 +1,12 @@
 import { test, expect } from '../common/test-base';
 import { buildXlsxFixtureBytes } from '../common/build-xlsx-fixture';
+import { readXlsxAsModel } from '../../../src/xlsxSource';
+import type { TableModelV2, WorkbookV3 } from '../../../src/model';
+
+function asSingle(model: TableModelV2 | WorkbookV3): TableModelV2 {
+	if ('sheets' in model) throw new Error('expected a single-sheet model');
+	return model;
+}
 
 /**
  * Exercises tableBlock.ts's xlsx-backed-table feature end to end: an
@@ -25,7 +32,7 @@ xlsxSource:
 }
 
 test.describe('xlsx-backed table', () => {
-	test('renders the referenced file\'s content and offers no editing at all', async ({ page, renderBlock }) => {
+	test('renders the referenced file\'s content and offers only phase-1 editing (cell content + merge)', async ({ page, renderBlock }) => {
 		const bytes = await buildXlsxFixtureBytes({
 			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done'], ['Code', 'WIP']] }],
 		});
@@ -34,12 +41,20 @@ test.describe('xlsx-backed table', () => {
 		await expect(page.locator('.bt-th-text').first()).toHaveText('Task');
 		await expect(page.locator('.bt-td').first()).toHaveText('Design');
 
-		// No cell-editing entry point at all — bindCellActivation/'.bt-td-editable'
-		// are only wired up when onCellChange is defined, which an xlsx-backed
-		// table never has (see tableBlock.ts's isXlsxBacked doc comment).
-		await expect(page.locator('.bt-td-editable')).toHaveCount(0);
+		// Phase 1 of xlsx WRITE support (see CLAUDE.md): cell content editing IS
+		// available now — onCellChange is wired from the narrower onXlsxWrite
+		// entry point, not the general onOp (see renderer.ts's onCellChange
+		// derivation), so bindCellActivation/'.bt-td-editable' DO show up.
+		await expect(page.locator('.bt-td-editable').first()).toBeVisible();
 		await page.locator('.bt-td').first().click();
-		await expect(page.locator('.bt-editing')).toHaveCount(0);
+		await expect(page.locator('.bt-editing')).toHaveCount(1);
+		await page.keyboard.press('Escape');
+
+		// But no full structural editing: onStructuralOp itself stays undefined,
+		// so nothing gated on it (drag-select hover strips, row/col insert-delete,
+		// sort, freeze, style panel, …) is reachable.
+		await expect(page.locator('.bt-col-selector')).toHaveCount(0);
+		await expect(page.locator('.bt-row-selector')).toHaveCount(0);
 
 		// The two xlsx-only buttons are present…
 		await expect(page.locator('.bt-ctrl-btn[aria-label="Open in default app"]')).toHaveCount(1);
@@ -50,6 +65,146 @@ test.describe('xlsx-backed table', () => {
 		const note = await block.noteText();
 		expect(note).toContain('xlsxSource:');
 		expect(note).not.toContain('columns:'); // dead weight for this block shape — see serializer.ts
+	});
+
+	test('the cell panel hides background/text-color/size/bold/italic controls, since there is no write path for them yet', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({
+			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done'], ['Code', 'Done']], merges: ['B2:B3'] }],
+		});
+		await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+
+		// Double-click a plain (non-merged) data cell — classic mode's panel gesture.
+		await page.locator('.bt-td[data-row="1"][data-col="0"]').first().dblclick();
+		await expect(page.locator('.bt-cell-panel')).toBeVisible();
+		await expect(page.locator('.bt-cp-style')).toHaveCount(0);
+		await page.keyboard.press('Escape');
+
+		// Double-click the merged cell — it offers "Unmerge", same no-style-controls treatment.
+		await page.locator('.bt-td[data-row="1"][data-col="1"]').first().dblclick();
+		await expect(page.locator('.bt-cell-panel')).toBeVisible();
+		await expect(page.locator('.bt-cp-style')).toHaveCount(0);
+		await expect(page.getByText('Unmerge cells', { exact: false })).toBeVisible();
+	});
+
+	test('editing a cell writes the new value into the referenced .xlsx file itself, never the note', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({
+			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done']] }],
+		});
+		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+		const noteBefore = await block.noteText();
+
+		await page.locator('.bt-td[data-row="1"][data-col="0"]').first().click();
+		await expect(page.locator('.bt-editing')).toHaveCount(1);
+		await page.keyboard.type('Redesign');
+		await page.keyboard.press('Enter');
+
+		await expect.poll(async () => {
+			const written = await block.readBinaryFile(XLSX_PATH);
+			const model = asSingle(await readXlsxAsModel(new Uint8Array(written).buffer));
+			return model.rows[0]!.cells[model.columns[0]!.id];
+		}, { timeout: 3000 }).toBe('Redesign');
+
+		// The note itself never changes — the real content lives in the xlsx file.
+		expect(await block.noteText()).toBe(noteBefore);
+	});
+
+	test('a write that fails (e.g. file locked by another program) shows a Notice and reverts the stale on-screen edit', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({
+			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done']] }],
+		});
+		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+		await block.lockBinaryFile(XLSX_PATH);
+
+		await page.locator('.bt-td[data-row="1"][data-col="0"]').first().click();
+		await expect(page.locator('.bt-editing')).toHaveCount(1);
+		await page.keyboard.type('Redesign');
+		await page.keyboard.press('Enter');
+
+		// A Notice is shown — the failure is never silent.
+		await expect.poll(() => block.getNotices(), { timeout: 3000 })
+			.toContainEqual(expect.stringContaining('Could not save to the .xlsx file'));
+
+		// The file itself was never touched...
+		const written = await block.readBinaryFile(XLSX_PATH);
+		const model = asSingle(await readXlsxAsModel(new Uint8Array(written).buffer));
+		expect(model.rows[0]!.cells[model.columns[0]!.id]).toBe('Design');
+
+		// ...and the on-screen cell reverts to match — it must NOT keep showing
+		// the typed text as if the save had actually gone through.
+		await expect(page.locator('.bt-td[data-row="1"][data-col="0"]').first()).toHaveText('Design');
+	});
+
+	test('editing the header cell renames the underlying xlsx column (row 1)', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({
+			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done']] }],
+		});
+		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+
+		await page.locator('.bt-th-text').first().click();
+		await expect(page.locator('.bt-editing')).toHaveCount(1);
+		await page.keyboard.type('Task Name');
+		await page.keyboard.press('Enter');
+
+		await expect.poll(async () => {
+			const written = await block.readBinaryFile(XLSX_PATH);
+			const model = asSingle(await readXlsxAsModel(new Uint8Array(written).buffer));
+			return model.columns[0]!.name;
+		}, { timeout: 3000 }).toBe('Task Name');
+	});
+
+	test('unmerging an existing merge via the cell panel writes it back into the xlsx file', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({
+			// mergeCells drops every cell but the merge's top-left from ws.rows, so
+			// row 3 needs a value OUTSIDE the merged column (here, column A) or
+			// usedBounds sees an entirely empty row and the row disappears outright.
+			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done'], ['Code', 'Done']], merges: ['B2:B3'] }],
+		});
+		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+
+		const before = asSingle(await readXlsxAsModel(new Uint8Array(await block.readBinaryFile(XLSX_PATH)).buffer));
+		expect(before.merges).toHaveLength(1);
+
+		// Double-click the merged cell (data-row=1 is the first data row, data-col=1
+		// is the Status column) to open its panel — classic (non-singleClickEdit)
+		// mode's panel gesture — then click "Unmerge".
+		await page.locator('.bt-td[data-row="1"][data-col="1"]').first().dblclick();
+		await page.getByText('Unmerge cells', { exact: false }).click();
+
+		await expect.poll(async () => {
+			const written = await block.readBinaryFile(XLSX_PATH);
+			const model = asSingle(await readXlsxAsModel(new Uint8Array(written).buffer));
+			return model.merges.length;
+		}, { timeout: 3000 }).toBe(0);
+	});
+
+	test('dragging across cells and clicking "Merge cells" creates a new merge in the xlsx file', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({
+			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done'], ['Code', 'WIP']] }],
+		});
+		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+
+		const before = asSingle(await readXlsxAsModel(new Uint8Array(await block.readBinaryFile(XLSX_PATH)).buffer));
+		expect(before.merges).toHaveLength(0);
+
+		// Drag from the first data row down into the second, same column — a
+		// vertical range — same drag-select gesture a fully-editable table uses
+		// (see locked-table-copy.spec.ts's editable-table test for the pattern).
+		const cellA = page.locator('.bt-td[data-row="1"][data-col="0"]').first();
+		const cellB = page.locator('.bt-td[data-row="2"][data-col="0"]').first();
+		const boxA = (await cellA.boundingBox())!;
+		const boxB = (await cellB.boundingBox())!;
+		await page.mouse.move(boxA.x + boxA.width / 2, boxA.y + boxA.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(boxB.x + boxB.width / 2, boxB.y + boxB.height / 2, { steps: 5 });
+		await page.mouse.up();
+
+		await page.getByText('Merge cells', { exact: false }).click();
+
+		await expect.poll(async () => {
+			const written = await block.readBinaryFile(XLSX_PATH);
+			const model = asSingle(await readXlsxAsModel(new Uint8Array(written).buffer));
+			return model.merges;
+		}, { timeout: 3000 }).toContainEqual({ anchor: 'r_2.c_1', end: 'r_3.c_1' });
 	});
 
 	test('auto-refreshes (debounced) when the external file is modified', async ({ page, renderBlock }) => {

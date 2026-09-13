@@ -72,6 +72,19 @@ export interface RenderBlockResult {
 	renameBinaryAndNotify: (oldPath: string, newPath: string) => Promise<void>;
 	/** Simulate the vault deleting the file (fires 'delete'). */
 	deleteBinaryAndNotify: (path: string) => Promise<void>;
+	/** Reads a binary file's CURRENT bytes out of the fake vault — for
+	 *  asserting phase 1 of xlsx WRITE support (tableBlock.ts's
+	 *  handleXlsxWrite) actually rewrote the referenced .xlsx file. Plain byte
+	 *  array, same not-structured-cloneable reasoning as writeBinaryAndNotify. */
+	readBinaryFile: (path: string) => Promise<number[]>;
+	/** Makes the NEXT modifyBinary write to this path fail, simulating the real
+	 *  file being locked open in another program (e.g. Excel) — for asserting
+	 *  handleXlsxWrite's failure path (Notice + corrective re-render) actually
+	 *  runs instead of silently vanishing. */
+	lockBinaryFile: (path: string) => Promise<void>;
+	/** Every `new Notice(...)` message shown so far, in order — obsidian-shim.ts's
+	 *  `Notice.shown` static array, read fresh (not snapshotted at mount time). */
+	getNotices: () => Promise<string[]>;
 }
 
 export const test = base.extend<{
@@ -325,6 +338,19 @@ export const test = base.extend<{
 					const w = window as unknown as { __btVault: { deleteBinaryAndNotify(path: string): void } };
 					w.__btVault.deleteBinaryAndNotify(path);
 				}, path),
+				readBinaryFile: (path) => page.evaluate((path) => {
+					const w = window as unknown as { __btVault: { binaryFiles: Map<string, ArrayBuffer> } };
+					const buf = w.__btVault.binaryFiles.get(path);
+					return buf ? Array.from(new Uint8Array(buf)) : [];
+				}, path),
+				lockBinaryFile: (path) => page.evaluate((path) => {
+					const w = window as unknown as { __btVault: { lockedBinaryPaths: Set<string> } };
+					w.__btVault.lockedBinaryPaths.add(path);
+				}, path),
+				getNotices: () => page.evaluate(() => {
+					const w = window as unknown as { RichTableReal: { Notice: { shown: string[] } } };
+					return w.RichTableReal.Notice.shown;
+				}),
 			};
 		};
 

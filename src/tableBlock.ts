@@ -18,7 +18,7 @@ import { clearAllLiveEdits } from './renderEditHandoff';
 import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
-import { readXlsxAsModel } from './xlsxSource';
+import { readXlsxAsModel, writeXlsxOps, isXlsxWritableOp, type XlsxWritableOp } from './xlsxSource';
 import { applyAutoColWidths, applyCodeLineHeightFix } from './renderAutofit';
 import { belongsToRoot } from './renderOwnScope';
 import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
@@ -148,6 +148,12 @@ export class TableBlock extends MarkdownRenderChild {
 	// which is exactly the giant-inline-dump risk queueOp's isXlsxBacked guard
 	// exists to prevent (see that guard's own comment).
 	private xlsxShell: TableModelV2 | null = null;
+	// Phase-1 xlsx WRITE support (see CLAUDE.md's "xlsx write support" section):
+	// batch queue for the SAME-tick-coalescing pattern queueOp already uses for
+	// the YAML path, kept separate because it targets the external xlsx file
+	// via writeXlsxOps/modifyBinary instead of vault.process() on this note.
+	private xlsxPendingOps: XlsxWritableOp[] = [];
+	private xlsxWriteScheduled = false;
 	// The vault 'modify'/'rename'/'delete' listeners currently watching
 	// xlsxFile for external changes (see refreshXlsxWatch) — re-established
 	// on every render() since xlsxFile itself can change (e.g. xlsxSource.path
@@ -420,6 +426,13 @@ export class TableBlock extends MarkdownRenderChild {
 					this.isXlsxBacked ? (width: number) => void this.setXlsxViewWidth(width) : undefined,
 					this.isXlsxBacked ? (height: number) => void this.setXlsxViewHeight(height) : undefined,
 					(kind) => void this.captureSnapshot(kind),
+					// Phase 1 of xlsx WRITE support (see CLAUDE.md's "xlsx write support"
+					// section) — the SAME handler as the normal onOp callback above
+					// (queueOp's isXlsxBacked branch is what actually filters this down
+					// to the writable op subset), just reachable under its own prop so
+					// onOp itself stays undefined and every other editing affordance
+					// stays off for this table.
+					(this.isXlsxBacked && editAllowed && !isOldFormat) ? (op) => this.handleStructuralOp(op) : undefined,
 				);
 			}
 
@@ -831,6 +844,72 @@ export class TableBlock extends MarkdownRenderChild {
 		await this.render();
 	}
 
+	/** The real xlsx sheet title `writeXlsxOps` should target — mirrors exactly
+	 *  the `sheetName` render()'s xlsx-loading branch passed to `readXlsxAsModel`
+	 *  when it read the file, so a write lands on the same sheet it was read
+	 *  from. `undefined` is a valid answer in both the single-sheet case (the
+	 *  block never pinned one) and lets `writeXlsxOps` fall back to the sole
+	 *  visible sheet — same fallback `readXlsxAsModel` itself uses. */
+	private xlsxActiveSheetName(): string | undefined {
+		if (this.workbook) return this.workbook.sheets.find(s => s.id === this.workbook?.activeSheetId)?.name;
+		return this.xlsxShell?.xlsxSource?.sheet;
+	}
+
+	/** Phase 1 of xlsx WRITE support — see queueOp's isXlsxBacked branch and
+	 *  CLAUDE.md's "xlsx write support" section. Same same-tick batching shape
+	 *  as queueOp's own YAML path (pendingOps/writeBackScheduled), applied to
+	 *  the external .xlsx file instead: reads the file's CURRENT bytes fresh
+	 *  (never a cached in-memory Workbook — matches how this.model/this.workbook
+	 *  are already re-derived from disk on every render()), applies the whole
+	 *  batch, and writes once. The vault 'modify' event a SUCCESSFUL write fires
+	 *  is picked up by the SAME watcher (refreshXlsxWatch/scheduleXlsxRefresh)
+	 *  that already handles an external editor changing the file — no separate
+	 *  "refresh after my own write" path needed for the success case.
+	 *
+	 *  Failure needs its own explicit handling, though (reported: a cell edit
+	 *  "succeeded" on screen — the typed text stayed visible — while the file
+	 *  itself hadn't changed at all, e.g. because it was open and locked in
+	 *  Excel at the time, with no error shown anywhere). Two separate gaps
+	 *  produced that symptom together: (1) neither readBinary/writeXlsxOps nor
+	 *  modifyBinary was ever wrapped in a try/catch, so a rejected write just
+	 *  vanished as an unhandled promise rejection — nothing surfaced it; (2) the
+	 *  on-screen "success" was never real in the first place — the cell editor's
+	 *  own save() (renderEditMode.ts) intentionally leaves its edited text in the
+	 *  DOM after a value change, on the assumption that the vault 'modify' event
+	 *  from a successful write will trigger scheduleXlsxRefresh's re-render
+	 *  shortly after, which replaces that DOM with the real (freshly re-read)
+	 *  content. That assumption holds for a successful write; a FAILED one never
+	 *  fires 'modify' at all, so nothing ever corrects the optimistic-looking but
+	 *  never-actually-saved text — until the note is closed and reopened, i.e.
+	 *  the very next full render(), which is what the report's "closing and
+	 *  reopening shows no change" observation was actually seeing. Fixed by
+	 *  catching here, surfacing a Notice, and explicitly re-rendering on failure
+	 *  — re-deriving fresh from the (unchanged) file corrects the stale DOM
+	 *  immediately instead of leaving it looking wrong until the next reopen. */
+	private async handleXlsxWrite(op: XlsxWritableOp): Promise<void> {
+		this.xlsxPendingOps.push(op);
+		if (this.xlsxWriteScheduled) return;
+		this.xlsxWriteScheduled = true;
+		await new Promise<void>(resolve => { window.setTimeout(resolve, 0); });
+		this.xlsxWriteScheduled = false;
+		const ops = this.xlsxPendingOps;
+		this.xlsxPendingOps = [];
+		const file = this.xlsxFile;
+		if (!file) return;
+		try {
+			const bytes = await this.plugin.app.vault.readBinary(file);
+			const written = await writeXlsxOps(bytes, this.xlsxActiveSheetName(), ops);
+			const buffer = written.buffer.slice(written.byteOffset, written.byteOffset + written.byteLength) as ArrayBuffer;
+			await (this.writeChain = this.writeChain.then(
+				() => this.plugin.app.vault.modifyBinary(file, buffer),
+				() => this.plugin.app.vault.modifyBinary(file, buffer),
+			));
+		} catch (err) {
+			new Notice(`${t('xlsxWriteFailed')}: ${err instanceof Error ? err.message : String(err)}`);
+			await this.render();
+		}
+	}
+
 	/** Called at the end of every render()'s xlsx-loading branch (whether or
 	 *  not this table currently turns out to be xlsx-backed) to keep the vault
 	 *  'modify' watcher pointed at whatever file (if any) is CURRENTLY bound —
@@ -1023,7 +1102,17 @@ export class TableBlock extends MarkdownRenderChild {
 		// onSwitchSheet callback instead would need every current AND future
 		// call site to separately remember this, and a single missed one would
 		// silently replace the file reference with a giant inline dump.
-		if (this.isXlsxBacked) return;
+		// Phase 1 of xlsx WRITE support (CLAUDE.md's "xlsx write support"
+		// section) narrows this from an unconditional drop to a filtered one:
+		// only `set-cell-content`/`set-col-name`/`merge-cells`/`unmerge-cells`
+		// route to the real .xlsx file (`handleXlsxWrite`); every other op type
+		// has no honest xlsx equivalent and is still dropped here exactly as
+		// before. Workbook ops (sheet add/remove/reorder) aren't in the writable
+		// set at all, so they fall through unchanged too.
+		if (this.isXlsxBacked) {
+			if (pending.kind === 'cell' && isXlsxWritableOp(pending.op)) await this.handleXlsxWrite(pending.op);
+			return;
+		}
 
 		// Theme/collapse instant-apply — only meaningful for cell-level ops on
 		// the active sheet's own model; a workbook op never touches these fields.

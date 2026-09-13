@@ -110,6 +110,11 @@ export interface RenderRowOptions {
 	onCellChange?:    CellChangeHandler;
 	onColTypeChange?: ColTypeChangeHandler;
 	onStructuralOp?:  StructuralOpHandler;
+	/** Merge/unmerge only — see renderer.ts's own doc comment on its onMergeOp
+	 *  derivation for why this is separate from onStructuralOp (phase 1 of
+	 *  xlsx WRITE support: lets an xlsx-backed table's cell panels offer JUST
+	 *  "Unmerge" without lighting up every other onStructuralOp-gated entry). */
+	onMergeOp?:       StructuralOpHandler;
 	/** Table identity for renderEditHandoff.ts's cross-rebuild edit resume — see that
 	 *  file for why a write-back-triggered rebuild needs this instead of just DOM refs. */
 	cacheKey?:       string;
@@ -128,7 +133,7 @@ export interface RenderRowOptions {
 export async function renderRow(options: RenderRowOptions): Promise<void> {
 	const {
 		tr, rowIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader,
-		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
 		onEnterFormulaMode, onExitFormulaMode,
 	} = options;
 	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
@@ -215,12 +220,12 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		if (isHeader) {
 			renderHeaderCell({
 				el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+				onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
 			});
 		} else {
 			await renderDataCell({
 				el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model,
-				onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+				onCellChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
 				onEnterFormulaMode, onExitFormulaMode,
 			});
 		}
@@ -241,6 +246,7 @@ export interface RenderHeaderCellOptions {
 	onCellChange?:    CellChangeHandler;
 	onColTypeChange?: ColTypeChangeHandler;
 	onStructuralOp?:  StructuralOpHandler;
+	onMergeOp?:       StructuralOpHandler;
 	cacheKey?:       string;
 	getSingleClickEdit?: () => boolean;
 	onEditNavigate?: EditNavigateHandler;
@@ -249,7 +255,7 @@ export interface RenderHeaderCellOptions {
 function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	const {
 		el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
 	} = options;
 	// An empty header name renders an empty <span>, which — same as an empty data
 	// cell's missing <p> — has no line box and collapses to just its padding,
@@ -275,20 +281,26 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	textSpan.appendText(value || ' ');
 
 	const openPanel = (evt: MouseEvent) => {
-		if (!onStructuralOp && !onColTypeChange) return;
+		if (!onStructuralOp && !onColTypeChange && !onMergeOp) return;
 		const ops: CellOpEntry[] = [];
-		if (onStructuralOp) {
-			// A header cell can itself be a merge anchor — either a header-only
-			// column-range merge (e.g. from split-cell-col preserving the
-			// header's shape) or, now that a header cell can merge downward
-			// into data rows, a vertical/rectangular one too — offer the same
-			// unmerge action dataCellOps gives data cells for either shape, or
-			// a merge could never be undone.
+		// Merge/unmerge is offered whenever EITHER the full onStructuralOp or the
+		// narrower xlsx-phase-1 onMergeOp is present (see renderer.ts's onMergeOp
+		// doc comment) — a header cell can itself be a merge anchor — either a
+		// header-only column-range merge (e.g. from split-cell-col preserving the
+		// header's shape) or, now that a header cell can merge downward into data
+		// rows, a vertical/rectangular one too — offer the same unmerge action
+		// dataCellOps gives data cells for either shape, or a merge could never
+		// be undone.
+		const mergeHandler = onStructuralOp ?? onMergeOp;
+		if (mergeHandler) {
 			const merge = getMergeOrigin(0, colIdx, model);
 			if (merge && (merge.endCol > merge.startCol || merge.endRow > merge.startRow)) {
 				ops.push({ icon: 'table-2', label: t('unmergeCells'),
-					action: () => void onStructuralOp({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
+					action: () => void mergeHandler({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
 			}
+		}
+		if (onStructuralOp) {
+			const merge = getMergeOrigin(0, colIdx, model);
 			ops.push(
 				// Insert first data row: afterRowId = null (insert before all data rows)
 				{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: null }) },
@@ -318,6 +330,8 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 					(align) => void onStructuralOp({ type: 'set-align', target: `header.${col.id}`, align }),
 				),
 			);
+		}
+		if (onStructuralOp || onMergeOp) {
 			ops.push(
 				{ divider: true },
 				{ icon: 'copy', label: t('copyToExcel'),
@@ -334,6 +348,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 			existingStyle: cellEffectiveStyle(model, 0, colIdx),
 			inheritedStyle: cellInheritedStyle(model, 0, colIdx),
 			showTextColor: true,
+			styleEditable: !!onStructuralOp,
 			cellOps: ops,
 			typeSection: onColTypeChange ? {
 				colIdx,
@@ -349,6 +364,15 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 
 	el.addEventListener('contextmenu', (evt: MouseEvent) => { evt.preventDefault(); openPanel(evt); });
 	el.addEventListener('keydown', (evt: KeyboardEvent) => {
+		// A Space/Enter keystroke typed INSIDE the active editor (renaming the
+		// column) bubbles up to this same listener — testing the event's
+		// ORIGIN, not `el`'s own mutable .bt-editing class, is what's reliable
+		// here (same reasoning as cellNav.ts's document-level keydown guard —
+		// see "Keyboard cell navigation" in CLAUDE.md). Without this, every
+		// space typed while renaming a column got eaten (preventDefault fires
+		// on the bubbled event regardless of which listener calls it) and every
+		// Enter reopened the panel it had just been used to close.
+		if ((evt.target as HTMLElement).closest('.bt-cell-editor')) return;
 		if (evt.key === 'Enter' || evt.key === ' ') {
 			evt.preventDefault();
 			const r = el.getBoundingClientRect();
@@ -486,6 +510,9 @@ export interface RenderDataCellOptions {
 	model:           TableModelV2;
 	onCellChange?:   CellChangeHandler;
 	onStructuralOp?: StructuralOpHandler;
+	/** Merge/unmerge only — see renderer.ts's onMergeOp doc comment (phase 1
+	 *  of xlsx WRITE support). */
+	onMergeOp?:      StructuralOpHandler;
 	cacheKey?:       string;
 	getSingleClickEdit?: () => boolean;
 	onEditNavigate?: EditNavigateHandler;
@@ -496,7 +523,7 @@ export interface RenderDataCellOptions {
 async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	const {
 		el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model,
-		onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		onCellChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
 		onEnterFormulaMode, onExitFormulaMode,
 	} = options;
 	const trimmed = value.trim();
@@ -704,10 +731,17 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	const formulaDisplayValue = existingFormula ? idFormulaToLabel(model, existingFormula) : value;
 
 	const openDataPanel = () => {
-		if (el.hasClass('bt-editing') || !onStructuralOp) return;
-		const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
+		if (el.hasClass('bt-editing') || (!onStructuralOp && !onMergeOp)) return;
+		const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp, onMergeOp);
+		// buildCellStyleContext needs SOME StructuralOpHandler to build its
+		// (possibly unused) applyStyle closure, but that closure is never
+		// actually wired to onApplyStyle below unless onStructuralOp is real —
+		// see this function's own doc comment: it never invokes the handler
+		// eagerly, only closes over it, so passing onMergeOp here to satisfy
+		// the type is safe even for an xlsx-backed table (phase 1 of xlsx
+		// WRITE support), which must not be able to apply cell styles.
 		const { sTarget, exactTarget, applyStyle } =
-			buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
+			buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp ?? onMergeOp!);
 		openCellPanel({
 			component,
 			anchor: el, els: [el],
@@ -715,8 +749,9 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 			existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
 			inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
 			showTextColor: true,
+			styleEditable: !!onStructuralOp,
 			cellOps: ops,
-			onApplyStyle: applyStyle,
+			onApplyStyle: onStructuralOp ? applyStyle : () => { /* style editing isn't in xlsx phase 1 */ },
 		});
 	};
 

@@ -337,8 +337,8 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
 <tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; pinned or hover-only</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Snapshot — export the current table as a sharp PNG (copy to clipboard, or save) or SVG, hover-only chrome excluded and the full table captured even if it's scrolled/bounded</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Back a table with an external <code>.xlsx</code> file (see <a href="#external-xlsx">External .xlsx</a>) — view-only, auto-refreshes on external edits, tracks the file if renamed, one click to open it in Excel/LibreOffice or convert to a plain table</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Edit that external <code>.xlsx</code> file's cells directly from Obsidian, instead of just viewing it</td><td align="center">🔜</td><td align="center">P3</td></tr>
+<tr><td>Back a table with an external <code>.xlsx</code> file (see <a href="#external-xlsx">External .xlsx</a>) — auto-refreshes on external edits, tracks the file if renamed, one click to open it in Excel/LibreOffice or convert to a plain table</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Edit that external <code>.xlsx</code> file's cell content and merges directly from Obsidian (see <a href="#external-xlsx">External .xlsx</a>) — writes straight to the file, not the note; other edits (style, sort, rows/columns) stay view-only for now</td><td align="center">✅</td><td align="center">—</td></tr>
 
 </tbody>
 </table>
@@ -431,15 +431,15 @@ xlsxSource:
 
 The easiest way to create one: insert an empty `rich-table` block, then click **Import from .xlsx** among the template buttons and pick a file already in your vault.
 
-**This is currently view-only** — cell content, styles, merges and frozen panes all come from the file and render exactly as usual, but there is no way to edit them from inside the table (editing the real file is a separate, not-yet-built roadmap item — see [Features & Roadmap](#features--roadmap)). Everything else about it stays live and automatic:
+**Editing cell content and merges writes straight back into the `.xlsx` file itself** — never into the note, which only ever holds the `xlsxSource` reference. Click a cell to edit its text (including the header row) the same way as any other table; drag-select a range and choose **Merge cells**, or double-click/right-click an existing merge for **Unmerge**. Everything else (sort, style, freeze, row/column insert-delete, …) stays view-only for now — those actions aren't offered at all, rather than appearing and silently doing nothing. Editing preserves whatever else the cell already had (a number stays a number if the new text still parses as one, a boolean stays a boolean for `TRUE`/`FALSE`, otherwise Excel's own "General" auto-detect applies); a leading `=` makes it a formula, and clearing the text deletes the cell outright. If the file can't be saved (e.g. it's open and locked in Excel), a Notice reports the failure and the table reverts to the file's real (unchanged) content instead of leaving a stale-looking edit on screen.
 
-- **Auto-refresh** — editing the file in Excel/LibreOffice/etc. and saving updates the table within about half a second, no reload needed.
+- **Auto-refresh** — editing the file in Excel/LibreOffice/etc. and saving updates the table within about half a second, no reload needed. The same refresh picks up the plugin's own writes.
 - **Follows renames** — moving or renaming the file updates `xlsxSource.path` in the block automatically.
 - **Deleted-file handling** — if the file goes away, the table shows an error instead of silently going stale.
 - **Open in default app** and **Convert to plain table** — two buttons in the table's left toolbar. The first hands the file to whatever your OS associates with `.xlsx` (desktop only). The second snapshots the file's current content into the block itself as ordinary `columns`/`rows`, permanently dropping the `xlsxSource` reference — after that it's a normal, fully-editable rich-table.
-- **Theme** — defaults to `grid` (no interactive picker, since that needs the editing this view-only table doesn't have); add `theme: <id>` to the block's own YAML alongside `xlsxSource` to use a different built-in theme instead.
+- **Theme** — defaults to `grid` (no interactive picker, since theme switching isn't part of what this table can edit yet); add `theme: <id>` to the block's own YAML alongside `xlsxSource` to use a different built-in theme instead.
 
-Known gaps (phase 1): theme-relative/indexed colors, cell borders and number formats aren't carried over; formula cells show only their last-saved value (no formula engine); rich-text runs are flattened to plain text.
+Known gaps: no concurrency control (last write wins, same as the file itself); theme-relative/indexed colors, cell borders and number formats aren't carried over on read; formula cells show only their last-saved value (no formula engine); rich-text runs are flattened to plain text; the style panel hides background/text-color/size/bold/italic for an xlsx-backed cell (readable, not yet writable).
 
 ---
 

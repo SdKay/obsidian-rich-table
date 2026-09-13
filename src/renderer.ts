@@ -89,6 +89,17 @@ export async function renderTable(
 	 *  all (see the ctrlCol comment below): capturing an image of a table
 	 *  doesn't depend on whether editing/locking/xlsx-linking apply to it. */
 	onSnapshot?: (kind: SnapshotKind) => void,
+	/** Phase 1 of xlsx WRITE support (see CLAUDE.md's "xlsx write support"
+	 *  section): a SEPARATE, narrower entry point than onOp — passed only for
+	 *  an xlsx-backed table, and only ever asked to carry the safe subset of
+	 *  ops (xlsxSource.ts's XlsxWritableOp) that queueOp's isXlsxBacked branch
+	 *  knows how to route to the real file. Deliberately not folded into onOp:
+	 *  onOp being defined at all turns on every OTHER editing affordance too
+	 *  (sort/filter/style/row-col insert-delete/freeze/…), which an
+	 *  xlsx-backed table must still never offer — only onCellChange (content
+	 *  edits, below) and onMergeOp (existing-merge unmerge, below) ever get
+	 *  built from this. */
+	onXlsxWrite?: OpHandler,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
@@ -98,13 +109,20 @@ export async function renderTable(
 	model = applySortForDisplay(model, getRegistry());
 	// Unified op handler — replaces separate onCellChange / onColTypeChange / onStructuralOp.
 	// Wrapped as void-returning so helpers typed StructuralOpHandler=(op)=>void are satisfied.
+	// Deliberately sourced from onOp ALONE, not onXlsxWrite — this is the gate
+	// behind sort/filter/style/insert/delete/freeze/etc., every one of which
+	// stays off for an xlsx-backed table (see onXlsxWrite's own doc comment).
 	const onStructuralOp: StructuralOpHandler | undefined = onOp ? (op) => void onOp(op) : undefined;
 
+	// Cell content writes (data AND header text) are safe to allow through
+	// onXlsxWrite too — this callback's own dispatch logic only ever produces
+	// 'set-col-name'/'set-cell-content', both inside the xlsx-writable set.
+	const cellWriteOp = onOp ?? onXlsxWrite;
 	// Adapter: row/col-index-based callbacks used by inner helper functions.
 	// rowIdx=0 → header (set-col-name); rowIdx≥1 → data cell (set-cell-content).
-	const onCellChange: CellChangeHandler | undefined = onOp ? (ri, ci, value) => {
+	const onCellChange: CellChangeHandler | undefined = cellWriteOp ? (ri, ci, value) => {
 		if (ri === 0) {
-			void onOp({ type: 'set-col-name', colId: colId(model, ci), name: value });
+			void cellWriteOp({ type: 'set-col-name', colId: colId(model, ci), name: value });
 		} else {
 			// Editing a merge's effective anchor (possibly promoted past a hidden literal
 			// anchor, see getMergeOrigin) must write to the merge's literal anchor cell —
@@ -112,9 +130,23 @@ export async function renderTable(
 			const merge = getMergeOrigin(ri, ci, model);
 			const targetRowId = merge?.anchorRowId ?? rowId(model, ri);
 			const targetColId = merge?.anchorColId ?? colId(model, ci);
-			void onOp({ type: 'set-cell-content', rowId: targetRowId, colId: targetColId, value });
+			void cellWriteOp({ type: 'set-cell-content', rowId: targetRowId, colId: targetColId, value });
 		}
 	} : undefined;
+
+	// Merge/unmerge only — a second, narrower derived handler alongside
+	// onStructuralOp (which stays xlsx-undefined). Threaded ONLY into the
+	// unmerge entry in dataCellOps/the header cell panel below, so an
+	// xlsx-backed table can undo an existing merge without lighting up every
+	// other onStructuralOp-gated entry those same call sites also build
+	// (split-cell, hide/delete row/col, align, …), none of which are in
+	// phase 1's writable set. Creating a NEW merge (drag-select → "Merge
+	// cells") isn't wired to this yet — that action lives behind the
+	// range-selection panel, which is gated on onStructuralOp for its OTHER
+	// entries too and isn't reachable at all for an xlsx-backed table today
+	// (see the mousedown listener's own onStructuralOp guard, added so a
+	// locked/xlsx table keeps native text selection) — left as a follow-up.
+	const onMergeOp: StructuralOpHandler | undefined = cellWriteOp ? (op) => void cellWriteOp(op) : undefined;
 
 	const onColTypeChange: ColTypeChangeHandler | undefined = onOp
 		? (ci, colType) => void onOp({ type: 'set-col-type', colId: colId(model, ci), colType })
@@ -724,7 +756,7 @@ export async function renderTable(
 	const removeSelectionPanel = () => { selectionPanel?.remove(); selectionPanel = null; };
 
 	const showSelectionPanel = () => {
-		if (!sel.start || !sel.end || !onStructuralOp) return;
+		if (!sel.start || !sel.end || (!onStructuralOp && !onMergeOp)) return;
 		removeSelectionPanel();
 
 		const rect = effectiveSelRect();
@@ -750,6 +782,12 @@ export async function renderTable(
 		const existingStyle = cellEffectiveStyle(model, r1, c1);
 
 		const isHeaderSel = r1 === 0 && r2 === 0;
+		// Merge/unmerge only — see renderer.ts's onMergeOp doc comment (phase 1
+		// of xlsx WRITE support): an xlsx-backed table has onMergeOp but not
+		// onStructuralOp, so it gets JUST the "Merge cells" entry below, none of
+		// the row/col/align/style ops that follow (all still gated on the real
+		// onStructuralOp, unchanged from before).
+		const mergeHandler = onStructuralOp ?? onMergeOp;
 		selectionPanel = openCellPanel({
 			component,
 			anchor,
@@ -757,29 +795,34 @@ export async function renderTable(
 			styleTarget: rangeTarget,
 			existingStyle,
 			showTextColor: true,
+			styleEditable: !!onStructuralOp,
 			cellOps: [
-				{ icon: 'combine', label: t('mergeCells'),
-					action: () => void onStructuralOp({ type: 'merge-cells', anchorRowId: r1RId, anchorColId: c1CId, endRowId: r2RId, endColId: c2CId }) },
-				// Row ops only for data selections (header row cannot be hidden/deleted)
-				...(!isHeaderSel ? [
-					{ icon: 'eye-off' as const, label: hideRowsLabel(r1, r2),
-						action: () => { for (let ri = r1; ri <= r2; ri++) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
-					{ icon: 'trash' as const, label: deleteRowsLabel(r1, r2), danger: true as const,
-						action: () => { for (let ri = r2; ri >= r1; ri--) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
-				] : []),
-				{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter),
-					action: () => { for (let ci = c1; ci <= c2; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
-				{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
-					action: () => { for (let ci = c2; ci >= c1; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
-				{ divider: true },
-				buildAlignCellOp(existingStyle.align, (align) => void onStructuralOp({ type: 'set-align', target: rangeTarget, align })),
+				...(mergeHandler ? [{ icon: 'combine', label: t('mergeCells'),
+					action: () => void mergeHandler({ type: 'merge-cells', anchorRowId: r1RId, anchorColId: c1CId, endRowId: r2RId, endColId: c2CId }) }] as CellOpEntry[] : []),
+				...(onStructuralOp ? [
+					// Row ops only for data selections (header row cannot be hidden/deleted)
+					...(!isHeaderSel ? [
+						{ icon: 'eye-off' as const, label: hideRowsLabel(r1, r2),
+							action: () => { for (let ri = r1; ri <= r2; ri++) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
+						{ icon: 'trash' as const, label: deleteRowsLabel(r1, r2), danger: true as const,
+							action: () => { for (let ri = r2; ri >= r1; ri--) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
+					] : []),
+					{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter),
+						action: () => { for (let ci = c1; ci <= c2; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
+					{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
+						action: () => { for (let ci = c2; ci >= c1; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
+					{ divider: true },
+					buildAlignCellOp(existingStyle.align, (align) => void onStructuralOp({ type: 'set-align', target: rangeTarget, align })),
+				] as CellOpEntry[] : []),
 				{ divider: true },
 				{ icon: 'copy', label: t('copyToExcel'),
 					action: () => copyRangeToClipboard(model, r1, r2, c1, c2) },
 				{ icon: 'file-text', label: t('copyToMarkdown'),
 					action: () => copyRangeAsMarkdown(model, r1, r2, c1, c2) },
 			],
-			onApplyStyle: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: rangeTarget, bg, color, size, bold, italic }),
+			onApplyStyle: onStructuralOp
+				? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: rangeTarget, bg, color, size, bold, italic })
+				: () => { /* style editing isn't in xlsx phase 1 */ },
 			onClose: () => { clearSel(); selectionPanel = null; },
 		});
 	};
@@ -791,7 +834,7 @@ export async function renderTable(
 	const headerTr = thead.createEl('tr');
 	await renderRow({
 		tr: headerTr, rowIdx: 0, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: true,
-		onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
 	});
 
 	const tbody = table.createEl('tbody');
@@ -834,7 +877,15 @@ export async function renderTable(
 		// native click-and-drag text selection inside a cell, and Ctrl+C copying it.
 		// Skip entirely and let that happen instead. Reported: locked tables offered
 		// no way at all to copy a cell's content.
-		if (!onStructuralOp) return;
+		// An xlsx-backed table (phase 1 of xlsx WRITE support) is the one exception:
+		// it has onMergeOp even though onStructuralOp itself stays undefined, and
+		// dragging across cells to create a NEW merge needs this same machinery —
+		// showSelectionPanel's own gate below only offers the "Merge cells" entry
+		// in that case, nothing else. Losing native drag-to-select-text here isn't
+		// the same regression it would be for a locked table: unlike a locked
+		// table, an xlsx-backed cell IS clickable into a real text editor (see
+		// onCellChange above), so copying a cell's content is still one click away.
+		if (!onStructuralOp && !onMergeOp) return;
 		if (formulaEdit) {
 			// A cell is mid-formula-edit — clicking ANOTHER cell inserts a
 			// reference instead of the normal drag-select/open-editor behaviour.
@@ -1346,7 +1397,7 @@ export async function renderTable(
 			const tr = displayIdx < headerRowSpan ? thead.createEl('tr') : tbody.createEl('tr');
 			await renderRow({
 				tr, rowIdx: displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: false,
-				onCellChange, onColTypeChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate,
+				onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
 				onEnterFormulaMode: (insertText) => { formulaEdit = { insertText }; },
 				onExitFormulaMode: () => { formulaEdit = null; formulaDragStart = null; formulaDragEnd = null; updateFormulaDragHighlight(); },
 			});

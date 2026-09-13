@@ -28,8 +28,9 @@
  * correctly this way; it just shows an empty-looking header, no worse than
  * xlsx's own lack of a header concept would otherwise look.
  */
-import { loadWorkbook, fromArrayBuffer } from '@office-kit/xlsx/io';
+import { loadWorkbook, fromArrayBuffer, workbookToBytes } from '@office-kit/xlsx/io';
 import { getCellFont, getCellFill } from '@office-kit/xlsx/styles';
+import { getCell, setCell, deleteCell, mergeCells, unmergeCellsAt } from '@office-kit/xlsx/worksheet';
 import type { Workbook } from '@office-kit/xlsx/workbook';
 import type { Worksheet } from '@office-kit/xlsx/worksheet';
 import type { Cell, CellValue } from '@office-kit/xlsx/cell';
@@ -282,4 +283,135 @@ export async function readXlsxAsModel(
 		return { id: `s_${i + 1}`, version: 2, name: entry.sheet.title, ...convertSheet(wb, entry.sheet) };
 	});
 	return { version: 3, activeSheetId: sheets[0]!.id, sheets };
+}
+
+/**
+ * Phase 1 of xlsx WRITE support (see CLAUDE.md's "xlsx write support" section
+ * for the full design discussion): only cell-content edits and merge/unmerge
+ * are safe to send back into the real file — every other StructuralOpV2
+ * variant (sort, style, freeze, column type, …) has no honest xlsx
+ * equivalent, or would need UI work this phase doesn't include. Callers must
+ * filter to this subset (`isXlsxWritableOp`) before calling `writeXlsxOps` —
+ * this module has no access to the rest of a StructuralOpV2 batch to filter
+ * it itself.
+ */
+export type XlsxWritableOp =
+	| { type: 'set-cell-content'; rowId: string; colId: string; value: string }
+	| { type: 'set-col-name'; colId: string; name: string }
+	| { type: 'merge-cells'; anchorRowId: string; anchorColId: string; endRowId: string; endColId: string }
+	| { type: 'unmerge-cells'; anchorRowId: string; anchorColId: string };
+
+const XLSX_WRITABLE_OP_TYPES: ReadonlySet<string> = new Set(['set-cell-content', 'set-col-name', 'merge-cells', 'unmerge-cells']);
+
+export function isXlsxWritableOp(op: { type: string }): op is XlsxWritableOp {
+	return XLSX_WRITABLE_OP_TYPES.has(op.type);
+}
+
+/** Inverse of `rowId`/`colId` above — 'header' and `r_<n>`/`c_<n>` map back
+ *  to the exact same 1-based xlsx coordinates convertSheet read them from. */
+function xlsxRowFromId(id: string): number {
+	return id === 'header' ? 1 : Number(id.slice(2));
+}
+function xlsxColFromId(id: string): number {
+	return Number(id.slice(2));
+}
+
+/** Excel's own "General" format auto-detect, used only as a fallback when the
+ *  original cell's type can't be preserved (see `coerceCellValue`) — no date
+ *  detection, since Excel's own date parsing is locale-dependent and a wrong
+ *  guess is worse than leaving typed text as text. */
+function autoDetectGeneral(text: string): CellValue {
+	if (/^(true|false)$/i.test(text)) return /^true$/i.test(text);
+	const n = Number(text);
+	if (text.trim() !== '' && Number.isFinite(n)) return n;
+	return text;
+}
+
+/** Coerces freshly-typed plain text back into a CellValue, preferring to keep
+ *  the ORIGINAL cell's type (number/boolean/date) and falling back to Excel's
+ *  "General" auto-detect only when the new text can't be parsed as that type
+ *  (or there was no original cell to match) — see CLAUDE.md's "xlsx write
+ *  support" section for the full reasoning. */
+function coerceCellValue(existing: CellValue | undefined, text: string): CellValue {
+	if (typeof existing === 'number') {
+		const n = Number(text);
+		if (text.trim() !== '' && Number.isFinite(n)) return n;
+	} else if (typeof existing === 'boolean') {
+		if (/^(true|false)$/i.test(text)) return /^true$/i.test(text);
+	} else if (existing instanceof Date) {
+		const d = new Date(text);
+		if (!Number.isNaN(d.getTime())) return d;
+	}
+	return autoDetectGeneral(text);
+}
+
+/** Writes plain edited text into one xlsx cell: empty clears it outright,
+ *  leading `=` (Excel's own convention) makes it a new formula — replacing
+ *  whatever was there before, formula or not — and everything else goes
+ *  through `coerceCellValue`. Never touches `styleId`/`hyperlinkId` (setCell's
+ *  own no-override-means-keep behaviour), so a cell's look survives a content
+ *  edit untouched. */
+function setPlainCellContent(sheet: Worksheet, row: number, col: number, text: string): void {
+	if (text === '') { deleteCell(sheet, row, col); return; }
+	if (text.startsWith('=') && text.length > 1) {
+		setCell(sheet, row, col, { kind: 'formula', formula: text.slice(1), t: 'normal' });
+		return;
+	}
+	setCell(sheet, row, col, coerceCellValue(getCell(sheet, row, col)?.value, text));
+}
+
+function resolveWritableWorksheet(wb: Workbook, sheetName: string | undefined): Worksheet {
+	const visible = wb.sheets.filter(s => s.kind === 'worksheet' && s.state === 'visible');
+	const entry = sheetName
+		? visible.find(s => s.kind === 'worksheet' && s.sheet.title === sheetName)
+		: visible[0];
+	if (!entry || entry.kind !== 'worksheet') throw new Error(sheetName ? `Sheet "${sheetName}" not found` : 'No visible worksheet');
+	return entry.sheet;
+}
+
+/** Mutates a loaded Workbook in place per a batch of `XlsxWritableOp` — the
+ *  exact coordinate mapping `convertSheet` used to read the file, run in
+ *  reverse. */
+export function applyXlsxWritableOps(wb: Workbook, sheetName: string | undefined, ops: readonly XlsxWritableOp[]): void {
+	const sheet = resolveWritableWorksheet(wb, sheetName);
+	for (const op of ops) {
+		switch (op.type) {
+			case 'set-cell-content':
+				setPlainCellContent(sheet, xlsxRowFromId(op.rowId), xlsxColFromId(op.colId), op.value);
+				break;
+			case 'set-col-name':
+				// Header text lives in xlsx row 1 — same convention convertSheet reads it with.
+				setPlainCellContent(sheet, 1, xlsxColFromId(op.colId), op.name);
+				break;
+			case 'merge-cells': {
+				const r1 = xlsxRowFromId(op.anchorRowId);
+				const c1 = xlsxColFromId(op.anchorColId);
+				const r2 = xlsxRowFromId(op.endRowId);
+				const c2 = xlsxColFromId(op.endColId);
+				mergeCells(sheet, {
+					minRow: Math.min(r1, r2), minCol: Math.min(c1, c2),
+					maxRow: Math.max(r1, r2), maxCol: Math.max(c1, c2),
+				});
+				break;
+			}
+			case 'unmerge-cells':
+				unmergeCellsAt(sheet, xlsxRowFromId(op.anchorRowId), xlsxColFromId(op.anchorColId));
+				break;
+		}
+	}
+}
+
+/** Read → mutate → re-serialize in one call — the whole of phase 1's write
+ *  path. Re-reads fresh bytes rather than reusing any previously-loaded
+ *  Workbook, matching how the rest of this plugin always re-derives from the
+ *  vault's current on-disk content rather than caching a live in-memory
+ *  object across writes. */
+export async function writeXlsxOps(
+	bytes: ArrayBuffer | Uint8Array,
+	sheetName: string | undefined,
+	ops: readonly XlsxWritableOp[],
+): Promise<Uint8Array> {
+	const wb = await loadWorkbook(fromArrayBuffer(bytes));
+	applyXlsxWritableOps(wb, sheetName, ops);
+	return workbookToBytes(wb);
 }

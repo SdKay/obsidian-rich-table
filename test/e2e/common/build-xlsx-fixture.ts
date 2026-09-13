@@ -8,12 +8,12 @@
  * ArrayBuffer/Uint8Array directly).
  */
 import { createWorkbook, addWorksheet } from '@office-kit/xlsx/workbook';
-import { setCell } from '@office-kit/xlsx/worksheet';
+import { setCell, mergeCells } from '@office-kit/xlsx/worksheet';
 import { saveWorkbook, toArrayBuffer } from '@office-kit/xlsx/io';
 
 export interface XlsxFixtureSpec {
 	/** One sheet per entry; each entry is a grid of cell strings, row-major, 1 header row + N data rows. */
-	sheets: { name: string; grid: string[][] }[];
+	sheets: { name: string; grid: string[][]; /** A1-notation ranges, e.g. 'B2:B3'. */ merges?: string[] }[];
 }
 
 export async function buildXlsxFixtureBytes(spec: XlsxFixtureSpec): Promise<number[]> {
@@ -25,6 +25,7 @@ export async function buildXlsxFixtureBytes(spec: XlsxFixtureSpec): Promise<numb
 				if (value !== '') setCell(ws, r + 1, c + 1, value);
 			});
 		});
+		for (const ref of sheet.merges ?? []) mergeCells(ws, ref);
 	}
 	const sink = toArrayBuffer();
 	await saveWorkbook(wb, sink);
