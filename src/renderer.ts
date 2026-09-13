@@ -1700,17 +1700,38 @@ export async function renderTable(
 	let showStatusBar     = () => { /* pinned: nothing to do */ };
 	let hideStatusBar     = () => { /* pinned: nothing to do */ };
 	if (!statusBarPinned) {
-		// Anchored to the VISIBLE bottom edge of the table area, mirroring
-		// exactly how the ctrl column anchors to the visible LEFT edge (see its
-		// own comment) — stays just below the table on-screen regardless of
-		// vertical scroll or how far the view has been resized.
+		// Anchored to the wrapper's own bottom edge (not the table's — see below),
+		// mirroring how the ctrl column anchors to the visible LEFT edge (its own
+		// comment) — stays just below the table on-screen regardless of vertical
+		// scroll or how far the view has been resized.
+		//
+		// g.vt + g.vh is the TABLE's visible bottom, clipped to the wrapper when
+		// scrolling clips it — but .bt-table-wrapper is deliberately taller than
+		// its table by design, reserving room below for the normal-flow, sticky
+		// .bt-edge-add-row "+" button. When the table fits with no vertical
+		// scroll, g.vh resolves to the table's own (shorter) height, landing the
+		// bar's top squarely inside that reserved strip — overlapping the
+		// add-row button. The wrapper's own bottom edge is what's actually free.
+		//
+		// Deliberately NOT g.vl/g.vw (both /zoom-corrected) — those answer "an
+		// offset inside the ZOOMED root", for consumers that live inside it
+		// (selector strips, ctrl column). statusBar itself lives in `shell`,
+		// which is never zoomed (see renderZoom.ts's own reasoning) and whose
+		// --sb-* custom properties are consumed there — so these need RAW
+		// visual px, with no zoom division, same as `shell`'s own rect would
+		// give directly. Dividing by zoom here double-corrected a distance that
+		// was already in the right space, invisible only at zoom=100% (where
+		// dividing by 1 is a no-op) and confirmed broken at any other zoom: the
+		// bar landed inside the table instead of below it.
 		positionStatusBar = () => {
 			const g = computeVisibleGeom();
 			if (g.tr.width === 0) return;
+			const visLeft = Math.max(g.tr.left, g.wr.left);
+			const visRight = Math.min(g.tr.right, g.wr.right);
 			statusBar.setCssProps({
-				'--sb-top':   `${g.vt + g.vh}px`,
-				'--sb-left':  `${g.vl}px`,
-				'--sb-width': `${g.vw}px`,
+				'--sb-top':   `${g.wr.bottom - g.rr.top}px`,
+				'--sb-left':  `${visLeft - g.rr.left}px`,
+				'--sb-width': `${Math.max(0, visRight - visLeft)}px`,
 			});
 		};
 		showStatusBar = () => { positionStatusBar(); statusBar.addClass('bt-strip-visible'); };

@@ -125,6 +125,28 @@ test.describe('status bar — pinned vs hover mode (Task 6)', () => {
 		await expect(bar).not.toHaveClass(/bt-strip-visible/);
 	});
 
+	// Reported ("视图设置里去掉常驻状态栏之后，状态栏还是显示，而且和行增加按钮叠在了
+	// 一起"): positionStatusBar anchored --sb-top to the TABLE's own visible
+	// bottom (g.vt + g.vh), but .bt-table-wrapper is deliberately taller than
+	// its table to make room for the normal-flow .bt-edge-add-row button below
+	// it — when the table fits with no vertical scroll (the common case), that
+	// anchor landed squarely inside the reserved strip, overlapping the button.
+	// Fixed by anchoring to the wrapper's own bottom edge instead.
+	test('the hovering bar sits below the add-row button, not overlapping it', async ({ page, renderFull }) => {
+		await renderFull(HOVER);
+		const root = page.locator('.bt-render-root');
+		const bar = page.locator('.bt-status-bar');
+		const addRow = page.locator('.bt-edge-add-row');
+
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await expect(bar).toHaveClass(/bt-strip-visible/);
+
+		const barBox = (await bar.boundingBox())!;
+		const addRowBox = (await addRow.boundingBox())!;
+		expect(barBox.y).toBeGreaterThanOrEqual(addRowBox.y + addRowBox.height - 2);
+	});
+
 	test('the settings menu toggles statusBarMode via the "Pin status bar" entry', async ({ page, renderFull }) => {
 		await renderFull(PINNED);
 		const root = page.locator('.bt-render-root');

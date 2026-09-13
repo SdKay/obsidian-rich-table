@@ -2,11 +2,21 @@
 
 /* Never zoomed — see renderer.ts's own doc comment on `shell` for why the
  * status bar (its other child, alongside .bt-render-root) has to live
- * outside the zoomed subtree. Plain block, no layout properties of its own
- * beyond what's needed to stack the two children vertically — .bt-render-root
- * itself keeps every other layout rule it already had. */
+ * outside the zoomed subtree. position:relative is load-bearing, not
+ * incidental: the hover-only status bar (.bt-status-mode-hover) is
+ * position:absolute with --sb-top/-left computed (renderer.ts) relative to
+ * ROOT's own box — before the status bar moved out here, root itself
+ * supplied that positioning context for free. Without shell also being a
+ * positioned ancestor, the status bar's absolute box resolves against
+ * whatever positioned ancestor comes next up the DOM (typically the
+ * viewport), landing nowhere near where those coordinates meant it to. This
+ * is a separate bug from --sb-top's own formula overlapping the add-row "+"
+ * button (see positionStatusBar's own comment, renderer.ts) — that one is a
+ * wrong anchor point (table's bottom vs. wrapper's), not a wrong coordinate
+ * space, and needed its own fix. */
 .bt-render-root-shell {
 	display: block;
+	position: relative;
 }
 
 .bt-render-root {

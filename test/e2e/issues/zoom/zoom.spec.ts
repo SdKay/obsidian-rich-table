@@ -386,4 +386,32 @@ test.describe('zoom', () => {
 		});
 		expect(state.colSelTop).toBeGreaterThanOrEqual(state.titleBottom - 0.5);
 	});
+
+	// Reported ("关闭显示常驻状态栏只有zoom是100%的时候才有效，非100%的时候又穿插
+	// 到表格里面去了"): positionStatusBar divided its visual (getBoundingClientRect)
+	// distances by `zoom` before writing them into --sb-top/-left/-width — correct
+	// for a value consumed INSIDE the zoomed root (e.g. the selector strips), but
+	// statusBar itself lives in `shell`, which is never zoomed (see renderZoom.ts),
+	// so its --sb-* custom properties need RAW visual px with no zoom division.
+	// Dividing by zoom double-corrected an already-correct distance — invisible
+	// at zoom=100% (dividing by 1 is a no-op) but broke at every other zoom,
+	// landing the bar inside the table instead of below it.
+	test('the hovering status bar sits below the table (not inside it) and matches its width, at every zoom level', async ({ page, renderFull }) => {
+		for (const z of [50, 150, 200]) {
+			await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], zoom: z, statusBarMode: 'hover' }));
+			const root = page.locator('.bt-render-root');
+			const table = page.locator('table.bt-table');
+			const bar = page.locator('.bt-status-bar');
+
+			const rootBox = (await root.boundingBox())!;
+			await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+			await expect(bar).toHaveClass(/bt-strip-visible/);
+
+			const tableBox = (await table.boundingBox())!;
+			const barBox = (await bar.boundingBox())!;
+			expect(barBox.y, `zoom ${z}%: bar top vs table bottom`).toBeGreaterThanOrEqual(tableBox.y + tableBox.height - 2);
+			expect(barBox.x, `zoom ${z}%: bar left vs table left`).toBeCloseTo(tableBox.x, 0);
+			expect(barBox.width, `zoom ${z}%: bar width vs table width`).toBeCloseTo(tableBox.width, 0);
+		}
+	});
 });
