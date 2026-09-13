@@ -415,7 +415,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		bindCellActivation(el, {
 			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
 			delayMs: 200,
-			primaryAction: (_evt, seedChar) => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, seedChar, onEditNavigate); },
+			primaryAction: (_evt, seedChar) => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, seedChar, onEditNavigate, undefined, measureZoomFactor(el)); },
 			panelAction: (evt) => openPanel(evt),
 		});
 	}
@@ -426,7 +426,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// draft text was typed, instead of silently reverting to the column's stored name.
 	if (onCellChange && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, 0, colIdx);
-		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, resume.getDraftText(), onEditNavigate);
+		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, resume.getDraftText(), onEditNavigate, undefined, measureZoomFactor(el));
 	}
 
 	// Double-click / Ctrl+click → style-and-type panel is wired via bindCellActivation above.
@@ -777,7 +777,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 				(evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined,
 			primaryAction: (_evt, seedChar) => {
 				if (!el.isConnected) return;
-				enterEditMode(el, formulaDisplayValue, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, seedChar, onEditNavigate, formulaHooks);
+				enterEditMode(el, formulaDisplayValue, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, seedChar, onEditNavigate, formulaHooks, measureZoomFactor(el));
 			},
 			panelAction: () => openDataPanel(),
 		});
@@ -789,7 +789,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	// instead of silently reverting to the cell's actual stored value.
 	if (onCellChange && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
-		if (resume) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, resume.getDraftText(), onEditNavigate, formulaHooks);
+		if (resume) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, resume.getDraftText(), onEditNavigate, formulaHooks, measureZoomFactor(el));
 	}
 
 }

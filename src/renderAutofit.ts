@@ -76,6 +76,80 @@ export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: 
 	}
 }
 
+/** Snapshots the CURRENT `<col>`/`<table>` width, before any edit-time growth
+ *  touches them, and returns a function that restores exactly those two
+ *  values. growColLiveForTextEdit only ever grows (never shrinks) while an
+ *  edit is in progress — if that edit ends WITHOUT a real content change
+ *  (Escape, or a value that round-trips back to what it started as, e.g. an
+ *  IME composition the user cancelled), nothing else ever puts the width
+ *  back: a real content change re-renders the whole table from a fresh
+ *  colgroup, but a no-op edit takes a restore-the-old-DOM-nodes path that
+ *  only knows about the CELL's own children, not the `<col>`/`<table>`
+ *  siblings this function touched — reported as a column staying stuck wide
+ *  after a cancelled IME candidate, fixable only by forcing an unrelated
+ *  full re-render (opening/closing the raw code block). Call this once,
+ *  before the editor's first keystroke, and invoke the returned function
+ *  from enterEditMode's own cancel/no-change paths. */
+export function captureColWidthForTextEdit(cellEl: HTMLElement): () => void {
+	const table = cellEl.closest('table');
+	const colIdxAttr = cellEl.dataset.col;
+	const colEl = table && colIdxAttr !== undefined ? table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`) : null;
+	const colWidth = colEl?.style.width ?? '';
+	const tableWidth = (table as HTMLElement | null)?.style.width ?? '';
+	return () => {
+		if (colEl) colEl.style.width = colWidth;
+		if (table) (table as HTMLElement).style.width = tableWidth;
+	};
+}
+
+/** Live-preview counterpart for a plain text cell mid-edit: on every
+ *  keystroke, widens the `<col>` DOM element directly (never through
+ *  onStructuralOp) so the editor — kept single-line by white-space:pre,
+ *  styles.css — never wraps while typing, and grows `<table>`'s own width by
+ *  the same amount so the extra space comes from the TABLE widening rather
+ *  than every sibling column being squeezed back down to keep the declared
+ *  total unchanged. DOM-only and deliberately so: an AUTO column
+ *  (col[data-auto], or every column in an all-auto table) is supposed to
+ *  shrink back to whatever the committed content actually needs once
+ *  editing ends, so persisting a width here would defeat that. A
+ *  col[data-auto]'s width is unset (or the previous auto-fit's fallback), so
+ *  the current-width fallback below always starts from the CELL's own real
+ *  rendered width, not a stale/absent col width. Never shrinks — see
+ *  captureColWidthForTextEdit above for the matching "undo" half. */
+export function growColLiveForTextEdit(cellEl: HTMLElement, editor: HTMLElement, zoom = 1): void {
+	const table = cellEl.closest('table');
+	const colIdxAttr = cellEl.dataset.col;
+	if (!table || colIdxAttr === undefined) return;
+	const colEl = table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`);
+	if (!colEl) return;
+
+	// getBoundingClientRect() is visual; scrollWidth (below) is logical — both
+	// need to end up in the same (logical) space before comparing, same
+	// correction as scrollContentOffset's own (renderGeometry.ts's NO_ZOOM
+	// doc comment).
+	const currentWidth = parseFloat(colEl.style.width) || cellEl.getBoundingClientRect().width / zoom;
+	const view = activeDocument.defaultView;
+	const style = view ? view.getComputedStyle(cellEl) : null;
+	const padH = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24;
+	const borderH = style ? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) : 2;
+	const needed = Math.ceil(editor.scrollWidth + padH + borderH);
+	if (needed <= currentWidth) return;
+	colEl.style.setProperty('width', `${needed}px`);
+	// table-layout:fixed pins the TABLE's own width too (renderer.ts's
+	// hasExplicitWidths branch) — without also growing it by this column's
+	// exact delta, the browser redistributes the extra width by squeezing
+	// every sibling column back down to keep the declared total unchanged,
+	// which is the opposite of what "grow while editing" should look like
+	// (reported: typing into a narrow column visibly narrowed the column to
+	// its LEFT). An all-auto table (table-layout:auto) sets no width on
+	// `table` at all, so there's nothing to grow there — it already expands
+	// on its own with no squeezing, hence the tableWidth guard below.
+	const tableWidth = parseFloat((table as HTMLElement).style.width);
+	if (Number.isFinite(tableWidth) && tableWidth > 0) {
+		(table as HTMLElement).style.setProperty('width', `${tableWidth + (needed - currentWidth)}px`);
+	}
+}
+
 /**
  * Auto-fit every column's width in one pass. Measures each cell in place: toggles
  * white-space:nowrap on its content to get the intrinsic single-line width, then

@@ -1502,11 +1502,16 @@
 	white-space: pre !important;
 	overflow-x: auto;
 }
-/* Cell editor is always left-aligned so code indentation is visible while typing */
+/* Cell editor is always left-aligned so code indentation is visible while typing.
+ * white-space:pre (not pre-wrap): a narrow auto column must widen to fit what's
+ * being typed instead of wrapping to multiple lines — renderCell.ts grows the
+ * column live on every keystroke (growColLiveForTextEdit). Real newlines
+ * (Shift+Enter) still render as line breaks either way; only
+ * auto-wrap-on-overflow is disabled. */
 .bt-table .bt-td .bt-cell-editor,
 .bt-table .bt-th .bt-cell-editor {
 	text-align: left;
-	white-space: pre-wrap;
+	white-space: pre;
 }
 .bt-table .bt-td .bt-list-marker,
 .bt-table .bt-th .bt-list-marker {

@@ -5,6 +5,7 @@ import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
 import type { TableModelV2 } from './model';
 import { labelFormulaToIds } from './formulaLabel';
 import { parseMarkdownPipeTable, parseHtmlTableWithMerges } from './renderClipboard';
+import { growColLiveForTextEdit, captureColWidthForTextEdit } from './renderAutofit';
 
 /**
  * Bundles everything formula-mode editing needs, so enterEditMode's already-
@@ -25,6 +26,7 @@ export interface FormulaEditHooks {
 	onEnterFormulaMode: (insertText: (label: string) => void) => void;
 	onExitFormulaMode: () => void;
 }
+
 
 /**
  * `cacheKey` + `initialValue` are only present when this call is itself a
@@ -243,12 +245,21 @@ export function enterEditMode(
 	initialText?: string,
 	onEditNavigate?: EditNavigateHandler,
 	formulaHooks?: FormulaEditHooks,
+	/** Zoom factor for growColLiveForTextEdit's own visual-to-logical
+	 *  correction — see that function's doc comment (renderAutofit.ts). */
+	zoom = 1,
 ): void {
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
 
+	const restoreColWidth = captureColWidthForTextEdit(el);
 	const restoreNodes = () => {
 		el.empty();
 		for (const node of savedNodes) el.appendChild(node);
+		// Undoes growColLiveForTextEdit's own (DOM-only) width bump — every
+		// restoreNodes() call site means "no real change, reverting the edit
+		// in place" (no re-render is coming to fix a stale width the normal
+		// way), so the two must always travel together.
+		restoreColWidth();
 	};
 
 	el.empty();
@@ -322,6 +333,10 @@ export function enterEditMode(
 	editor.addEventListener('input', () => {
 		if (!inFormulaMode && editor.textContent === '=') enterFormulaMode();
 	});
+
+	const grow = () => growColLiveForTextEdit(el, editor, zoom);
+	grow(); // seedChar/resume already set editor.textContent before any 'input' fires
+	editor.addEventListener('input', grow);
 
 	let committed = false;
 
