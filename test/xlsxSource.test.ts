@@ -14,7 +14,7 @@ import { createWorkbook, addWorksheet, workbookToBytes } from '@office-kit/xlsx/
 import { setCell, mergeCells, freezePanes } from '@office-kit/xlsx/worksheet';
 import { setBold, setFontColor, setCellBackgroundColor } from '@office-kit/xlsx/styles';
 import { saveWorkbook, toArrayBuffer } from '@office-kit/xlsx/io';
-import { readXlsxAsModel, decodeXmlNumericEntities } from '../src/xlsxSource';
+import { readXlsxAsModel, decodeXmlNumericEntities, colWidthToPx } from '../src/xlsxSource';
 import type { TableModelV2, WorkbookV3 } from '../src/model';
 
 async function buildSampleBytes(sheetNames: string[]): Promise<ArrayBuffer> {
@@ -111,6 +111,53 @@ describe('readXlsxAsModel — single sheet', () => {
 		const model = asSingle(await readXlsxAsModel(sink.result()));
 		expect(model.columns).toEqual([]);
 		expect(model.rows).toEqual([]);
+	});
+
+	// A real xlsx commonly carries a "default width" ColumnDimension entry
+	// spanning the whole 1..16384 column range (Excel/LibreOffice/WPS's own
+	// "everything not explicitly overridden uses this width" record) ALONGSIDE
+	// specific single-column overrides. Reported: a narrow-content column
+	// rendered wide and a wide-content column rendered narrow — i.e. widths
+	// swapped relative to what Excel itself shows.
+	it('prefers a column-specific width over a wide default-width range that also covers it, regardless of Map insertion order', async () => {
+		const wb = createWorkbook();
+		const ws = addWorksheet(wb, 'Sheet1');
+		setCell(ws, 1, 1, 'A-narrow'); setCell(ws, 1, 2, 'B-wide');
+		setCell(ws, 1, 3, 'C-narrow'); setCell(ws, 1, 4, 'D-wide');
+		// Default-width range registered FIRST — the real-world ordering that
+		// exposed the bug: Array.prototype.find() (the old lookup) returns
+		// whichever covering entry comes first in insertion order, not the
+		// most specific one.
+		ws.columnDimensions.set(1, { min: 1, max: 16384, width: 8.43 });
+		ws.columnDimensions.set(2, { min: 2, max: 2, width: 45 });
+		ws.columnDimensions.set(4, { min: 4, max: 4, width: 45 });
+
+		const sink = toArrayBuffer();
+		await saveWorkbook(wb, sink);
+		const model = asSingle(await readXlsxAsModel(sink.result()));
+
+		const narrowPx = colWidthToPx(8.43);
+		const widePx = colWidthToPx(45);
+		expect(model.columns[0]!.width).toBe(narrowPx); // A: only the default range covers it
+		expect(model.columns[1]!.width).toBe(widePx);   // B: specific 45-wide override must win
+		expect(model.columns[2]!.width).toBe(narrowPx); // C: only the default range covers it
+		expect(model.columns[3]!.width).toBe(widePx);   // D: specific 45-wide override must win
+	});
+
+	// The same wide "default width" range (min:1, max:16384) also fed directly
+	// into usedBounds' maxCol computation, so ANY sheet carrying one — extremely
+	// common — rendered 16384 columns instead of however many actually have
+	// content, which is both wrong and a real performance/rendering hazard.
+	it('does not let a wide default-width range inflate the column count', async () => {
+		const wb = createWorkbook();
+		const ws = addWorksheet(wb, 'Sheet1');
+		setCell(ws, 1, 1, 'A'); setCell(ws, 1, 2, 'B');
+		ws.columnDimensions.set(1, { min: 1, max: 16384, width: 8.43 });
+
+		const sink = toArrayBuffer();
+		await saveWorkbook(wb, sink);
+		const model = asSingle(await readXlsxAsModel(sink.result()));
+		expect(model.columns).toHaveLength(2);
 	});
 });
 

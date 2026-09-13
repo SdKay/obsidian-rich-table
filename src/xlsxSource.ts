@@ -117,7 +117,7 @@ function cellValueToString(value: CellValue): string {
  *  width unit is defined relative to the workbook's default font, which
  *  this doesn't otherwise account for) — close enough for a view-only
  *  render, not represented as exact. */
-function colWidthToPx(width: number | undefined): number | undefined {
+export function colWidthToPx(width: number | undefined): number | undefined {
 	return width === undefined ? undefined : Math.round(width * 7 + 5);
 }
 
@@ -146,6 +146,36 @@ function buildStyleRule(wb: Workbook, cell: Cell): Omit<StyleRuleV2, 'target'> |
 	return Object.keys(rule).length > 0 ? rule : null;
 }
 
+/** A ColumnDimension entry is a genuine "this specific column was set" record
+ *  only when its range is a single column (`min === max`) — real xlsx files
+ *  routinely also carry a "default width" entry spanning a huge range (often
+ *  1..16384, the full column limit) meaning "everything not explicitly
+ *  overridden uses this width", which is a fallback, not a real column count.
+ *  Used both to find a column's own explicit width (below) and to bound
+ *  `usedBounds`'s maxCol — trusting a wide fallback range's `max` there was a
+ *  confirmed bug: any sheet carrying one rendered 16384 columns. */
+function isSingleColumnDimension(dim: { min: number; max: number }): boolean {
+	return dim.min === dim.max;
+}
+
+/** Resolves the width that actually applies to column `c` — the covering
+ *  entry with the SMALLEST span, not merely the first one found. Real xlsx
+ *  files commonly register a wide "default width" range (see
+ *  isSingleColumnDimension's doc comment) alongside specific single-column
+ *  overrides; `Array.prototype.find()`'s "first match wins" only happened to
+ *  pick the right one when the specific entry was inserted before the wide
+ *  one — reported (and reproduced) with the opposite ordering, where a
+ *  narrow-content column rendered wide and a wide-content column rendered
+ *  narrow, i.e. two columns' widths landing swapped relative to Excel. */
+function resolveColumnWidth(sheet: Worksheet, c: number): number | undefined {
+	let best: { min: number; max: number; width?: number } | undefined;
+	for (const dim of sheet.columnDimensions.values()) {
+		if (c < dim.min || c > dim.max) continue;
+		if (!best || (dim.max - dim.min) < (best.max - best.min)) best = dim;
+	}
+	return best?.width;
+}
+
 function usedBounds(sheet: Worksheet): { maxRow: number; maxCol: number } {
 	let maxRow = 0;
 	let maxCol = 0;
@@ -154,7 +184,9 @@ function usedBounds(sheet: Worksheet): { maxRow: number; maxCol: number } {
 		maxRow = Math.max(maxRow, r);
 		for (const c of cols.keys()) maxCol = Math.max(maxCol, c);
 	}
-	for (const dim of sheet.columnDimensions.values()) maxCol = Math.max(maxCol, dim.max);
+	for (const dim of sheet.columnDimensions.values()) {
+		if (isSingleColumnDimension(dim)) maxCol = Math.max(maxCol, dim.max);
+	}
 	for (const rowNum of sheet.rowDimensions.keys()) maxRow = Math.max(maxRow, rowNum);
 	return { maxRow, maxCol };
 }
@@ -169,9 +201,8 @@ function convertSheet(wb: Workbook, sheet: Worksheet): Omit<TableModelV2, 'versi
 	for (let c = 1; c <= maxCol; c++) {
 		const headerCell = headerRow?.get(c);
 		const name = headerCell ? cellValueToString(headerCell.value) : '';
-		const dim = [...sheet.columnDimensions.values()].find(d => c >= d.min && c <= d.max);
 		const col: ColumnDefV2 = { id: colId(c), name };
-		const width = colWidthToPx(dim?.width);
+		const width = colWidthToPx(resolveColumnWidth(sheet, c));
 		if (width !== undefined) col.width = width;
 		columns.push(col);
 	}
