@@ -52,40 +52,15 @@ function argbToHex(argb: string | undefined): string | undefined {
 	return `#${hex.toLowerCase()}`;
 }
 
-/**
- * Works around a confirmed bug in @office-kit/xlsx (v0.9.0): its XML parser
- * does not decode numeric character references (`&#20219;`, `&#x4F5C;`) back
- * into real characters. Verified directly against a file's own
- * `sheet1.xml` — openpyxl (and evidently other producers) write non-ASCII
- * inline-string cell text this way; Excel/WPS/Google Sheets typically emit
- * raw UTF-8 bytes instead, but openpyxl-authored files are common enough
- * (including this feature's own test fixtures) that leaving literal
- * `&#NNNN;` text on screen isn't an acceptable "rare edge case" gap. Scoped
- * to numeric references only — that's the specific, confirmed defect; named
- * entities (`&amp;`, `&lt;`, …) aren't known to be affected and are left
- * alone rather than guessed at.
- */
-export function decodeXmlNumericEntities(text: string): string {
-	if (!text.includes('&#')) return text; // fast path: no entities present
-	return text.replace(/&#(\d+);|&#x([0-9a-fA-F]+);/g, (_match, dec: string | undefined, hex: string | undefined) =>
-		String.fromCodePoint(dec !== undefined ? Number(dec) : parseInt(hex as string, 16)));
-}
-
 /** Renders every `CellValue` variant to the plain string rich-table cells
  *  are always made of. Formula cells show their last-cached result (view-
  *  only — there is no formula ENGINE here, only whatever Excel last computed
  *  and saved); rich-text runs are flattened to plain concatenated text,
  *  losing per-run formatting (documented gap, same tier as borders/number
- *  formats — see the feature's own README/CLAUDE.md notes).
- *
- *  Every genuinely-textual branch below goes through decodeXmlNumericEntities
- *  — see that function's own doc comment for why: a confirmed upstream parser
- *  bug otherwise surfaces literal `&#20219;&#21153;`-style text for any
- *  inline-string cell whose producer (confirmed with openpyxl) wrote non-ASCII
- *  content as numeric XML character references instead of raw UTF-8. */
+ *  formats — see the feature's own README/CLAUDE.md notes). */
 function cellValueToString(value: CellValue): string {
 	if (value === null || value === undefined) return '';
-	if (typeof value === 'string') return decodeXmlNumericEntities(value);
+	if (typeof value === 'string') return value;
 	if (typeof value === 'number') return String(value);
 	if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
 	if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -101,12 +76,12 @@ function cellValueToString(value: CellValue): string {
 			case 'error':
 				return value.code;
 			case 'rich-text':
-				return decodeXmlNumericEntities(value.runs.map(r => r.text).join(''));
+				return value.runs.map(r => r.text).join('');
 			case 'formula': {
 				const cached = value.cachedValue;
 				if (cached === undefined) return '';
 				if (typeof cached === 'boolean') return cached ? 'TRUE' : 'FALSE';
-				return decodeXmlNumericEntities(String(cached));
+				return String(cached);
 			}
 		}
 	}

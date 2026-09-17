@@ -14,7 +14,7 @@ import { createWorkbook, addWorksheet, workbookToBytes } from '@office-kit/xlsx/
 import { setCell, mergeCells, freezePanes } from '@office-kit/xlsx/worksheet';
 import { setBold, setFontColor, setCellBackgroundColor } from '@office-kit/xlsx/styles';
 import { saveWorkbook, toArrayBuffer } from '@office-kit/xlsx/io';
-import { readXlsxAsModel, decodeXmlNumericEntities, colWidthToPx } from '../src/xlsxSource';
+import { readXlsxAsModel, colWidthToPx } from '../src/xlsxSource';
 import type { TableModelV2, WorkbookV3 } from '../src/model';
 
 async function buildSampleBytes(sheetNames: string[]): Promise<ArrayBuffer> {
@@ -49,6 +49,139 @@ async function buildSampleBytes(sheetNames: string[]): Promise<ArrayBuffer> {
 function asSingle(model: TableModelV2 | WorkbookV3): TableModelV2 {
 	expect('sheets' in model).toBe(false);
 	return model as TableModelV2;
+}
+
+/** Minimal, dependency-free ZIP (STORE method, no compression) builder — just
+ *  enough to construct a real .xlsx package byte-for-byte, so the numeric-
+ *  entity regression test below drives the actual loadWorkbook parser rather
+ *  than a hand-rolled decoder. Deliberately not `zlib.crc32` (Node 21.4+
+ *  only; this project's CI matrix still runs Node 20.x). */
+const CRC_TABLE = (() => {
+	const table = new Uint32Array(256);
+	for (let n = 0; n < 256; n++) {
+		let c = n;
+		for (let k = 0; k < 8; k++) c = c & 1 ? (0xedb88320 ^ (c >>> 1)) : c >>> 1;
+		table[n] = c;
+	}
+	return table;
+})();
+
+function crc32(buf: Uint8Array): number {
+	let c = 0xffffffff;
+	for (const byte of buf) c = CRC_TABLE[(c ^ byte) & 0xff]! ^ (c >>> 8);
+	return (c ^ 0xffffffff) >>> 0;
+}
+
+function buildZip(files: Record<string, string>): ArrayBuffer {
+	const encoder = new TextEncoder();
+	const localParts: Uint8Array[] = [];
+	const centralParts: Uint8Array[] = [];
+	let offset = 0;
+	for (const [name, content] of Object.entries(files)) {
+		const nameBytes = encoder.encode(name);
+		const data = encoder.encode(content);
+		const crc = crc32(data);
+
+		const local = new DataView(new ArrayBuffer(30 + nameBytes.length));
+		local.setUint32(0, 0x04034b50, true);
+		local.setUint16(4, 20, true); // version needed
+		local.setUint16(6, 0, true); // flags
+		local.setUint16(8, 0, true); // compression: store
+		local.setUint16(10, 0, true); // mod time
+		local.setUint16(12, 0, true); // mod date
+		local.setUint32(14, crc, true);
+		local.setUint32(18, data.length, true); // compressed size
+		local.setUint32(22, data.length, true); // uncompressed size
+		local.setUint16(26, nameBytes.length, true);
+		local.setUint16(28, 0, true); // extra length
+		const localBytes = new Uint8Array(local.buffer);
+		localBytes.set(nameBytes, 30);
+		localParts.push(localBytes, data);
+
+		const central = new DataView(new ArrayBuffer(46 + nameBytes.length));
+		central.setUint32(0, 0x02014b50, true);
+		central.setUint16(4, 20, true);
+		central.setUint16(6, 20, true);
+		central.setUint16(8, 0, true);
+		central.setUint16(10, 0, true);
+		central.setUint16(12, 0, true);
+		central.setUint16(14, 0, true);
+		central.setUint32(16, crc, true);
+		central.setUint32(20, data.length, true);
+		central.setUint32(24, data.length, true);
+		central.setUint16(28, nameBytes.length, true);
+		central.setUint16(30, 0, true); // extra length
+		central.setUint16(32, 0, true); // comment length
+		central.setUint16(34, 0, true); // disk number
+		central.setUint16(36, 0, true); // internal attrs
+		central.setUint32(38, 0, true); // external attrs
+		central.setUint32(42, offset, true); // local header offset
+		const centralBytes = new Uint8Array(central.buffer);
+		centralBytes.set(nameBytes, 46);
+		centralParts.push(centralBytes);
+
+		offset += localBytes.length + data.length;
+	}
+
+	const centralStart = offset;
+	let centralSize = 0;
+	for (const part of centralParts) centralSize += part.length;
+
+	const end = new DataView(new ArrayBuffer(22));
+	end.setUint32(0, 0x06054b50, true);
+	end.setUint16(4, 0, true);
+	end.setUint16(6, 0, true);
+	end.setUint16(8, centralParts.length, true);
+	end.setUint16(10, centralParts.length, true);
+	end.setUint32(12, centralSize, true);
+	end.setUint32(16, centralStart, true);
+	end.setUint16(20, 0, true);
+
+	const total = offset + centralSize + 22;
+	const out = new Uint8Array(total);
+	let pos = 0;
+	for (const part of [...localParts, ...centralParts, new Uint8Array(end.buffer)]) {
+		out.set(part, pos);
+		pos += part.length;
+	}
+	return out.buffer;
+}
+
+/** A real, minimal .xlsx whose only cell (A1) is an inline-string containing
+ *  the exact numeric character references from office-kit/xlsx#131's own
+ *  report (`&#20219;&#21153;` = "任务") — reproduces the upstream bug through
+ *  a real parse rather than asserting against a hand-rolled decoder. */
+function buildNumericEntityFixture(): ArrayBuffer {
+	return buildZip({
+		'[Content_Types].xml':
+			'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+			'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+			'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+			'<Default Extension="xml" ContentType="application/xml"/>' +
+			'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+			'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+			'</Types>',
+		'_rels/.rels':
+			'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+			'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+			'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+			'</Relationships>',
+		'xl/workbook.xml':
+			'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+			'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+			'<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>' +
+			'</workbook>',
+		'xl/_rels/workbook.xml.rels':
+			'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+			'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+			'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+			'</Relationships>',
+		'xl/worksheets/sheet1.xml':
+			'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+			'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+			'<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>&#20219;&#21153;</t></is></c></row></sheetData>' +
+			'</worksheet>',
+	});
 }
 
 describe('readXlsxAsModel — single sheet', () => {
@@ -179,32 +312,22 @@ describe('readXlsxAsModel — multi-sheet', () => {
 	});
 });
 
-// Confirmed live in the actual app (not just theoretically): a real
-// openpyxl-authored file showed literal "&#20219;&#21153;" text instead of
-// "任务" in both the header and data cells — @office-kit/xlsx's XML parser
-// doesn't decode numeric character references. buildSampleBytes above can't
-// reproduce this itself (the library's own writer emits raw UTF-8, not
-// entities — the same reason readXlsxAsModel's other tests never see the bug
-// even though they use non-ASCII text), so this tests the workaround
-// function directly rather than through a full read.
-describe('decodeXmlNumericEntities', () => {
-	it('decodes decimal numeric references into the real characters', () => {
-		expect(decodeXmlNumericEntities('&#20219;&#21153;')).toBe('任务');
-	});
-
-	it('decodes hex numeric references', () => {
-		expect(decodeXmlNumericEntities('&#x4EFB;&#x52A1;')).toBe('任务');
-	});
-
-	it('decodes references mixed with plain text', () => {
-		expect(decodeXmlNumericEntities('设计&#26550;构')).toBe('设计架构');
-	});
-
-	it('leaves text with no numeric references unchanged', () => {
-		expect(decodeXmlNumericEntities('设计架构')).toBe('设计架构');
-	});
-
-	it('leaves a literal & that is not part of a numeric reference unchanged', () => {
-		expect(decodeXmlNumericEntities('A & B')).toBe('A & B');
+// Regression for a real bug hit live in the app: an openpyxl-authored file
+// showed literal "&#20219;&#21153;" text instead of "任务", because
+// @office-kit/xlsx's XML parser didn't decode numeric character references
+// (openpyxl writes non-ASCII inline-string content this way; Excel/WPS/
+// Sheets write raw UTF-8 instead, which is why buildSampleBytes above never
+// exercises this path). Fixed upstream in @office-kit/xlsx 0.11.1 (reported
+// at https://github.com/office-kit/xlsx/issues/131) — this test drives a
+// hand-built .xlsx whose inline-string cell uses the exact numeric-entity
+// form from that report, through the real readXlsxAsModel/loadWorkbook
+// path, so a regression in a future upstream version would be caught here
+// rather than silently reintroducing the bug this project used to work
+// around itself.
+describe('numeric XML character references in inline-string cells (office-kit/xlsx#131)', () => {
+	it('decodes &#NNNN; entities into real characters when read through readXlsxAsModel', async () => {
+		const bytes = buildNumericEntityFixture();
+		const model = asSingle(await readXlsxAsModel(bytes));
+		expect(model.columns[0]!.name).toBe('任务');
 	});
 });
