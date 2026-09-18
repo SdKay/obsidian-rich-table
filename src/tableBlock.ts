@@ -22,7 +22,7 @@ import { readXlsxAsModel, writeXlsxOps, isXlsxWritableOp, type XlsxWritableOp } 
 import { applyAutoColWidths, applyCodeLineHeightFix } from './renderAutofit';
 import { belongsToRoot } from './renderOwnScope';
 import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
-import { reserveSelectorLeftPad } from './renderGeometry';
+import { reserveSelectorLeftPad, applyOuterFrame } from './renderGeometry';
 import { openXlsxFilePicker } from './xlsxFilePicker';
 import { captureTablePng, captureTableSvg } from './tableSnapshot';
 import type { SnapshotKind } from './renderTypes';
@@ -482,6 +482,12 @@ export class TableBlock extends MarkdownRenderChild {
 					// buttons already cover more directly.
 					(!this.isXlsxBacked && !isEmpty && !isOldFormat) ? () => void this.exportToXlsx() : undefined,
 					hiddenCtrlColButtons,
+					// A 2+-sheet workbook's sheet tabs live INSIDE the status bar (see
+					// the .bt-status-tabs mount below) — the only way to switch sheets
+					// at all, so this sheet's own statusBarMode preference is
+					// overridden to always show it (see forceStatusBarPinned's own doc
+					// comment on renderTable).
+					!!(this.workbook && this.workbook.sheets.length > 1),
 				);
 			}
 
@@ -592,6 +598,12 @@ export class TableBlock extends MarkdownRenderChild {
 		// it out — it gets here via the exact same query as its own top-level
 		// container, and reserveSelectorLeftPad treats every root identically).
 		this.containerEl.querySelectorAll<HTMLElement>('.bt-render-root').forEach(reserveSelectorLeftPad);
+
+		// Same "needs live layout, must run post-swap" reasoning, for the outer
+		// frame's own initial sizing (see applyOuterFrame's own doc comment) —
+		// same blanket query/every-root treatment as reserveSelectorLeftPad
+		// just above.
+		this.containerEl.querySelectorAll<HTMLElement>('.bt-render-root').forEach(applyOuterFrame);
 
 		// A resumed edit (renderEditHandoff.ts) builds its editor DURING the render
 		// pass above, while the cell is still part of the off-screen `tmp` tree — a

@@ -125,14 +125,14 @@ test.describe('status bar — pinned vs hover mode (Task 6)', () => {
 		await expect(bar).not.toHaveClass(/bt-strip-visible/);
 	});
 
-	// Reported ("视图设置里去掉常驻状态栏之后，状态栏还是显示，而且和行增加按钮叠在了
-	// 一起"): positionStatusBar anchored --sb-top to the TABLE's own visible
-	// bottom (g.vt + g.vh), but .bt-table-wrapper is deliberately taller than
-	// its table to make room for the normal-flow .bt-edge-add-row button below
-	// it — when the table fits with no vertical scroll (the common case), that
-	// anchor landed squarely inside the reserved strip, overlapping the button.
-	// Fixed by anchoring to the wrapper's own bottom edge instead.
-	test('the hovering bar sits below the add-row button, not overlapping it', async ({ page, renderFull }) => {
+	// The hover bar overlays root's own last row (see positionStatusBar's own
+	// comment in renderer.ts for why: anything anchored past root's flow-box
+	// gets clipped by Obsidian's real code-block container, which no earlier
+	// version of this test could catch since the harness has no such
+	// wrapper) — it must stay entirely within root's own box, above (never
+	// overlapping) the add-row strip that lives further down inside the
+	// scroll wrapper.
+	test('the hovering bar overlays the table\'s own last row, never the add-row button below it', async ({ page, renderFull }) => {
 		await renderFull(HOVER);
 		const root = page.locator('.bt-render-root');
 		const bar = page.locator('.bt-status-bar');
@@ -144,7 +144,9 @@ test.describe('status bar — pinned vs hover mode (Task 6)', () => {
 
 		const barBox = (await bar.boundingBox())!;
 		const addRowBox = (await addRow.boundingBox())!;
-		expect(barBox.y).toBeGreaterThanOrEqual(addRowBox.y + addRowBox.height - 2);
+		expect(barBox.y).toBeGreaterThanOrEqual(rootBox.y - 1);
+		expect(barBox.y + barBox.height).toBeLessThanOrEqual(rootBox.y + rootBox.height + 1);
+		expect(barBox.y + barBox.height).toBeLessThanOrEqual(addRowBox.y + 1);
 	});
 
 	test('the settings menu toggles statusBarMode via the "Pin status bar" entry', async ({ page, renderFull }) => {
@@ -298,6 +300,44 @@ test.describe('status bar — multi-sheet tab integration (Task 9)', () => {
 		await renderBlock(ONE_SHEET);
 		await expect(page.locator('.bt-sheet-tabbar')).toHaveCount(0);
 		await expect(page.locator('.bt-status-bar')).toBeVisible();
+	});
+
+	// Reported concern: the sheet tabs are the only way to switch sheets at
+	// all (mounted inside .bt-status-bar) — if a sheet's own statusBarMode
+	// were honored verbatim on a 2+-sheet workbook, setting it to 'hover'
+	// would hide the workbook's own navigation, not just its stats.
+	test('a 2+-sheet workbook forces the bar pinned even if the active sheet requests hover mode', async ({ page, renderBlock }) => {
+		const HOVER_WORKBOOK = [
+			'---', 'version: 3', 'active_sheet: s_1', 'sheets:',
+			'  - id: s_1', '    statusBarMode: hover',
+			'    columns:', '      - { id: c_0, name: A, width: 80 }',
+			'    rows:', '      - { id: r_0, cells: { c_0: x } }',
+			'  - id: s_2', '    columns:', '      - { id: c_0, name: A, width: 80 }',
+			'    rows:', '      - { id: r_0, cells: { c_0: y } }',
+			'---', '',
+		].join('\n');
+		await renderBlock(HOVER_WORKBOOK);
+		await expect(page.locator('.bt-status-bar')).not.toHaveClass(/bt-status-mode-hover/);
+		await expect(page.locator('.bt-status-bar')).toBeVisible();
+		await expect(page.locator('.bt-status-bar .bt-status-tabs .bt-sheet-tab')).toHaveCount(2);
+	});
+
+	// The "Pin status bar" toggle in the view-settings menu would have no
+	// effect at all in this state (see forceStatusBarPinned's own doc comment,
+	// renderer.ts) — hidden entirely rather than shown disabled, per the
+	// user's own call: a disabled item nobody can act on isn't worth the
+	// extra "why is this greyed out" UI.
+	test('the view-settings menu omits "Pin status bar" entirely for a 2+-sheet workbook', async ({ page, renderBlock }) => {
+		await renderBlock(WORKBOOK);
+		const root = page.locator('.bt-render-root:not(#root)');
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await page.locator('.bt-ctrl-btn[aria-label="View settings"]').click();
+		const hasPinEntry = await page.evaluate(() => {
+			const menu = window.RichTableReal.ShimMenu.opened[0];
+			return menu ? menu.clickItem('Pin status bar') : null;
+		});
+		expect(hasPinEntry).toBe(false);
 	});
 
 	test('clicking a status-bar tab switches the active sheet', async ({ page, renderBlock }) => {

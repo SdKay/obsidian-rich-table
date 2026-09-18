@@ -196,3 +196,38 @@ export function reserveSelectorLeftPad(root: HTMLElement): void {
 	const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
 	if (leftPad !== currentPad) root.setCssProps({ '--bt-sel-pad-left': `${leftPad}px` });
 }
+
+/**
+ * The initial, first-paint counterpart of renderer.ts's own closure-local
+ * `updateOuterFrame` — same "must run post-swap, against a genuinely attached
+ * tree" reasoning as reserveSelectorLeftPad above, and the same "standalone,
+ * DOM-derived, found by blanket query" shape. Sizes `.bt-outer-frame` (a
+ * `.bt-render-root-shell` child, sibling of `.bt-render-root`) to cover
+ * root's own box, extended down to a PINNED status bar (already in normal
+ * flow, so shell's own rect already includes it) or a currently-VISIBLE
+ * hover-mode one (position:absolute, never contributing to shell's box on
+ * its own — see renderer.ts's own updateOuterFrame for the full reasoning).
+ */
+export function applyOuterFrame(root: HTMLElement): void {
+	const shell = root.closest<HTMLElement>('.bt-render-root-shell');
+	const frame = shell?.querySelector<HTMLElement>(':scope > .bt-outer-frame');
+	if (!shell || !frame) return;
+	const rr = root.getBoundingClientRect();
+	if (rr.width === 0) return;
+	const shellRect = shell.getBoundingClientRect();
+	const statusBar = shell.querySelector<HTMLElement>(':scope > .bt-status-bar');
+	let bottom = rr.bottom;
+	if (statusBar) {
+		if (!statusBar.hasClass('bt-status-mode-hover')) bottom = shellRect.bottom;
+		else if (statusBar.hasClass('bt-strip-visible')) bottom = Math.max(bottom, statusBar.getBoundingClientRect().bottom);
+	}
+	// Raw visual px, no zoom division — `.bt-outer-frame` lives in `shell`,
+	// which is never zoomed (see renderer.ts's own `shell` doc comment), same
+	// treatment as the status bar's own --sb-* properties.
+	frame.setCssProps({
+		'--of-l': `${rr.left - shellRect.left}px`,
+		'--of-t': `${rr.top - shellRect.top}px`,
+		'--of-w': `${rr.right - rr.left}px`,
+		'--of-h': `${bottom - rr.top}px`,
+	});
+}

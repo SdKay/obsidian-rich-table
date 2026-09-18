@@ -121,6 +121,15 @@ export async function renderTable(
 	 *  reached some other way), so it stays a separate, additive filter over
 	 *  the same gates rather than replacing any of them. */
 	hiddenCtrlColButtons?: ReadonlySet<CtrlColButtonId>,
+	/** True when this table is one sheet of a 2+-sheet workbook — the sheet
+	 *  tabs (mounted into .bt-status-tabs, see tableBlock.ts) are the only way
+	 *  to switch sheets at all, so `model.statusBarMode === 'hover'` is
+	 *  overridden to always show the bar here regardless of that per-sheet
+	 *  preference: hiding the bar in that case wouldn't just hide stats, it
+	 *  would hide the workbook's own sheet navigation. A single-sheet table's
+	 *  own hover preference (if any) is untouched — this only forces pinned
+	 *  ON, never forces it off. */
+	forceStatusBarPinned?: boolean,
 ): Promise<void> {
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
@@ -230,6 +239,11 @@ export async function renderTable(
 	// onStructuralOp) simply never mounts it, matching every other edit-only
 	// handle's existing gate.
 	let mountHeightResizeHandle  = (_container: HTMLElement) => { /* assigned in drag-resize-handle block if editable */ };
+	// Assigned once the status bar exists (below) — the outer frame's bottom
+	// edge must extend to include a hover-mode status bar while it's showing,
+	// which only that block knows how to check (see the frame element's own
+	// creation comment for why this can't just read `shell`'s own rect).
+	let updateOuterFrame = () => { /* assigned once statusBar exists */ };
 
 	// Footer — hidden while collapsed, along with the table body. Extracted so
 	// both the plain-table path and the Kanban-view early-return (which skips
@@ -305,6 +319,24 @@ export async function renderTable(
 	const root = shell.createDiv({ cls: themeClass + (model.collapsed ? ' bt-collapsed' : '') });
 	onRootReady?.(root);
 	applyZoom(root, model.zoom);
+
+	// The table's own outer frame — a single border wrapping everything that
+	// visually belongs to "this table" (grid, left toolbar, row/col selector
+	// strips, the whole-view resize handles, and a PINNED status bar), the
+	// user's own framing being obsidian-rich-view's fully-enclosed look as the
+	// bar to match. A `shell` child, not `root`'s, specifically so it CAN
+	// extend past root's own box: a hover-mode status bar (position:absolute,
+	// never contributing to root's or shell's own layout box — see
+	// positionStatusBar's own comment) needs the frame to grow down around it
+	// while it's showing and shrink back the instant it hides, without ever
+	// touching root/shell's REAL layout size — which is exactly the scroll-
+	// jump/document-height-collapse bug class the hover-status-bar's own
+	// absolute-not-in-flow positioning was built to avoid in the first place
+	// (see "Re-render flicker" elsewhere in this file's own history). A plain
+	// decorative div computed from getBoundingClientRect(), like
+	// .bt-view-corner above, sidesteps that entirely: growing/shrinking this
+	// box is just redrawing a rectangle, never a layout change.
+	const outerFrame = shell.createDiv({ cls: 'bt-outer-frame' });
 
 	// Title — a child of `root`, not `container`, so it scales together with
 	// the table under zoom (the user's own framing: "标题也跟着一起缩放"). Was a
@@ -514,6 +546,7 @@ export async function renderTable(
 			updateViewFrame();
 			repositionSelectorStrips();
 			repositionCtrlCol();
+			updateOuterFrame();
 		});
 	});
 	// box:'border-box', not the default content-box — root's rendered size
@@ -1545,7 +1578,7 @@ export async function renderTable(
 	// "Re-render flicker" / hover-strip sections elsewhere in this file were
 	// hard-won fixes for (see CLAUDE.md) — toggling any real layout size on
 	// hover is the thing that caused those, not toggling opacity.
-	const statusBarPinned = model.statusBarMode !== 'hover';
+	const statusBarPinned = forceStatusBarPinned || model.statusBarMode !== 'hover';
 	const statusBar        = shell.createDiv({ cls: 'bt-status-bar' + (statusBarPinned ? '' : ' bt-status-mode-hover') });
 	// The height-resize handle belongs to the status bar's own bottom edge now
 	// (Task 8), not root's — a no-op when the table is locked (no
@@ -1700,45 +1733,101 @@ export async function renderTable(
 	let showStatusBar     = () => { /* pinned: nothing to do */ };
 	let hideStatusBar     = () => { /* pinned: nothing to do */ };
 	if (!statusBarPinned) {
-		// Anchored to the wrapper's own bottom edge (not the table's — see below),
-		// mirroring how the ctrl column anchors to the visible LEFT edge (its own
-		// comment) — stays just below the table on-screen regardless of vertical
-		// scroll or how far the view has been resized.
+		// Reported ("状态栏hover显示，外边框不能自动调整将其包围... hover之后底部外
+		// 边框消失了，像是被什么遮挡了"): Obsidian wraps every rendered code block
+		// in a container with `contain: paint` + `overflow: hidden`, sized to the
+		// block's own normal-FLOW content box (see gridSizePicker.ts's own doc
+		// comment for the exact mechanism, confirmed via live diagnostics) — a
+		// hover-mode bar anchored BELOW root's own box (the original design: grew
+		// the outer frame downward to follow it) is `position: absolute` and
+		// contributes nothing to that flow box, so the real container clips it
+		// (and the frame's own extension, and the height-resize handle inside it)
+		// entirely invisible the instant it tried to show. No CSS fix exists from
+		// inside that container (paint containment clips descendants
+		// unconditionally) — reproduced directly in a test harness that adds the
+		// same `contain: paint; overflow: hidden` wrapper Obsidian's own DOM has,
+		// which this plugin's test suite otherwise never exercises.
 		//
-		// g.vt + g.vh is the TABLE's visible bottom, clipped to the wrapper when
-		// scrolling clips it — but .bt-table-wrapper is deliberately taller than
-		// its table by design, reserving room below for the normal-flow, sticky
-		// .bt-edge-add-row "+" button. When the table fits with no vertical
-		// scroll, g.vh resolves to the table's own (shorter) height, landing the
-		// bar's top squarely inside that reserved strip — overlapping the
-		// add-row button. The wrapper's own bottom edge is what's actually free.
+		// Fixed by never growing past root's own box at all: an overlay flush with
+		// the TABLE's own visible bottom edge, covering its last visible row
+		// instead of sitting below it — the same HUD-over-content placement
+		// obsidian-rich-view's own bottom-edge status/apply bar uses (the
+		// original reference for this table's whole outer-frame feature).
+		// Anchored to the TABLE's own visible bottom (clipped to the wrapper)
+		// MINUS this bar's own height — not root's own bottom edge: root's box
+		// also includes the wrapper's reserved space for the
+		// normal-flow .bt-edge-add-row "+" button below the table, so anchoring
+		// to root's bottom instead would overlay THAT button rather than the
+		// table's last row (confirmed via direct measurement — root's own
+		// height already includes that reserved strip).
 		//
-		// Deliberately NOT g.vl/g.vw (both /zoom-corrected) — those answer "an
-		// offset inside the ZOOMED root", for consumers that live inside it
-		// (selector strips, ctrl column). statusBar itself lives in `shell`,
-		// which is never zoomed (see renderZoom.ts's own reasoning) and whose
-		// --sb-* custom properties are consumed there — so these need RAW
-		// visual px, with no zoom division, same as `shell`'s own rect would
-		// give directly. Dividing by zoom here double-corrected a distance that
-		// was already in the right space, invisible only at zoom=100% (where
-		// dividing by 1 is a no-op) and confirmed broken at any other zoom: the
-		// bar landed inside the table instead of below it.
+		// Left/width still clip to the visible table area exactly as before
+		// (unaffected by this change) — only the vertical anchor moved.
+		//
+		// Deliberately NOT g.vl/g.vw/g.vt/g.vh (all /zoom-corrected) — those
+		// answer "an offset inside the ZOOMED root", for consumers that live
+		// inside it (selector strips, ctrl column). statusBar itself lives in
+		// `shell`, which is never zoomed (see renderZoom.ts's own reasoning)
+		// and whose --sb-* custom properties are consumed there — so these
+		// need RAW visual px, with no zoom division, same as `shell`'s own
+		// rect would give directly. Dividing by zoom here double-corrected a
+		// distance that was already in the right space, invisible only at
+		// zoom=100% (where dividing by 1 is a no-op) and confirmed broken at
+		// any other zoom — reproduced directly at 50%: the bar landed well
+		// past the table's real (zoomed-down) bottom edge instead of hugging
+		// it. visBottom is computed from the same raw `g.tr`/`g.wr` rects
+		// visLeft/visRight already use below, for the same reason.
 		positionStatusBar = () => {
 			const g = computeVisibleGeom();
 			if (g.tr.width === 0) return;
 			const visLeft = Math.max(g.tr.left, g.wr.left);
 			const visRight = Math.min(g.tr.right, g.wr.right);
+			const visBottom = Math.min(g.tr.bottom, g.wr.bottom);
+			const barHeight = statusBar.getBoundingClientRect().height || 28;
 			statusBar.setCssProps({
-				'--sb-top':   `${g.wr.bottom - g.rr.top}px`,
+				'--sb-top':   `${visBottom - g.rr.top - barHeight}px`,
 				'--sb-left':  `${visLeft - g.rr.left}px`,
 				'--sb-width': `${Math.max(0, visRight - visLeft)}px`,
 			});
 		};
+		// No updateOuterFrame() call needed here — a hover-mode bar overlays
+		// root's own box rather than extending past it (see positionStatusBar's
+		// own comment), so showing/hiding it never changes the frame's geometry.
 		showStatusBar = () => { positionStatusBar(); statusBar.addClass('bt-strip-visible'); };
 		hideStatusBar = () => { statusBar.removeClass('bt-strip-visible'); };
 		window.requestAnimationFrame(positionStatusBar);
 		new ResizeObserver(positionStatusBar).observe(table);
 	}
+
+	// The outer frame element's real geometry — a `shell`-relative box
+	// (--of-l/-t/-w/-h) that always covers `root`'s own box, extended down to
+	// also cover a PINNED status bar's box (permanently in normal flow, so
+	// shell's own bounding rect — read via getBoundingClientRect() —
+	// already includes it: display:block stacks a later sibling below an
+	// earlier one automatically). A HOVER-mode bar no longer needs this
+	// special-casing at all — it now overlays root's own last row instead of
+	// growing past root's box (see positionStatusBar's own comment for why:
+	// anything extending past root's flow-box gets clipped by Obsidian's real
+	// code-block container, invisibly), so root's own rect already covers it
+	// in every mode.
+	updateOuterFrame = () => {
+		const rr = root.getBoundingClientRect();
+		if (rr.width === 0) return;
+		const shellRect = shell.getBoundingClientRect();
+		const bottom = statusBarPinned ? shellRect.bottom : rr.bottom;
+		// outerFrame lives in `shell`, which — like the status bar itself — is
+		// never zoomed (see `shell`'s own doc comment above), so these stay RAW
+		// visual px with no `/ zoom` correction, same treatment as --sb-* just
+		// above (that comment has the full reasoning for why dividing here
+		// would double-correct an already-correctly-scaled distance).
+		outerFrame.setCssProps({
+			'--of-l': `${rr.left - shellRect.left}px`,
+			'--of-t': `${rr.top - shellRect.top}px`,
+			'--of-w': `${rr.right - rr.left}px`,
+			'--of-h': `${bottom - rr.top}px`,
+		});
+	};
+	window.requestAnimationFrame(updateOuterFrame);
 
 	// ── Frozen rows/columns ──────────────────────────────────────────────────
 	// Deliberately NOT gated behind onStructuralOp — freeze is a purely visual
@@ -2198,12 +2287,19 @@ export async function renderTable(
 				menu.addItem(i => i.setTitle(t('autoHeight')).setIcon('move-vertical')
 					.setChecked(model.viewHeight === undefined)
 					.onClick(() => void onStructuralOp({ type: 'set-view-height', height: null })));
-				menu.addItem(i => i.setTitle(t('pinStatusBar')).setIcon('panel-bottom-dashed')
-					.setChecked(model.statusBarMode !== 'hover')
-					.onClick(() => void onStructuralOp({
-						type: 'set-status-bar-mode',
-						mode: model.statusBarMode !== 'hover' ? 'hover' : null,
-					})));
+				// Hidden entirely (not just disabled) on a 2+-sheet workbook — the
+				// bar is forced pinned there regardless of this setting (see
+				// forceStatusBarPinned's own doc comment on renderTable), so toggling
+				// it would have no visible effect and would just confuse the user
+				// about why nothing changed.
+				if (!forceStatusBarPinned) {
+					menu.addItem(i => i.setTitle(t('pinStatusBar')).setIcon('panel-bottom-dashed')
+						.setChecked(model.statusBarMode !== 'hover')
+						.onClick(() => void onStructuralOp({
+							type: 'set-status-bar-mode',
+							mode: model.statusBarMode !== 'hover' ? 'hover' : null,
+						})));
+				}
 				if (model.title === undefined) {
 					menu.addSeparator();
 					menu.addItem(i => i.setTitle(t('addTitle')).setIcon('heading')
@@ -2813,6 +2909,10 @@ export async function renderTable(
 			// this function already makes, closes that gap without waiting on the
 			// observer at all.
 			updateViewFrame();
+			// Same content-box-miss reasoning as updateViewFrame's own call just
+			// above — the outer frame tracks root's BORDER box directly, which
+			// this padding change just grew.
+			updateOuterFrame();
 		};
 		restoreLayout = () => {
 			// --bt-sel-pad (top) is never collapsed back to 0 here, for every
@@ -2860,6 +2960,7 @@ export async function renderTable(
 			repositionLockBtn();
 			repositionAutoFitBtn();
 			updateViewFrame(); // mirror of prepareLayout's own call — see its comment
+			updateOuterFrame(); // ditto
 		};
 
 		showSelectors = () => {
@@ -3350,6 +3451,11 @@ export async function renderTable(
 			repositionLockBtn();
 			repositionAutoFitBtn();
 			repositionCtrlCol();
+			// Same content-box-miss reasoning as prepareLayout's own call to this
+			// — reserveLeftPad above can grow root's padding-left even on a
+			// LOCKED table (no onStructuralOp, so prepareLayout below never
+			// runs), which still needs the frame to track that growth.
+			updateOuterFrame();
 			// Unconditional too (not gated on onStructuralOp) — a hover-mode
 			// status bar shows its (read-only) stats on a locked table exactly
 			// like the ctrl column's own lock icon does; only the height-resize
@@ -3402,6 +3508,7 @@ export async function renderTable(
 			// tableBlock.ts) can't provide.
 			root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
 			updateViewFrame();
+			updateOuterFrame();
 		}
 	}
 

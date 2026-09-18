@@ -394,9 +394,14 @@ test.describe('zoom', () => {
 	// statusBar itself lives in `shell`, which is never zoomed (see renderZoom.ts),
 	// so its --sb-* custom properties need RAW visual px with no zoom division.
 	// Dividing by zoom double-corrected an already-correct distance — invisible
-	// at zoom=100% (dividing by 1 is a no-op) but broke at every other zoom,
-	// landing the bar inside the table instead of below it.
-	test('the hovering status bar sits below the table (not inside it) and matches its width, at every zoom level', async ({ page, renderFull }) => {
+	// at zoom=100% (dividing by 1 is a no-op) but broke at every other zoom.
+	//
+	// The bar OVERLAYS the table's own last row rather than sitting below it
+	// (see positionStatusBar's own comment, renderer.ts, for why: anything
+	// anchored past root's flow-box gets clipped by Obsidian's real code-block
+	// container) — so this checks containment within the table's own box and
+	// width/left alignment, at every zoom level, rather than "below" it.
+	test('the hovering status bar overlays the table\'s own bottom edge and matches its width, at every zoom level', async ({ page, renderFull }) => {
 		for (const z of [50, 150, 200]) {
 			await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], zoom: z, statusBarMode: 'hover' }));
 			const root = page.locator('.bt-render-root');
@@ -409,7 +414,8 @@ test.describe('zoom', () => {
 
 			const tableBox = (await table.boundingBox())!;
 			const barBox = (await bar.boundingBox())!;
-			expect(barBox.y, `zoom ${z}%: bar top vs table bottom`).toBeGreaterThanOrEqual(tableBox.y + tableBox.height - 2);
+			expect(barBox.y + barBox.height, `zoom ${z}%: bar bottom vs table bottom`).toBeCloseTo(tableBox.y + tableBox.height, 0);
+			expect(barBox.y, `zoom ${z}%: bar top within table`).toBeGreaterThanOrEqual(tableBox.y - 1);
 			expect(barBox.x, `zoom ${z}%: bar left vs table left`).toBeCloseTo(tableBox.x, 0);
 			expect(barBox.width, `zoom ${z}%: bar width vs table width`).toBeCloseTo(tableBox.width, 0);
 		}

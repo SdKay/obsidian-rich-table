@@ -19,6 +19,36 @@
 	position: relative;
 }
 
+/* The table's own outer frame — one border wrapping everything visually part
+ * of "this table" (grid, left toolbar, row/col selector strips, the resize
+ * handles, and a PINNED status bar), matching obsidian-rich-view's fully-
+ * enclosed look. A `shell` child, positioned via JS-computed --of-l/-t/-w/-h
+ * (see renderer.ts's updateOuterFrame / renderGeometry.ts's applyOuterFrame)
+ * rather than a plain `inset: 0` — a HOVER-mode status bar needs the frame to
+ * grow down around it only while it's actually showing, which a static inset
+ * can't express (the bottom edge those functions compute --of-h from is the
+ * one edge of the box that can legitimately differ from a plain "hug shell's
+ * own box" answer; see those functions' own comments for why). Explicit
+ * width/height (not right/bottom) since --of-* are already resolved to plain
+ * px distances in JS — deriving right/bottom back out via CSS calc() would
+ * need shell's own width/height available to CSS, which they aren't.
+ * box-sizing: border-box so the visible border itself lands exactly on the
+ * measured edges, not 1-2px outside them. pointer-events: none — this is
+ * decoration, same as .bt-view-corner, never a hit target that could
+ * intercept a click meant for whatever's underneath. */
+.bt-outer-frame {
+	position: absolute;
+	left:   var(--of-l, 0px);
+	top:    var(--of-t, 0px);
+	width:  var(--of-w, 100%);
+	height: var(--of-h, 100%);
+	box-sizing: border-box;
+	border: var(--bt-outer-frame-border, 1px solid var(--background-modifier-border));
+	border-radius: var(--bt-outer-frame-radius, var(--radius-m));
+	pointer-events: none;
+	z-index: 1;
+}
+
 .bt-render-root {
 	position: relative;
 	/* Selector strip layout constants — keep in sync with src/selectorLayout.ts */
@@ -2772,12 +2802,30 @@
  * would reintroduce the exact scroll-jump/document-height-collapse bug class
  * the hover-strip flicker fixes elsewhere in this file exist to prevent (see
  * the matching comment at this class's assignment in renderer.ts). Opacity-
- * only toggle, same bt-strip-visible convention as every other hover strip. */
+ * only toggle, same bt-strip-visible convention as every other hover strip.
+ *
+ * Reported ("状态栏不常驻时，hover之后底部外边框消失了，像是被什么遮挡了，高度
+ * 调节也不能hover出来"): this used to float BELOW the table's own visible box
+ * (--sb-top anchored past root's bottom edge — see positionStatusBar's own
+ * comment for the exact history). Obsidian wraps every rendered code block's
+ * content in a real `contain: paint` + `overflow: hidden` container sized to
+ * the content's normal FLOW box (see gridSizePicker.ts's own doc comment for
+ * the confirmed mechanism) — an absolutely-positioned element that extends
+ * past that flow box doesn't just get z-fought, it gets clipped away
+ * entirely, invisible regardless of z-index. No test caught this because the
+ * test harness has no such wrapper. Fixed by having the hover bar OVERLAY the
+ * table's own last row(s) instead of floating below them — --sb-top now
+ * anchors to (root's own visible bottom − this bar's height), i.e. strictly
+ * INSIDE root's box, which the real wrapper's flow-box sizing already
+ * accounts for. A solid background (not transparent) is load-bearing now
+ * that it sits over real cell content instead of empty space below it. */
 .bt-status-bar.bt-status-mode-hover {
 	position: absolute;
 	top: var(--sb-top, 0px);
 	left: var(--sb-left, 0px);
 	width: var(--sb-width, auto);
+	background: var(--background-primary);
+	box-shadow: 0 -1px 0 0 var(--background-modifier-border);
 	opacity: 0;
 	visibility: hidden;
 	pointer-events: none;
