@@ -220,20 +220,29 @@ test.describe('zoom', () => {
 		expect(Math.abs(gap)).toBeLessThan(1);
 	});
 
-	test('the view-resize handle under zoom grows the view by the exact number of logical pixels dragged', async ({ page, renderFull }) => {
+	// The width delta is 2x the mouse's logical delta, not 1x — deliberate
+	// (see the pointerdown handler's own comment, renderer.ts): wrapper stays
+	// horizontally centered while dragging (margin-inline:auto), so growing
+	// its WIDTH by ∆ only moves the visible right edge — where this handle
+	// sits — by ∆/2. Doubling the width delta makes that visible edge track
+	// the cursor 1:1 (confirmed pixel-for-pixel in outer-frame.spec.ts's own
+	// drag test); this test only checks the persisted MODEL value still
+	// scales correctly with zoom on top of that ×2, not the visible-edge
+	// speed itself.
+	test('the view-resize handle under zoom grows the view by twice the logical pixels dragged, scaled correctly by zoom', async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 200, viewWidth: 150 }));
 		await page.locator('table.bt-table').hover();
 		const handle = page.locator('.bt-view-resize-r');
 		const box = (await handle.boundingBox())!;
 		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 		await page.mouse.down();
-		// 80 real px at zoom=200% => 40 logical px.
+		// 80 real px at zoom=200% => 40 logical px => 80 width px (×2).
 		await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2);
 		await page.mouse.up();
 		const ops = await page.evaluate(() => window.__btOps);
 		const widthOp = ops.find((o: { type: string }) => o.type === 'set-view-width');
 		expect(widthOp).toBeTruthy();
-		expect(widthOp.width).toBe(190); // 150 (initial) + 40 (logical delta)
+		expect(widthOp.width).toBe(230); // 150 (initial) + 40 (logical delta) * 2
 	});
 
 	// Reported ("autofit-all 的表格每次调整之后...瞬间出现换行...随后又变回不换行"):

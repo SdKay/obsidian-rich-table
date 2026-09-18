@@ -156,6 +156,73 @@ test.describe('outer frame', () => {
 		await expect.poll(() => page.locator('.bt-view-resize-r').evaluate(el => getComputedStyle(el, '::after').opacity)).toBe('1');
 	});
 
+	// Reported ("宽度auto状态下，首次拖动调整宽度的时候，外边框没有跟着移动，松开
+	// 鼠标后宽度发生变后，之后再调整宽度的时候外边框就跟着移动了"): updateOuterFrame
+	// used to gate its narrowing on `typeof model.viewWidth === 'number'` — the
+	// MODEL value, which only gets written back on pointerup (see the drag
+	// handler's own onUp) — instead of `wrapper.hasClass('bt-view-fixed-w')`,
+	// the class the SAME drag handler sets live on every pointermove. So a
+	// table with no prior manual width read `model.viewWidth === undefined`
+	// throughout its very first drag and never narrowed until the resulting
+	// re-render gave it a real model value to read on the SECOND drag.
+	// applyOuterFrame (renderGeometry.ts) already used the class correctly —
+	// this only needed updateOuterFrame to match it.
+	test('the frame narrows live during the FIRST width drag, before any release/re-render', async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
+		const root = page.locator('.bt-render-root');
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await page.waitForTimeout(50);
+
+		const handle = page.locator('.bt-view-resize-r');
+		const handleBox = (await handle.boundingBox())!;
+		await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+		await page.mouse.down();
+		// Drag INWARD (narrower) so the frame's post-drag box is unambiguously
+		// distinguishable from its full-width resting state.
+		await page.mouse.move(handleBox.x + handleBox.width / 2 - 400, handleBox.y + handleBox.height / 2, { steps: 10 });
+		await page.waitForTimeout(50);
+
+		const wrapperDuring = (await page.locator('.bt-table-wrapper').boundingBox())!;
+		const frameDuring = (await page.locator('.bt-outer-frame').boundingBox())!;
+		// Still mid-drag — no pointerup, no op dispatched, no re-render — yet
+		// the frame must already match wrapper's own (already-narrower) box.
+		expect(frameDuring.width).toBeCloseTo(wrapperDuring.width, 0);
+		expect(frameDuring.x).toBeCloseTo(wrapperDuring.x, 0);
+		await page.mouse.up();
+	});
+
+	// Reported ("宽度移动比鼠标移动慢，不是一比一，高度调整不存在以上两个问题"):
+	// .bt-table-wrapper stays horizontally centered while dragging
+	// (margin-inline:auto — height uses margin-block:0, hence no equivalent
+	// slowdown there), so growing its WIDTH by ∆ only moved its visible RIGHT
+	// edge — where this handle sits — by ∆/2, the other ∆/2 going to the left
+	// edge. Fixed by doubling the mouse delta fed into the width itself
+	// (pointerdown handler's own comment, renderer.ts), so the width grows at
+	// 2x the cursor's movement and the visible right edge — getting exactly
+	// half of that — ends up tracking the cursor 1:1.
+	test('dragging the width handle moves the wrapper\'s visible right edge at exactly 1:1 with the mouse, despite wrapper staying centered', async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
+		const root = page.locator('.bt-render-root');
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await page.waitForTimeout(50);
+
+		const handle = page.locator('.bt-view-resize-r');
+		const handleBox = (await handle.boundingBox())!;
+		const wrapperBefore = (await page.locator('.bt-table-wrapper').boundingBox())!;
+
+		await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(handleBox.x + handleBox.width / 2 + 100, handleBox.y + handleBox.height / 2, { steps: 10 });
+		await page.waitForTimeout(50);
+		const wrapperDuring = (await page.locator('.bt-table-wrapper').boundingBox())!;
+
+		const rightEdgeDelta = (wrapperDuring.x + wrapperDuring.width) - (wrapperBefore.x + wrapperBefore.width);
+		expect(rightEdgeDelta).toBeCloseTo(100, 0);
+		await page.mouse.up();
+	});
+
 	// A write-back rebuild tears down and recreates root/shell/frame from
 	// scratch (tableBlock.ts) — the frame's first sizing on that fresh tree
 	// comes from renderGeometry.ts's standalone applyOuterFrame(), a genuinely

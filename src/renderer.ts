@@ -543,7 +543,18 @@ export async function renderTable(
 				let newW = r.width / zoom, newH = r.height / zoom;
 				const onMove = (ev: PointerEvent) => {
 					if (mode !== 'h') {
-						newW = Math.max(80, r.width / zoom + (ev.clientX - startX) / zoom);
+						// ×2 on the mouse delta, not ×1 — wrapper stays centered via
+						// margin-inline:auto (width drag is the one axis that IS
+						// centered; height uses margin-block:0, hence no equivalent
+						// factor there), so growing/shrinking its WIDTH by ∆ only
+						// moves its right edge — where this handle visually sits —
+						// by ∆/2, the other ∆/2 going to the left edge instead.
+						// Reported ("宽度移动比鼠标移动慢，不是一比一，高度调整不
+						// 存在以上...问题"): doubling the delta here makes the
+						// width itself grow at 2x the mouse's movement, so the
+						// visible right edge — which only gets HALF of that — ends
+						// up moving at exactly 1x, matching the cursor.
+						newW = Math.max(80, r.width / zoom + 2 * (ev.clientX - startX) / zoom);
 						wrapper.addClass('bt-view-fixed-w');
 						wrapper.setCssProps({ '--bt-view-width': `${Math.round(newW)}px` });
 					}
@@ -564,6 +575,16 @@ export async function renderTable(
 					repositionSelectorStrips();
 					repositionEdgeStrips();
 					repositionCtrlCol();
+					// Explicit, synchronous call rather than relying solely on
+					// viewFrameResizeObs (which also watches wrapper) — that
+					// observer is rAF-coalesced (by design, to survive its own
+					// reposition calls resizing wrapper again without looping
+					// forever, see its own comment), which added one extra frame
+					// of visible lag between the handle and the frame during a
+					// width drag specifically (mode 'w'/'both') — not noticeable
+					// for height, whose handle lives inside the status bar and has
+					// no separate frame-edge dependency to catch up to.
+					updateOuterFrame();
 				};
 				const onUp = () => {
 					handle.removeEventListener('pointermove', onMove);
@@ -1787,7 +1808,16 @@ export async function renderTable(
 		if (rr.width === 0) return;
 		const shellRect = shell.getBoundingClientRect();
 		const wr = wrapper.getBoundingClientRect();
-		const narrower = typeof model.viewWidth === 'number' && wr.width < rr.width - 0.5;
+		// `wrapper.hasClass('bt-view-fixed-w')`, not `typeof model.viewWidth ===
+		// 'number'` — the drag-resize handle below sets the CLASS live, on every
+		// pointermove, but only writes viewWidth back to the MODEL on release
+		// (see its own onUp). Reading the model here meant the frame only
+		// started narrowing on the drag AFTER the first one, once a render
+		// with the new model.viewWidth had actually happened — reported as
+		// "首次拖动调整宽度的时候，外边框没有跟着移动...之后再调整宽度的时候
+		// 外边框就跟着移动了". Matches renderGeometry.ts's applyOuterFrame,
+		// which already used the class for exactly this reason.
+		const narrower = wrapper.hasClass('bt-view-fixed-w') && wr.width < rr.width - 0.5;
 		const left = narrower ? wr.left : rr.left;
 		const right = narrower ? wr.right : rr.right;
 		const bottom = statusBarPinned ? shellRect.bottom : rr.bottom;
