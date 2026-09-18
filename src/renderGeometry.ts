@@ -203,31 +203,51 @@ export function reserveSelectorLeftPad(root: HTMLElement): void {
  * tree" reasoning as reserveSelectorLeftPad above, and the same "standalone,
  * DOM-derived, found by blanket query" shape. Sizes `.bt-outer-frame` (a
  * `.bt-render-root-shell` child, sibling of `.bt-render-root`) to cover
- * root's own box, extended down to a PINNED status bar (already in normal
- * flow, so shell's own rect already includes it) or a currently-VISIBLE
- * hover-mode one (position:absolute, never contributing to shell's box on
- * its own — see renderer.ts's own updateOuterFrame for the full reasoning).
+ * root's own box — narrowed horizontally to the wrapper's own box when a
+ * manual viewWidth is actually narrower than what's available, same as
+ * updateOuterFrame's own condition — extended down to a PINNED status bar
+ * (already in normal flow, so shell's own rect already includes it) or a
+ * currently-VISIBLE hover-mode one (position:absolute, never contributing to
+ * shell's box on its own — see renderer.ts's own updateOuterFrame for the
+ * full reasoning). Also mirrors that function's two other consumers of the
+ * same narrowed edge: a PINNED bar's own --sb-pinned-l/-w, and the width
+ * handle's --of-r-gap (root-relative, so it alone needs /zoom — see
+ * updateOuterFrame's own comment on both).
  */
 export function applyOuterFrame(root: HTMLElement): void {
 	const shell = root.closest<HTMLElement>('.bt-render-root-shell');
 	const frame = shell?.querySelector<HTMLElement>(':scope > .bt-outer-frame');
-	if (!shell || !frame) return;
+	const wrapper = root.querySelector<HTMLElement>(':scope > .bt-table-wrapper');
+	if (!shell || !frame || !wrapper) return;
 	const rr = root.getBoundingClientRect();
 	if (rr.width === 0) return;
 	const shellRect = shell.getBoundingClientRect();
+	const wr = wrapper.getBoundingClientRect();
+	const narrower = wrapper.hasClass('bt-view-fixed-w') && wr.width < rr.width - 0.5;
+	const left = narrower ? wr.left : rr.left;
+	const right = narrower ? wr.right : rr.right;
 	const statusBar = shell.querySelector<HTMLElement>(':scope > .bt-status-bar');
+	const statusBarPinned = !!statusBar && !statusBar.hasClass('bt-status-mode-hover');
 	let bottom = rr.bottom;
 	if (statusBar) {
-		if (!statusBar.hasClass('bt-status-mode-hover')) bottom = shellRect.bottom;
+		if (statusBarPinned) bottom = shellRect.bottom;
 		else if (statusBar.hasClass('bt-strip-visible')) bottom = Math.max(bottom, statusBar.getBoundingClientRect().bottom);
 	}
 	// Raw visual px, no zoom division — `.bt-outer-frame` lives in `shell`,
 	// which is never zoomed (see renderer.ts's own `shell` doc comment), same
 	// treatment as the status bar's own --sb-* properties.
 	frame.setCssProps({
-		'--of-l': `${rr.left - shellRect.left}px`,
+		'--of-l': `${left - shellRect.left}px`,
 		'--of-t': `${rr.top - shellRect.top}px`,
-		'--of-w': `${rr.right - rr.left}px`,
+		'--of-w': `${right - left}px`,
 		'--of-h': `${bottom - rr.top}px`,
 	});
+	if (statusBar && statusBarPinned) {
+		statusBar.setCssProps({
+			'--sb-pinned-l': `${left - shellRect.left}px`,
+			'--sb-pinned-w': `${right - left}px`,
+		});
+	}
+	const zoom = measureZoomFactor(root);
+	root.setCssProps({ '--of-r-gap': `${(rr.right - right) / zoom}px` });
 }

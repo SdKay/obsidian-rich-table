@@ -24,17 +24,18 @@
  * handles, and a PINNED status bar), matching obsidian-rich-view's fully-
  * enclosed look. A `shell` child, positioned via JS-computed --of-l/-t/-w/-h
  * (see renderer.ts's updateOuterFrame / renderGeometry.ts's applyOuterFrame)
- * rather than a plain `inset: 0` — a HOVER-mode status bar needs the frame to
- * grow down around it only while it's actually showing, which a static inset
- * can't express (the bottom edge those functions compute --of-h from is the
- * one edge of the box that can legitimately differ from a plain "hug shell's
- * own box" answer; see those functions' own comments for why). Explicit
- * width/height (not right/bottom) since --of-* are already resolved to plain
- * px distances in JS — deriving right/bottom back out via CSS calc() would
- * need shell's own width/height available to CSS, which they aren't.
- * box-sizing: border-box so the visible border itself lands exactly on the
- * measured edges, not 1-2px outside them. pointer-events: none — this is
- * decoration, same as .bt-view-corner, never a hit target that could
+ * rather than a plain `inset: 0`: vertically, a PINNED status bar's own box
+ * can extend past root's (shell's bounding rect then covers it, since it's a
+ * normal-flow sibling); horizontally, a manually narrower viewWidth shrinks
+ * the frame down to the table's own real width instead of the full available
+ * space (replacing an earlier separate corner-bracket marker for the same
+ * fact — see updateOuterFrame's own comment). Neither of those is a static
+ * `inset: 0` could express. Explicit width/height (not right/bottom) since
+ * --of-* are already resolved to plain px distances in JS — deriving
+ * right/bottom back out via CSS calc() would need shell's own width/height
+ * available to CSS, which they aren't. box-sizing: border-box so the visible
+ * border itself lands exactly on the measured edges, not 1-2px outside them.
+ * pointer-events: none — this is decoration, never a hit target that could
  * intercept a click meant for whatever's underneath. */
 .bt-outer-frame {
 	position: absolute;
@@ -247,65 +248,6 @@
 	width: max-content !important;
 	max-width: none !important;
 }
-/* Corner brackets mark a manual view WIDTH that's narrower than the space
- * actually available (renderer.ts's updateViewFrame — see its own comment
- * for the exact condition and for --vf-l/-t/-r/-b) — like Word's page-
- * boundary corners, a quieter alternative to visibly stretching addRowBtn/
- * the table across dead space to show the same fact.
- *
- * Children of `root`, NOT `wrapper`, positioned via JS-computed --vf-*
- * (root-relative px, matching wrapper's actual getBoundingClientRect()
- * edges) rather than right:/bottom: anchoring from inside wrapper itself —
- * tried that first and it measurably missed by ~14-15px on the right/bottom
- * corners specifically: `right`/`bottom` on an absolutely-positioned child
- * resolve against the containing block's PADDING box, which `overflow:auto`
- * shrinks by the scrollbar's width/height whenever one is actually showing
- * — exactly the corners meant to mark wrapper's real, scrollbar-included
- * OUTER edge, so anchoring from inside it was self-defeating. Root has no
- * scrollbar of its own, so plain top:/left: from computed pixel values
- * sidesteps the whole issue. Same reasoning as why the other overlay strips
- * are positioned this way already. */
-.bt-view-corner {
-	position: absolute;
-	/* border-box, not the content-box default: each corner's border (below)
-	 * is on only 2 of its 4 sides, so content-box sizing would add the
-	 * border width onto whichever far edge that corner's border touches,
-	 * measurably missing the wrapper edge it's meant to mark by exactly
-	 * that amount (2px) — confirmed by measuring it in a repro. */
-	box-sizing: border-box;
-	width: 14px;
-	height: 14px;
-	pointer-events: none;
-	opacity: 0;
-	transition: opacity 0.15s;
-}
-.bt-render-root.bt-view-framed .bt-view-corner {
-	opacity: 1;
-}
-.bt-view-corner-tl {
-	top:  var(--vf-t, 0px);
-	left: var(--vf-l, 0px);
-	border-top:  2px solid var(--interactive-accent);
-	border-left: 2px solid var(--interactive-accent);
-}
-.bt-view-corner-tr {
-	top:  var(--vf-t, 0px);
-	left: calc(var(--vf-r, 0px) - 14px);
-	border-top:   2px solid var(--interactive-accent);
-	border-right: 2px solid var(--interactive-accent);
-}
-.bt-view-corner-bl {
-	top:  calc(var(--vf-b, 0px) - 14px);
-	left: var(--vf-l, 0px);
-	border-bottom: 2px solid var(--interactive-accent);
-	border-left:   2px solid var(--interactive-accent);
-}
-.bt-view-corner-br {
-	top:  calc(var(--vf-b, 0px) - 14px);
-	left: calc(var(--vf-r, 0px) - 14px);
-	border-bottom: 2px solid var(--interactive-accent);
-	border-right:  2px solid var(--interactive-accent);
-}
 /* Wraps <table> + addColBtn side by side so addColBtn sits immediately to the
  * table's right without any JS left/width math.
  *
@@ -396,13 +338,30 @@
  * this the moment the cursor crosses from the table into the status bar. */
 .bt-render-root-shell:hover .bt-view-resize { opacity: 1; }
 .bt-view-resize-b { left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
-.bt-view-resize-r { top: 0; bottom: 0; right: 0; width: 6px; cursor: ew-resize; }
-.bt-view-resize-br { right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+/* --of-r-gap (renderer.ts's updateOuterFrame): how far root's own right edge
+ * sits past the frame's real right border once a manual viewWidth narrows
+ * it — 0 for an unnarrowed table, so this defaults to the exact same `right:
+ * 0` these always had. Glues the handle (and its dash below) to the frame's
+ * true right edge instead of root's own, the same symmetry the height
+ * handle already gets for free by living INSIDE the (now frame-width-
+ * matching) status bar — see updateOuterFrame's own comment. */
+.bt-view-resize-r { top: 0; bottom: 0; right: var(--of-r-gap, 0px); width: 6px; cursor: ew-resize; }
+.bt-view-resize-br { right: var(--of-r-gap, 0px); bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; }
 .bt-view-resize:hover { background: var(--interactive-accent); opacity: 0.35; }
 .bt-view-resize-br:hover { opacity: 0.55; }
-/* Height handle now lives inside .bt-status-bar (Task 8) — a short dash on
- * hover marks its middle as the drag point, since a plain background tint
- * reads ambiguously inside a bar that already has its own background/text. */
+/* Height handle now lives inside .bt-status-bar (Task 8) — a short dash marks
+ * its middle as the drag point, since a plain background tint reads
+ * ambiguously inside a bar that already has its own background/text.
+ *
+ * Reported ("一般人都不知道高度能调"): this dash used to need the cursor
+ * precisely over the 6px-tall hotspot itself (:hover) before showing at
+ * all — nothing hinted the affordance existed until a user happened to land
+ * on that exact strip. Every other discoverability hint in this file (ctrl
+ * column, row/col selectors) instead shows on `.bt-render-root-shell:hover`
+ * — entering the outer frame at all, same as `.bt-view-resize` itself
+ * already does two rules up. Matching that convention here: the dash now
+ * shows as soon as the whole table is hovered, not only once the cursor is
+ * already on the exact pixel-precise strip it's advertising. */
 .bt-view-resize-b::after {
 	content: '';
 	position: absolute;
@@ -414,8 +373,29 @@
 	border-radius: 1px;
 	transform: translate(-50%, -50%);
 	opacity: 0;
+	transition: opacity 0.12s;
 }
-.bt-view-resize-b:hover::after { opacity: 1; }
+.bt-render-root-shell:hover .bt-view-resize-b::after { opacity: 1; }
+/* Width handle's own mirror of the dash above — same "一般人都不知道...能调"
+ * discoverability fix, other axis. .bt-view-resize-r lives directly on
+ * `root` (not inside the status bar), so its dash is centered on root's own
+ * height rather than the handle's short 6px-wide hotspot — same
+ * `.bt-render-root-shell:hover` reveal-on-entering-the-outer-frame trigger
+ * as every other hint here. */
+.bt-view-resize-r::after {
+	content: '';
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 2px;
+	height: 24px;
+	background: var(--text-faint);
+	border-radius: 1px;
+	transform: translate(-50%, -50%);
+	opacity: 0;
+	transition: opacity 0.12s;
+}
+.bt-render-root-shell:hover .bt-view-resize-r::after { opacity: 1; }
 /* Suppress Obsidian-theme margins and cell borders that bleed into rich-table.
  * Themes control lines via CSS variables (§15: themes only set variables, base sets properties):
  *   --bt-cell-border          shorthand for all four sides  (default: none)
@@ -2791,6 +2771,17 @@
 	display: flex;
 	align-items: stretch;
 	height: 28px;
+	/* PINNED mode only: matches the outer frame's own (possibly manually-
+	 * narrowed) left/width exactly, so a narrow view reads as one consistent
+	 * box rather than a full-width bar under a narrower table — see
+	 * updateOuterFrame's own comment (renderer.ts) for why these reuse
+	 * --of-l/-w's values directly. Falls back to a flush, full-width bar
+	 * (0/auto) before the first JS pass sets them, and permanently for a
+	 * table with no manual viewWidth at all — box-sizing: border-box so this
+	 * margin/width pair doesn't add on top of shell's own box. */
+	margin-left: var(--sb-pinned-l, 0px);
+	width: var(--sb-pinned-w, auto);
+	box-sizing: border-box;
 	border-top: 1px solid var(--background-modifier-border);
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);

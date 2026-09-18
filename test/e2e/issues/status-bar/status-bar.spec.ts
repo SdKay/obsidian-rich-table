@@ -240,16 +240,25 @@ test.describe('status bar — height-resize handle relocation (Task 8)', () => {
 		expect(ops[0]!.type).toBe('set-view-height');
 	});
 
-	test('hovering the handle reveals the dash indicator', async ({ page, renderFull }) => {
+	// Reported ("一般人都不知道高度能调"): showing the dash only once the
+	// cursor is already precisely over the 6px-tall handle hotspot gave no
+	// hint the affordance existed at all. Fixed to reveal on hovering the
+	// whole table (matches every other discoverability hint in this file —
+	// ctrl column, row/col selectors — which shows on entering the outer
+	// frame, not on landing on one exact pixel-precise strip within it).
+	test('hovering anywhere over the table reveals the height-handle dash, not just the handle\'s own hotspot', async ({ page, renderFull }) => {
 		await renderFull(EDITABLE);
+		const root = page.locator('.bt-render-root');
 		const handle = page.locator('.bt-status-bar .bt-view-resize-b');
 		const opacityBefore = await handle.evaluate(el => getComputedStyle(el, '::after').opacity);
 		expect(opacityBefore).toBe('0');
 
-		const handleBox = (await handle.boundingBox())!;
-		await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
-		const opacityAfter = await handle.evaluate(el => getComputedStyle(el, '::after').opacity);
-		expect(opacityAfter).toBe('1');
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await expect.poll(() => handle.evaluate(el => getComputedStyle(el, '::after').opacity)).toBe('1');
+
+		await page.mouse.move(rootBox.x - 100, rootBox.y - 100);
+		await expect.poll(() => handle.evaluate(el => getComputedStyle(el, '::after').opacity)).toBe('0');
 	});
 
 	test('a locked table hides the handle but keeps the stats visible', async ({ page, renderFull }) => {

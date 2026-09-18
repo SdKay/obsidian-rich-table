@@ -333,9 +333,9 @@ export async function renderTable(
 	// jump/document-height-collapse bug class the hover-status-bar's own
 	// absolute-not-in-flow positioning was built to avoid in the first place
 	// (see "Re-render flicker" elsewhere in this file's own history). A plain
-	// decorative div computed from getBoundingClientRect(), like
-	// .bt-view-corner above, sidesteps that entirely: growing/shrinking this
-	// box is just redrawing a rectangle, never a layout change.
+	// decorative div computed from getBoundingClientRect() sidesteps that
+	// entirely: growing/shrinking this box is just redrawing a rectangle,
+	// never a layout change.
 	const outerFrame = shell.createDiv({ cls: 'bt-outer-frame' });
 
 	// Title — a child of `root`, not `container`, so it scales together with
@@ -440,54 +440,14 @@ export async function renderTable(
 		wrapper.setCssProps({ '--bt-view-height': `${model.viewHeight}px` });
 	}
 
-	// Corner brackets — a quieter, Word-page-style alternative to stretching
-	// addRowBtn/the table across dead space to show "this is your manually
-	// set width" (reported as ugly). Width only, deliberately: a manually
-	// narrower HEIGHT doesn't get the same treatment (not asked for, and less
-	// visually confusing to omit than to add a second, orthogonal signal).
-	// Not gated behind onStructuralOp — like freeze, this is purely visual
-	// and should still tell a read-only viewer their view is manually sized
-	// narrower than the space available, not just an editing affordance.
-	// Children of `root`, not `wrapper` — see their CSS comment for why
-	// (measured: right:/bottom: anchoring from inside wrapper missed by the
-	// scrollbar's own width/height whenever one happened to be showing).
-	for (const cls of ['bt-view-corner-tl', 'bt-view-corner-tr', 'bt-view-corner-bl', 'bt-view-corner-br']) {
-		root.createDiv({ cls: `bt-view-corner ${cls}` });
-	}
-	const updateViewFrame = () => {
-		if (!root.isConnected) return;
-		const wr = wrapper.getBoundingClientRect();
-		const rr = root.getBoundingClientRect();
-		// Only when a manual width is actually narrower than what's available —
-		// not merely "a manual width is set" (max-width:100% could already be
-		// clamping it back up to fill the same space anyway, in which case
-		// there's no distinct "frame" to show), and not for a naturally wide
-		// table that needs its own horizontal scroll (no room for corners, and
-		// the clipped/scrolling content already makes "this is wide" obvious
-		// without them). Also not while locked — a locked table's own view
-		// size is effectively frozen alongside everything else about it, so
-		// the corners would just be a permanent, un-actionable distraction
-		// rather than a cue toward something the user can currently do.
-		const framed = typeof model.viewWidth === 'number' && !model.locked && wr.width < rr.width - 0.5;
-		root.toggleClass('bt-view-framed', framed);
-		if (!framed) return;
-		// --vf-* are consumed as left/top/right/bottom (logical px, positioned
-		// relative to `root`) — the differences below are visual (both operands
-		// from getBoundingClientRect), so they need the same `/ zoom` correction
-		// as scrollContentOffset's own (see NO_ZOOM's doc comment); `framed`
-		// above is a same-unit width comparison and needs none.
-		root.setCssProps({
-			'--vf-l': `${(wr.left - rr.left) / zoom}px`,
-			'--vf-t': `${(wr.top - rr.top) / zoom}px`,
-			'--vf-r': `${(wr.right - rr.left) / zoom}px`,
-			'--vf-b': `${(wr.bottom - rr.top) / zoom}px`,
-		});
-	};
-	// Deferred: renderTable() still builds into a detached tree at this point
-	// (see the write-back architecture notes elsewhere in this file) — root/
-	// wrapper report zero-size rects until tableBlock.ts's atomic swap moves
-	// this into the live DOM, same reasoning as applyFreeze's own first run.
-	window.requestAnimationFrame(updateViewFrame);
+	// The first real updateOuterFrame() call is scheduled further down, once
+	// `updateOuterFrame` has been reassigned past its early TDZ-safe stub (see
+	// that `let`'s own doc comment) — calling it via rAF here would instead
+	// capture and later invoke THIS stub reference, a real bug this exact
+	// spot hit when updateViewFrame (a real function defined right here, not
+	// a forward-declared stub) still lived in this block and could safely be
+	// scheduled immediately.
+	//
 	// Needs BOTH rects to stay live: root's own available width changes with
 	// the note pane's width (window resize, sidebar toggle, split-pane drag),
 	// which doesn't resize wrapper; wrapper's width changes from a drag-resize
@@ -514,7 +474,7 @@ export async function renderTable(
 	// position by this exact scenario (confirmed via logged rects: table
 	// width constant throughout, only its left/right edges translating,
 	// timed to this observer's own fire). Repositioning them here too,
-	// alongside updateViewFrame(), closes that gap.
+	// alongside updateOuterFrame(), closes that gap.
 	//
 	// Deliberately does NOT also call repositionEdgeStrips() here, unlike
 	// those two — positionSelectors()/positionCtrlCol() only write CSS custom
@@ -543,18 +503,17 @@ export async function renderTable(
 		viewFrameScheduled = true;
 		window.requestAnimationFrame(() => {
 			viewFrameScheduled = false;
-			updateViewFrame();
 			repositionSelectorStrips();
 			repositionCtrlCol();
 			updateOuterFrame();
 		});
 	});
 	// box:'border-box', not the default content-box — root's rendered size
-	// (what getBoundingClientRect(), and therefore updateViewFrame, actually
+	// (what getBoundingClientRect(), and therefore updateOuterFrame, actually
 	// reads) changes on a padding-only update too (hover adds --bt-sel-pad),
 	// which never touches the content box and so never fires a content-box
 	// observer at all. prepareLayout/restoreLayout already call
-	// updateViewFrame() directly for that exact case (synchronous, no need to
+	// updateOuterFrame() directly for that exact case (synchronous, no need to
 	// wait on this observer) — border-box mode here is the general backstop,
 	// for any size-affecting change neither of those two functions caused.
 	viewFrameResizeObs.observe(root, { box: 'border-box' });
@@ -1810,10 +1769,27 @@ export async function renderTable(
 	// anything extending past root's flow-box gets clipped by Obsidian's real
 	// code-block container, invisibly), so root's own rect already covers it
 	// in every mode.
+	//
+	// Horizontally, the frame tracks the WRAPPER's own box, not root's, once a
+	// manual viewWidth is actually narrower than what's available — replacing
+	// the earlier corner-bracket markers (--vf-l/-t/-r/-b, .bt-view-corner),
+	// which existed only because the frame itself didn't yet track the real
+	// width; with the frame doing that natively, a second marker for the same
+	// fact was redundant ("重复宣布同一件事，去掉角标，让外框直接体现实际宽度").
+	// Same "only when actually narrower" condition those markers used (a
+	// manual width could already be clamped back up to fill the same space by
+	// max-width:100%, in which case there's no narrower box to show) — but,
+	// unlike them, not gated on !model.locked: this is now the frame's own
+	// permanent shape, not a dismissable editing cue, so it stays accurate
+	// regardless of lock state.
 	updateOuterFrame = () => {
 		const rr = root.getBoundingClientRect();
 		if (rr.width === 0) return;
 		const shellRect = shell.getBoundingClientRect();
+		const wr = wrapper.getBoundingClientRect();
+		const narrower = typeof model.viewWidth === 'number' && wr.width < rr.width - 0.5;
+		const left = narrower ? wr.left : rr.left;
+		const right = narrower ? wr.right : rr.right;
 		const bottom = statusBarPinned ? shellRect.bottom : rr.bottom;
 		// outerFrame lives in `shell`, which — like the status bar itself — is
 		// never zoomed (see `shell`'s own doc comment above), so these stay RAW
@@ -1821,11 +1797,43 @@ export async function renderTable(
 		// above (that comment has the full reasoning for why dividing here
 		// would double-correct an already-correctly-scaled distance).
 		outerFrame.setCssProps({
-			'--of-l': `${rr.left - shellRect.left}px`,
+			'--of-l': `${left - shellRect.left}px`,
 			'--of-t': `${rr.top - shellRect.top}px`,
-			'--of-w': `${rr.right - rr.left}px`,
+			'--of-w': `${right - left}px`,
 			'--of-h': `${bottom - rr.top}px`,
 		});
+		// A PINNED status bar shares the frame's own left/width — a manually
+		// narrowed view should look like one consistent box, statistics bar
+		// included, not have the bar keep spanning the full available width
+		// while everything above it narrows ("外边框的宽度和view宽度保持视觉
+		// 上的一致"). --sb-pinned-l/-w reuse the exact same shell-relative
+		// values --of-l/-w just got, rather than a separate computation, since
+		// the two really are the same box. A no-op (falls back to 100%/0) when
+		// statusBarPinned is false — the hover-mode bar already clips to the
+		// table's own visible width via --sb-width (positionStatusBar, above),
+		// which already accounts for a narrower manual viewWidth since it's
+		// derived from the table/wrapper's own rects, not root's.
+		if (statusBarPinned) {
+			statusBar.setCssProps({
+				'--sb-pinned-l': `${left - shellRect.left}px`,
+				'--sb-pinned-w': `${right - left}px`,
+			});
+		}
+		// The width handle (bt-view-resize-r/-br, both root-relative `right: 0`
+		// by default) gets the same treatment the height handle already has
+		// for free: mountHeightResizeHandle puts bt-view-resize-b INSIDE
+		// statusBar, so once statusBar's own box narrows (just above) that
+		// handle rides along with it automatically. bt-view-resize-r has no
+		// such built-in symmetry — it's root's own direct child — so its right
+		// offset is set explicitly here to match the same narrowed edge,
+		// keeping both handles equally glued to the frame's real right border
+		// ("调整宽度的把手和调整高度的把手应该是一致的行为"). Unlike --of-*/
+		// --sb-pinned-* (both `shell`-relative, and shell is never zoomed —
+		// see its own doc comment), `.bt-view-resize-r` lives INSIDE root's
+		// zoomed subtree, so this needs the same `/ zoom` correction as every
+		// other root-relative distance in this file (NO_ZOOM's own doc
+		// comment) — (rr.right - right) is a difference of two VISUAL rects.
+		root.setCssProps({ '--of-r-gap': `${(rr.right - right) / zoom}px` });
 	};
 	window.requestAnimationFrame(updateOuterFrame);
 
@@ -2897,21 +2905,18 @@ export async function renderTable(
 			const pull = titleEl ? parseFloat(getComputedStyle(titleEl).getPropertyValue('--bt-title-mb-pull')) || 0 : 0;
 			titleEl?.setCssProps({ '--bt-title-mb-adj': `${-pull}px` });
 			// --bt-sel-pad above just changed root's own rendered height (padding-
-			// top) — the corner brackets' --vf-* offsets are wrapper-relative-to-
-			// root and go stale the instant that happens. viewFrameResizeObs
-			// (which watches for exactly this) won't catch it: ResizeObserver's
-			// default box option is content-box, and a padding-only change never
-			// touches the content box, only the border box getBoundingClientRect()
-			// reports — reported as the brackets staying frozen at their pre-hover
-			// spot until some UNRELATED resize (drag-resizing width/height) forced
-			// a real content-box change and they visibly snapped over. Calling
-			// this directly, synchronously, alongside the other reposition calls
-			// this function already makes, closes that gap without waiting on the
+			// top) — the outer frame's own geometry is stale the instant that
+			// happens. viewFrameResizeObs (which watches for exactly this) won't
+			// catch it: ResizeObserver's default box option is content-box, and a
+			// padding-only change never touches the content box, only the border
+			// box getBoundingClientRect() reports — reported (back when this drove
+			// the corner-bracket markers this function has since replaced) as
+			// those markers staying frozen at their pre-hover spot until some
+			// UNRELATED resize (drag-resizing width/height) forced a real
+			// content-box change and they visibly snapped over. Calling this
+			// directly, synchronously, alongside the other reposition calls this
+			// function already makes, closes that gap without waiting on the
 			// observer at all.
-			updateViewFrame();
-			// Same content-box-miss reasoning as updateViewFrame's own call just
-			// above — the outer frame tracks root's BORDER box directly, which
-			// this padding change just grew.
 			updateOuterFrame();
 		};
 		restoreLayout = () => {
@@ -2959,8 +2964,7 @@ export async function renderTable(
 			titleEl?.setCssProps({ '--bt-title-mb-adj': '0px' });
 			repositionLockBtn();
 			repositionAutoFitBtn();
-			updateViewFrame(); // mirror of prepareLayout's own call — see its comment
-			updateOuterFrame(); // ditto
+			updateOuterFrame(); // mirror of prepareLayout's own call — see its comment
 		};
 
 		showSelectors = () => {
@@ -3507,7 +3511,6 @@ export async function renderTable(
 			// detached tree (this function always runs against one — see
 			// tableBlock.ts) can't provide.
 			root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
-			updateViewFrame();
 			updateOuterFrame();
 		}
 	}

@@ -108,6 +108,54 @@ test.describe('outer frame', () => {
 		await expect(page.locator('.bt-outer-frame')).toHaveCSS('pointer-events', 'none');
 	});
 
+	// Reported ("之前调整view宽度后，会产生四个直角用于标记实际宽度位置，现在既然
+	// 有了外边框，那么让外边框的宽度和view宽度保持视觉上的一致即可"): the frame
+	// used to always hug root's own (full-available) width regardless of a
+	// manually narrower viewWidth, leaving a separate corner-bracket marker
+	// (since removed) to show the real edge instead. Now the frame itself
+	// narrows to the wrapper's own box whenever a manual width is actually
+	// narrower than what's available.
+	test('the frame narrows to a manually-set viewWidth instead of hugging root\'s full available width', async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], viewWidth: 400 }));
+		const root = page.locator('.bt-render-root');
+		const wrapper = page.locator('.bt-table-wrapper');
+		const frame = page.locator('.bt-outer-frame');
+		const rootBox = (await root.boundingBox())!;
+		const wrapperBox = (await wrapper.boundingBox())!;
+		const frameBox = (await frame.boundingBox())!;
+		expect(frameBox.width).toBeCloseTo(wrapperBox.width, 0);
+		expect(frameBox.x).toBeCloseTo(wrapperBox.x, 0);
+		expect(frameBox.width).toBeLessThan(rootBox.width - 10);
+	});
+
+	// A manually-narrower frame should read as one consistent box — the
+	// PINNED status bar (sheet tabs/stats/zoom) shares its left/width, not
+	// spanning the full available space while the grid above it narrows
+	// ("让外边框的宽度和view宽度保持视觉上的一致"). The width AND height
+	// drag-resize handles get the exact same symmetric treatment (matching
+	// how the height handle already behaves, by living inside the now-
+	// narrowed status bar) — both hug the frame's real right/bottom edge, not
+	// root's full-available one, and their discoverability dashes ride along.
+	test('a manually-narrowed frame keeps the PINNED status bar and both resize handles aligned to its own edge, not root\'s', async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], viewWidth: 400 }));
+		const root = page.locator('.bt-render-root');
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await page.waitForTimeout(50);
+
+		const frameBox = (await page.locator('.bt-outer-frame').boundingBox())!;
+		const statusBarBox = (await page.locator('.bt-status-bar').boundingBox())!;
+		expect(statusBarBox.x).toBeCloseTo(frameBox.x, 0);
+		expect(statusBarBox.width).toBeCloseTo(frameBox.width, 0);
+
+		const handleRBox = (await page.locator('.bt-view-resize-r').boundingBox())!;
+		expect(handleRBox.x + handleRBox.width).toBeCloseTo(frameBox.x + frameBox.width, 0);
+		const handleBrBox = (await page.locator('.bt-view-resize-br').boundingBox())!;
+		expect(handleBrBox.x + handleBrBox.width).toBeCloseTo(frameBox.x + frameBox.width, 0);
+
+		await expect.poll(() => page.locator('.bt-view-resize-r').evaluate(el => getComputedStyle(el, '::after').opacity)).toBe('1');
+	});
+
 	// A write-back rebuild tears down and recreates root/shell/frame from
 	// scratch (tableBlock.ts) — the frame's first sizing on that fresh tree
 	// comes from renderGeometry.ts's standalone applyOuterFrame(), a genuinely
@@ -146,5 +194,27 @@ rows:
 			const s = (await page.locator('.bt-render-root-shell').boundingBox())!;
 			return Math.round(f.height - s.height);
 		}).toBe(0);
+	});
+
+	// Same manual-viewWidth narrowing renderer.ts's own updateOuterFrame does
+	// (see that function's own comment), exercised through applyOuterFrame's
+	// separate post-swap code path via renderBlock.
+	test('a manually-narrowed frame stays narrow through a write-back rebuild too (applyOuterFrame)', async ({ page, renderBlock }) => {
+		const SOURCE = `---
+version: 2
+columns:
+  - { id: c_0, name: A, width: 100 }
+  - { id: c_1, name: B, width: 100 }
+rows:
+  - { id: r_0, cells: { c_0: "1" } }
+viewWidth: 400
+---
+`;
+		await renderBlock(SOURCE);
+		const wrapper = page.locator('.bt-table-wrapper:not(#wrapper)');
+		const wrapperBox = (await wrapper.boundingBox())!;
+		const frameBox = (await page.locator('.bt-outer-frame').boundingBox())!;
+		expect(frameBox.width).toBeCloseTo(wrapperBox.width, 0);
+		expect(frameBox.x).toBeCloseTo(wrapperBox.x, 0);
 	});
 });
