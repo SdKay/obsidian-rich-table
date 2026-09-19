@@ -181,7 +181,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 **9 · Copy/paste interop with Excel & Markdown** — paste a range from Excel/Sheets straight into a cell (detected via clipboard HTML), or a standard Markdown/GFM pipe table pasted as plain text (typed by hand, copied from another note, an LLM reply, GitHub, etc.); pasting onto a **header** cell instead converts the whole thing — the pasted header row becomes column names, the rest becomes data, table-format conversion in one paste. Copy a selection out as an Excel-compatible table or as a Markdown table, from the selection/cell/header menus — merged cells in the copied range carry over intact. Ctrl+V also works directly on a Selected cell or multi-cell range (no need to be editing), pasting starting at its top-left corner and reconstructing any merges the copied range had; a destination merge it collides with is absorbed rather than rejected
 
-> 🎬 *Demo GIF coming soon*
+![demo-copy-from-excel](docs/demo-copy-from-excel.gif)
 
 **10 · Row sorting** — column selector popup: one-time sort or live auto-sort with a header indicator
 
@@ -213,15 +213,15 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 **17 · Status bar** — row/column totals, selection size and sum/average; drag the divider to resize its own scrollbar track; ⚙️ view settings to pin it or show only on hover
 
-> 🎬 *Demo GIF coming soon*
+![状态栏](docs/demo-status-bar.gif)
 
 **18 · Transpose** — flip icon in the left control column swaps rows and columns; column type, formulas, sort and views don't carry across and are dropped
 
-> 🎬 *Demo GIF coming soon*
+![状态栏](docs/demo-transpose.gif)
 
 **19 · Nested tables** — a cell's content can itself be a `rich-table` block, rendered and fully interactive in place
 
-> 🎬 *Demo GIF coming soon*
+![状态栏](docs/demo-nesting.gif)
 
 **20 · Select all** — grid icon in the left control column selects every cell (header included) and opens the same range menu a corner-to-corner drag-select would
 
@@ -229,7 +229,11 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 **21 · Zoom** — Excel-style −/slider/+ control in the status bar, between the row/column totals and the scrollbar; scales the whole table — content, images, cell sizes — from 25% to 400%, saved with the table
 
-> 🎬 *Demo GIF coming soon*
+![状态栏](docs/demo-zoom.gif)
+
+**21 · Ref external excel file** — View and Edit external excel file, Support multiple sheet and cell/merge edit.
+
+![状态栏](docs/demo-external-xlsx.gif)
 
 ---
 
