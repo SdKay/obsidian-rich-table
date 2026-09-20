@@ -155,3 +155,47 @@ describe('delete-row shrinks (not removes) a multi-row merge whose literal end i
 		expect(model.merges).toHaveLength(0);
 	});
 });
+
+describe('delete-row/delete-col carry a shrinking merge\'s value forward when the deleted row/column IS the literal anchor', () => {
+	// Reported: A1+A2 merged with a value, deleting row 1 (the merge's literal
+	// anchor) left the surviving new A1 with no content — every reader
+	// resolves a merge's value from `merge.anchor` alone, so reanchoring the
+	// pointer onto row 2 without also moving row 1's own value silently lost it.
+	it('deleting the anchor row moves its value onto the new anchor', () => {
+		const model = rowModel(); // merge spans r_a, r_b, r_c on c_0
+		model.rows[0]!.cells['c_0'] = 'anchor value'; // r_a — the literal anchor
+		applyStructuralOpV2(model, { type: 'delete-row', rowId: 'r_a' });
+
+		expect(model.merges).toHaveLength(1);
+		expect(model.merges[0]).toEqual({ anchor: 'r_b.c_0', end: 'r_c.c_0' });
+		// r_b is now index 0 after r_a's removal
+		expect(model.rows[0]!.cells['c_0']).toBe('anchor value');
+	});
+
+	it('deleting the END row (not the anchor) does not disturb the anchor\'s own value', () => {
+		const model = rowModel();
+		model.rows[0]!.cells['c_0'] = 'anchor value'; // r_a — untouched by this deletion
+		applyStructuralOpV2(model, { type: 'delete-row', rowId: 'r_c' });
+
+		expect(model.merges).toHaveLength(1);
+		expect(model.merges[0]).toEqual({ anchor: 'r_a.c_0', end: 'r_b.c_0' });
+		expect(model.rows[0]!.cells['c_0']).toBe('anchor value');
+	});
+
+	it('deleting the anchor column moves its value onto the new anchor (column-axis mirror)', () => {
+		const model = colModel(); // merge spans c_a, c_b, c_c on r_1
+		model.rows[1]!.cells['c_a'] = 'anchor value'; // c_a — the literal anchor column
+		applyStructuralOpV2(model, { type: 'delete-col', colId: 'c_a' });
+
+		expect(model.merges).toHaveLength(1);
+		expect(model.merges[0]).toEqual({ anchor: 'r_1.c_b', end: 'r_1.c_c' });
+		expect(model.rows[1]!.cells['c_b']).toBe('anchor value');
+	});
+
+	it('never carries a value when the anchor cell was already empty (nothing to lose)', () => {
+		const model = rowModel();
+		applyStructuralOpV2(model, { type: 'delete-row', rowId: 'r_a' });
+
+		expect(model.rows[0]!.cells['c_0']).toBeUndefined();
+	});
+});

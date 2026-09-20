@@ -64,3 +64,52 @@ describe('merge-cells', () => {
 		expect(model.merges).toEqual([{ anchor: 'header.c_0', end: 'header.c_1' }]);
 	});
 });
+
+describe('merge-cells carries a non-anchor cell\'s value onto the anchor', () => {
+	// Reported: merging A1+A2 when A1 (the anchor) was empty and A2 held a
+	// value produced a merged cell with no content at all — every reader
+	// (resolveCellValue, getMergeOrigin+renderRow) resolves a merge's value
+	// from its literal ANCHOR cell alone, and the anchor's own (empty) content
+	// was pushed verbatim, never checking whether some other cell in the
+	// rectangle actually held the value.
+	it('promotes the second cell\'s value onto the anchor when the anchor is empty', () => {
+		const model = baseModel();
+		model.rows[1]!.cells['c_0'] = 'hello'; // r_1 has content, r_0 (the anchor) doesn't
+		applyStructuralOpV2(model, { type: 'merge-cells', anchorRowId: 'r_0', anchorColId: 'c_0', endRowId: 'r_1', endColId: 'c_0' });
+		expect(model.rows[0]!.cells['c_0']).toBe('hello');
+		expect(model.rows[1]!.cells['c_0']).toBeUndefined(); // cleared — value now lives only on the anchor
+	});
+
+	it('leaves the anchor\'s own value alone when the anchor already has content', () => {
+		const model = baseModel();
+		model.rows[0]!.cells['c_0'] = 'first';
+		model.rows[1]!.cells['c_0'] = 'second';
+		applyStructuralOpV2(model, { type: 'merge-cells', anchorRowId: 'r_0', anchorColId: 'c_0', endRowId: 'r_1', endColId: 'c_0' });
+		expect(model.rows[0]!.cells['c_0']).toBe('first');
+		expect(model.rows[1]!.cells['c_0']).toBe('second'); // untouched — anchor already had a value to keep
+	});
+
+	it('leaves the merge genuinely empty when every cell in the rectangle is empty', () => {
+		const model = baseModel();
+		applyStructuralOpV2(model, { type: 'merge-cells', anchorRowId: 'r_0', anchorColId: 'c_0', endRowId: 'r_1', endColId: 'c_0' });
+		expect(model.rows[0]!.cells['c_0']).toBeUndefined();
+		expect(model.rows[1]!.cells['c_0']).toBeUndefined();
+	});
+
+	it('scans in row-major order, taking the first non-empty cell across a rectangular merge', () => {
+		const model = baseModel();
+		model.rows[1]!.cells['c_1'] = 'later'; // r_1.c_1
+		model.rows[1]!.cells['c_0'] = 'earlier'; // r_1.c_0 — earlier in row-major order than r_1.c_1
+		applyStructuralOpV2(model, { type: 'merge-cells', anchorRowId: 'r_0', anchorColId: 'c_0', endRowId: 'r_1', endColId: 'c_1' });
+		expect(model.rows[0]!.cells['c_0']).toBe('earlier');
+	});
+
+	it('promotes a header cell\'s value onto the anchor via the header sentinel', () => {
+		const model = baseModel();
+		model.columns[0]!.name = ''; // header itself empty
+		model.rows[0]!.cells['c_0'] = 'row value';
+		applyStructuralOpV2(model, { type: 'merge-cells', anchorRowId: 'header', anchorColId: 'c_0', endRowId: 'r_0', endColId: 'c_0' });
+		expect(model.columns[0]!.name).toBe('row value');
+		expect(model.rows[0]!.cells['c_0']).toBeUndefined();
+	});
+});

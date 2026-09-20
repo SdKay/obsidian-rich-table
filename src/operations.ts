@@ -314,6 +314,35 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			// sharing its exact anchor (see clearMergesOverlapping's own doc
 			// comment for why a same-anchor-only check isn't enough).
 			if (r1 !== undefined && r2 !== undefined && c1 >= 0 && c2 >= 0) clearMergesOverlapping(model, r1, r2, c1, c2);
+			// Every reader resolves a merge's value from its literal anchor cell
+			// alone (resolveCellValue / getMergeOrigin+renderRow) — merging used
+			// to push whatever the anchor cell already held verbatim, silently
+			// dropping content that lived on any OTHER cell in the rectangle if
+			// the anchor itself happened to be empty (reported: merging A1+A2
+			// when only A2 had a value left the merged cell blank). Fixed by
+			// promoting the first non-empty cell in the rectangle (row-major,
+			// anchor itself checked first) onto the anchor before the merge is
+			// recorded, and clearing that source cell's own content — matching
+			// the same "value lives only on the anchor" invariant every other
+			// merge-aware reader already assumes.
+			if (r1 !== undefined && r2 !== undefined && c1 >= 0 && c2 >= 0 && getMemberCellValue(model, op.anchorRowId, op.anchorColId) === '') {
+				const rLo = Math.min(r1, r2), rHi = Math.max(r1, r2);
+				const cLo = Math.min(c1, c2), cHi = Math.max(c1, c2);
+				outer:
+				for (let ri = rLo; ri <= rHi; ri++) {
+					const rId = ri === -1 ? 'header' : model.rows[ri]?.id;
+					if (!rId) continue;
+					for (let ci = cLo; ci <= cHi; ci++) {
+						if (ri === r1 && ci === c1) continue; // the anchor itself — already confirmed empty
+						const cId = model.columns[ci]?.id;
+						if (!cId) continue;
+						if (getMemberCellValue(model, rId, cId) !== '') {
+							carryMergeValue(model, rId, cId, op.anchorRowId, op.anchorColId);
+							break outer;
+						}
+					}
+				}
+			}
 			model.merges.push({ anchor, end });
 			break;
 		}
@@ -752,6 +781,46 @@ export function resolveMergeRowIndex(model: TableModelV2, id: string): number | 
 	if (id === 'header') return -1;
 	const idx = model.rows.findIndex(r => r.id === id);
 	return idx >= 0 ? idx : undefined;
+}
+
+/**
+ * Raw content of a "rowId.colId" cell, for merge bookkeeping — the header
+ * sentinel row has no `model.rows` entry of its own, so its "cell content"
+ * is a column's `name` instead (matching what renderRow actually displays
+ * for a header cell); every other row reads/writes its `cells` record.
+ * Shared by merge-cells (find the first non-empty cell in a rectangle) and
+ * the row/col-deletion reanchor helpers (carry a merge's value forward when
+ * the row/column being deleted IS the merge's literal anchor).
+ */
+function getMemberCellValue(model: TableModelV2, rowId: string, colId: string): string {
+	if (rowId === 'header') return model.columns.find(c => c.id === colId)?.name ?? '';
+	return model.rows.find(r => r.id === rowId)?.cells[colId] ?? '';
+}
+
+function setMemberCellValue(model: TableModelV2, rowId: string, colId: string, value: string): void {
+	if (rowId === 'header') {
+		const col = model.columns.find(c => c.id === colId);
+		if (col) col.name = value;
+		return;
+	}
+	const row = model.rows.find(r => r.id === rowId);
+	if (!row) return;
+	if (value === '') delete row.cells[colId];
+	else row.cells[colId] = value;
+}
+
+/** Moves a merge's content-holding value from one cell to another and clears
+ *  the source — used wherever a merge's boundary is reanchored onto a
+ *  DIFFERENT cell than the one that used to hold the value (see
+ *  reanchorMergesForRowDeletion/ColumnDeletion's own comments): every reader
+ *  (resolveCellValue, getMergeOrigin/renderRow) looks up a merge's content
+ *  via its literal `anchor` field, so simply repointing that field onto a
+ *  cell with no content of its own would silently drop the merge's value. */
+function carryMergeValue(model: TableModelV2, fromRowId: string, fromColId: string, toRowId: string, toColId: string): void {
+	const value = getMemberCellValue(model, fromRowId, fromColId);
+	if (!value) return; // nothing to carry — the source cell was already empty
+	setMemberCellValue(model, toRowId, toColId, value);
+	setMemberCellValue(model, fromRowId, fromColId, '');
 }
 
 /**
@@ -1306,11 +1375,22 @@ function reanchorMergesForRowDeletion(model: TableModelV2, removedRowId: string)
 		if (removedIdx === lo) {
 			const newTopId = model.rows[lo + 1]?.id;
 			if (!newTopId) continue;
+			// A merge's value lives ONLY on its literal anchor cell (every reader —
+			// resolveCellValue, getMergeOrigin+renderRow — resolves through
+			// `merge.anchor`, never `merge.end`). Deleting the row that happens to
+			// BE the anchor silently took its content down with it — the boundary
+			// pointer moved onto a fresh cell that never had the value in the first
+			// place (reported: a merged cell's content vanished after deleting its
+			// top row). Carry it forward before the pointer changes, same as
+			// merge-cells' own carryMergeValue below — a no-op when the anchor was
+			// already empty (nothing to lose either way).
+			if (anchorIsLeft) carryMergeValue(model, removedRowId, anchorColId, newTopId, anchorColId);
 			if (anchorIsLeft) merge.anchor = `${newTopId}.${anchorColId}`;
 			else              merge.end    = `${newTopId}.${endColId}`;
 		} else if (removedIdx === hi) {
 			const newBottomId = model.rows[hi - 1]?.id;
 			if (!newBottomId) continue;
+			if (!anchorIsLeft) carryMergeValue(model, removedRowId, anchorColId, newBottomId, anchorColId);
 			if (anchorIsLeft) merge.end    = `${newBottomId}.${endColId}`;
 			else              merge.anchor = `${newBottomId}.${anchorColId}`;
 		}
@@ -1354,11 +1434,16 @@ function reanchorMergesForColumnDeletion(model: TableModelV2, removedColId: stri
 		if (removedIdx === lo) {
 			const newLeftId = model.columns[lo + 1]?.id;
 			if (!newLeftId) continue;
+			// Column-axis mirror of reanchorMergesForRowDeletion's own value carry
+			// — see its comment for why moving the anchor pointer alone silently
+			// drops the merge's content when the deleted column IS the anchor.
+			if (anchorIsLeft) carryMergeValue(model, anchorRowId, removedColId, anchorRowId, newLeftId);
 			if (anchorIsLeft) merge.anchor = `${anchorRowId}.${newLeftId}`;
 			else              merge.end    = `${endRowId}.${newLeftId}`;
 		} else if (removedIdx === hi) {
 			const newRightId = model.columns[hi - 1]?.id;
 			if (!newRightId) continue;
+			if (!anchorIsLeft) carryMergeValue(model, anchorRowId, removedColId, anchorRowId, newRightId);
 			if (anchorIsLeft) merge.end    = `${endRowId}.${newRightId}`;
 			else              merge.anchor = `${anchorRowId}.${newRightId}`;
 		}
