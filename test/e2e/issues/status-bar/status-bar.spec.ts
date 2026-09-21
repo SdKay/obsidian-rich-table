@@ -23,6 +23,22 @@ test.describe('status bar — DOM skeleton (Task 4)', () => {
 		await expect(bar.locator('.bt-status-stats')).toHaveText('2 rows × 2 cols');
 	});
 
+	test('.bt-status-stats carries an is-selection class only while a multi-cell selection is active (issue #7)', async ({ page, renderFull }) => {
+		await renderFull(SOURCE);
+		const stats = page.locator('.bt-status-stats');
+		await expect(stats).not.toHaveClass(/is-selection/);
+
+		const a1 = (await page.locator('[data-row="1"][data-col="0"]').boundingBox())!;
+		const a2 = (await page.locator('[data-row="2"][data-col="0"]').boundingBox())!;
+		await page.mouse.move(a1.x + a1.width / 2, a1.y + a1.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(a2.x + a2.width / 2, a2.y + a2.height / 2, { steps: 5 });
+		await page.mouse.up();
+
+		await expect(stats).toHaveClass(/is-selection/);
+		await expect(stats).toHaveText(/^Selected/);
+	});
+
 	test('native horizontal scrolling still works once its own scrollbar is visually hidden', async ({ page, renderFull }) => {
 		// Whether the ::-webkit-scrollbar:horizontal rule actually suppresses
 		// the painted track/thumb isn't reliably checkable here: Chromium's

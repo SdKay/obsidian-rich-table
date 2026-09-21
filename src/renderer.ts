@@ -1612,7 +1612,14 @@ export async function renderTable(
 		const selection = sel.start && sel.end
 			? { r1: sel.start.row, r2: sel.end.row, c1: sel.start.col, c2: sel.end.col }
 			: null;
-		statusStats.setText(statusBarStatsLabel(computeSelectionStats(model, selection)));
+		const stats = computeSelectionStats(model, selection);
+		statusStats.setText(statusBarStatsLabel(stats));
+		// Lets a user's own CSS snippet target/hide one state independently of
+		// the other (e.g. "always hide the resting row/col count, keep the
+		// selection sum") — both states used to share this one class with
+		// nothing but text content to tell them apart, which CSS can't select
+		// on at all (reported: github.com/SdKay/obsidian-rich-table/issues/7).
+		statusStats.toggleClass('is-selection', stats.selectedRows !== undefined);
 	};
 	updateStatusBarStats();
 
