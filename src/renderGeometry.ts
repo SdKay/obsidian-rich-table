@@ -103,6 +103,47 @@ export function scrollContentOffset(el: HTMLElement, axis: 'x' | 'y', zoom: numb
 		: (rect.y - box.y) / zoom + scroller.scrollTop - (parseFloat(cs.borderTopWidth) || 0);
 }
 
+/**
+ * `el`'s offset from `<table>`'s own OUTER (border-box) edge — table-relative,
+ * unlike scrollContentOffset's wrapper-relative one above. The two only
+ * coincide while the table sits flush against the wrapper's edge (wide
+ * enough to scroll); `margin-inline: auto` centers a narrower table, so a
+ * non-frozen selector cell (inside `.bt-sel-track`, anchored to the table's
+ * edge) needs this instead, or it drifts by the centering gap. No border
+ * subtraction: `.bt-col-selector`/`.bt-row-selector` are themselves anchored
+ * to the table's border-box edge (computeVisibleGeom's own
+ * getBoundingClientRect reads), not its content edge — a theme with a real
+ * outer border (e.g. grid) drifted by that border's width otherwise. Not
+ * reused for scrollContentOffset's own frozen-cell case — that must stay
+ * wrapper-relative to match `position: sticky`'s own reference frame.
+ */
+export function tableContentOffset(el: HTMLElement, axis: 'x' | 'y', zoom: number = NO_ZOOM): number {
+	const table = el.closest<HTMLElement>('table');
+	if (!table) return 0;
+	const box = table.getBoundingClientRect();
+	const rect = el.getBoundingClientRect();
+	return axis === 'x' ? (rect.x - box.x) / zoom : (rect.y - box.y) / zoom;
+}
+
+/**
+ * Picks scrollContentOffset vs tableContentOffset for a selector-strip cell.
+ * Non-frozen cells live in `.bt-sel-track`, whose scroll transform already
+ * covers the wrapper-relative part, so they always want the table-relative
+ * offset. Frozen cells sit outside the track and must match whichever
+ * coordinate space `.bt-col-selector`/`.bt-row-selector` is anchored to —
+ * the wrapper's edge only while that axis actually scrolls; otherwise
+ * (table narrower than the view, centered) nothing is stuck and it's the
+ * table's edge instead. Checking scrollWidth/clientWidth picks the right one.
+ */
+export function selectorAxisOffset(el: HTMLElement, axis: 'x' | 'y', zoom: number, frozen: boolean): number {
+	if (!frozen) return tableContentOffset(el, axis, zoom);
+	const scroller = el.closest<HTMLElement>('.bt-table-wrapper');
+	const scrolls = !!scroller && (axis === 'x'
+		? scroller.scrollWidth > scroller.clientWidth
+		: scroller.scrollHeight > scroller.clientHeight);
+	return scrolls ? scrollContentOffset(el, axis, zoom) : tableContentOffset(el, axis, zoom);
+}
+
 export interface VisibleGeom {
 	tr: DOMRect; rr: DOMRect; wr: DOMRect;
 	tt: number; th: number;

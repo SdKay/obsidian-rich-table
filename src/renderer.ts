@@ -20,7 +20,7 @@ import { copyRangeToClipboard, copyRangeAsMarkdown, parseHtmlTableWithMerges, pa
 import { enterLineEdit } from './renderEditMode';
 import { colMinWidth } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
-import { scrollContentOffset, computeVisibleGeom as computeVisibleGeomPure, type VisibleGeom } from './renderGeometry';
+import { selectorAxisOffset, computeVisibleGeom as computeVisibleGeomPure, type VisibleGeom } from './renderGeometry';
 import { applyZoom, zoomFactor, renderZoomControl } from './renderZoom';
 import { bindScrollSync } from './renderScrollSync';
 import { type CellOpEntry, openCellPanel, buildAlignCellOp } from './renderPanel';
@@ -244,6 +244,12 @@ export async function renderTable(
 	// which only that block knows how to check (see the frame element's own
 	// creation comment for why this can't just read `shell`'s own rect).
 	let updateOuterFrame = () => { /* assigned once statusBar exists */ };
+	// Assigned in the frozen-rows/columns block, once thead/tbody exist — lets
+	// the drag-resize handle (defined earlier) keep frozen offsets exactly in
+	// step with the geometry it just wrote live, instead of waiting on
+	// freezeResizeObs's own rAF-coalesced re-measure (a real one-frame lag,
+	// visible as the frozen column stuttering during a slow drag).
+	let reapplyFreezeNow = () => { /* assigned in frozen-rows/columns block */ };
 
 	// Footer — hidden while collapsed, along with the table body. Extracted so
 	// both the plain-table path and the Kanban-view early-return (which skips
@@ -585,6 +591,11 @@ export async function renderTable(
 					// for height, whose handle lives inside the status bar and has
 					// no separate frame-edge dependency to catch up to.
 					updateOuterFrame();
+					// Same one-frame-lag reasoning as updateOuterFrame's own call —
+					// freezeResizeObs (below) is rAF-coalesced, which reads as the
+					// frozen column stuttering a pixel behind the cursor during a
+					// slow drag (reported: "冻结列整体在抖动").
+					reapplyFreezeNow();
 				};
 				const onUp = () => {
 					handle.removeEventListener('pointermove', onMove);
@@ -1894,33 +1905,45 @@ export async function renderTable(
 	// self-triggered re-fires during the current frame just find
 	// `scheduled` already true and no-op, so at most one real run happens
 	// per frame regardless of how many times the observer itself fires.
+	// Reset any active hover tint FIRST — applyFreeze's own clearCell()
+	// unconditionally wipes and rebuilds box-shadow on every frozen cell, with
+	// no idea a hover interaction has ALSO been layering a tint into that same
+	// property. Without this, a cell mid-hover when applyFreeze happens to
+	// re-run (any geometry change — far more than just resize) ends up with
+	// clearHover's cached "restore" value now stale relative to the
+	// freshly-rebuilt frame lines; the eventual mouseleave then puts back the
+	// WRONG value — reported as an intermittent missing seam line between two
+	// frozen columns that appeared only after hovering a few times and
+	// cleared on a fresh render (a full re-render starts hoverShadowBase
+	// empty, so the race needs an actual hover to have happened first).
+	// Clearing hover here guarantees clearCell/rebuild always start from a
+	// hover-free state; worst case the tint blips off for a frame and
+	// reappears on the next mouse move, imperceptible next to a permanently
+	// corrupted line. Shared by both call sites below (the rAF-coalesced
+	// observer and the drag handler's synchronous one) so neither can drift
+	// from this invariant independently.
+	reapplyFreezeNow = () => {
+		clearHover();
+		lastHoverCell = null;
+		applyFreeze(table, thead, tbody, model, zoom);
+	};
+
 	let freezeApplyScheduled = false;
 	const freezeResizeObs = new ResizeObserver(() => {
 		if (freezeApplyScheduled) return;
 		freezeApplyScheduled = true;
 		window.requestAnimationFrame(() => {
 			freezeApplyScheduled = false;
-			// Reset any active hover tint FIRST — applyFreeze's own clearCell()
-			// unconditionally wipes and rebuilds box-shadow on every frozen cell,
-			// with no idea a hover interaction has ALSO been layering a tint into
-			// that same property. Without this, a cell mid-hover when applyFreeze
-			// happens to re-run (any geometry change — this observer fires on far
-			// more than just resize) ends up with clearHover's cached "restore"
-			// value now stale relative to the freshly-rebuilt frame lines; the
-			// eventual mouseleave then puts back the WRONG value — reported as an
-			// intermittent missing seam line between two frozen columns that
-			// appeared only after hovering a few times and cleared on a fresh
-			// render (a full re-render starts hoverShadowBase empty, so the race
-			// needs an actual hover to have happened first). Clearing hover here
-			// guarantees clearCell/rebuild always start from a hover-free state;
-			// worst case the tint blips off for a frame and reappears on the next
-			// mouse move, imperceptible next to a permanently corrupted line.
-			clearHover();
-			lastHoverCell = null;
-			applyFreeze(table, thead, tbody, model, zoom);
+			reapplyFreezeNow();
 		});
 	});
 	freezeResizeObs.observe(table);
+	// Also watch wrapper: applyFreeze's sticky offsets depend on whether an
+	// axis actually scrolls (wrapper vs table size), which a manual
+	// viewWidth/viewHeight drag can flip without table itself ever resizing —
+	// reported as a frozen column staying at its pre-drag position (never
+	// re-measured) while narrowing the view past the point scroll engages.
+	freezeResizeObs.observe(wrapper);
 	component?.register(() => freezeResizeObs.disconnect());
 
 	// Mark root to activate the padding-reservation + resting-state clip-path
@@ -2658,21 +2681,14 @@ export async function renderTable(
 			const freezeRows = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
 			for (const c of ownCols(table)) {
 				const w = parseFloat(c.style.width) || 0;
-				// MEASURED via the same function the frozen cells use, not
-				// accumulated: an accumulator starting at 0 omits the table's own
-				// border, so the strip sat that far left of the columns it labels —
-				// and a frozen label (whose --cl must match --bt-frozen-left exactly)
-				// drifted off its own column. See renderGeometry.ts for why this is
-				// one shared function rather than two call sites that are "obviously"
-				// equal.
-				const colX = scrollContentOffset(c, 'x', zoom);
 				if (c.dataset.col !== undefined) {
 					// Visible column — one cell per physical column
 					const ci = parseInt(c.dataset.col);
-					// A frozen column's cell/grip is parented directly under colSel,
-					// OUTSIDE colTrack, so it never inherits the track's scroll-offset
-					// transform — see styles.css's .bt-sel-track comment.
+					// Frozen cell/grip parents directly under colSel, outside colTrack
+					// (see styles.css's .bt-sel-track comment) — see selectorAxisOffset
+					// for which coordinate space --cl needs as a result.
 					const frozen = freezeCols !== undefined && ci < freezeCols;
+					const colX = selectorAxisOffset(c, 'x', zoom, frozen);
 					const cell = (frozen ? colSel : colTrack).createDiv({ cls: 'bt-sel-cell' });
 					cell.dataset.idx = String(ci);
 					cell.setText(colIndexToLetter(ci));
@@ -2689,7 +2705,7 @@ export async function renderTable(
 						attr: { draggable: 'true', 'aria-label': t('dragReorderCol') },
 					});
 					setIcon(colGrip, 'grip-vertical');
-					// colX is already zoom-corrected (scrollContentOffset above); w is
+					// colX is already zoom-corrected (selectorAxisOffset above); w is
 					// from style.width (already logical) — no further correction needed.
 					colGrip.setCssProps({ '--cdx': `${colX + w / 2}px` });
 					colGrip.addEventListener('dragstart', (evt: DragEvent) => {
@@ -2823,9 +2839,6 @@ export async function renderTable(
 				if (dc === undefined) continue;
 				const h = colResizeHandles.get(parseInt(dc));
 				if (!h) continue;
-				// The seam this handle drags is the column's RIGHT edge, measured
-				// through the shared helper for the same reason as --cl above.
-				h.setCssProps({ '--rx': `${scrollContentOffset(c, 'x', zoom) + (parseFloat(c.style.width) || 0)}px` });
 				// A frozen column's real cell doesn't move on horizontal scroll, so
 				// neither may the hover zone that resizes it — reparent it outside
 				// colTrack (same partition as the label cells above) instead of
@@ -2834,6 +2847,8 @@ export async function renderTable(
 				// resize hover area sitting outside the selector, along the
 				// extension of that line.
 				const colFrozen = freezeCols !== undefined && parseInt(dc) < freezeCols;
+				// Seam sits on the column's RIGHT edge; same frozen/non-frozen split as --cl above.
+				h.setCssProps({ '--rx': `${selectorAxisOffset(c, 'x', zoom, colFrozen) + (parseFloat(c.style.width) || 0)}px` });
 				h.toggleClass('bt-sel-cell-frozen', colFrozen);
 				const colDesiredParent = colFrozen ? colSel : colTrack;
 				if (h.parentElement !== colDesiredParent) colDesiredParent.appendChild(h);
@@ -2843,13 +2858,9 @@ export async function renderTable(
 				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri + 1}"]`);
 				const tr = firstCell?.closest<HTMLElement>('tr');
 				if (tr) {
-					// Row's BOTTOM edge, through the shared helper — the vertical
-					// mirror of the column seams above, freeze-aware part included: a
-					// frozen row's resize zone must stay on its boundary instead of
-					// being carried away from it by the track's transform (same
-					// reparent-outside-the-track treatment as the column seams above).
-					h.setCssProps({ '--ry': `${scrollContentOffset(tr, 'y', zoom) + tr.getBoundingClientRect().height / zoom}px` });
 					const rowResizeFrozen = freezeRows !== undefined && ri + 1 <= freezeRows;
+					// Row's BOTTOM edge — vertical mirror of the column seams above.
+					h.setCssProps({ '--ry': `${selectorAxisOffset(tr, 'y', zoom, rowResizeFrozen) + tr.getBoundingClientRect().height / zoom}px` });
 					h.toggleClass('bt-sel-cell-frozen', rowResizeFrozen);
 					const rowDesiredParent = rowResizeFrozen ? rowSel : rowTrack;
 					if (h.parentElement !== rowDesiredParent) rowDesiredParent.appendChild(h);
