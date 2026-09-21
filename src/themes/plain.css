@@ -74,7 +74,6 @@
 /* ── Root variables & cursor glow ────────────────────────────────────── */
 .bt-render-root.bt-theme-plain {
     --bt-cell-border:   none;
-    --bt-title-mb-pull: 0px;
     animation: bt-plain-hue 10s linear infinite;
 
     /* Cursor atmosphere — visible at root edges, strip area, add-row zone */

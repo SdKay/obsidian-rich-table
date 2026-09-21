@@ -1860,6 +1860,29 @@ export async function renderTable(
 				'--sb-pinned-w': `${right - left}px`,
 			});
 		}
+		// Center the title over <table>'s own box, not the wider box
+		// text-align:center actually centers it in: an editable table's
+		// contentRow permanently reserves addColBtn's width alongside
+		// <table> (flex-shrink:0, occupying its layout box even while
+		// invisible — see .bt-edge-add-col's own comment), and wrapper's
+		// max-content sizing follows that WHOLE row — so the title (centered
+		// in root, which spans that same width) landed visibly right of the
+		// table it names, by half of addColBtn's width. Locked tables have
+		// no addColBtn and were never off (reported: only on editable
+		// tables). Measured, not derived from padding math: reset any prior
+		// adjustment first so this frame's measurement reads the title's
+		// true unadjusted (text-align:center) position, matching this
+		// file's own "measure geometry, don't recompute it analytically"
+		// approach elsewhere (e.g. reserveLeftPad's read-then-write).
+		const titleEl = root.querySelector<HTMLElement>(':scope > .bt-table-title');
+		if (titleEl) {
+			titleEl.setCssProps({ '--bt-title-center-adj': '0px' });
+			const naturalRect = titleEl.getBoundingClientRect();
+			const tableRect = table.getBoundingClientRect();
+			const naturalCenter = naturalRect.left + naturalRect.width / 2;
+			const tableCenter = tableRect.left + tableRect.width / 2;
+			titleEl.setCssProps({ '--bt-title-center-adj': `${(tableCenter - naturalCenter) / zoom}px` });
+		}
 		// The width handle (bt-view-resize-r/-br, both root-relative `right: 0`
 		// by default) gets the same treatment the height handle already has
 		// for free: mountHeightResizeHandle puts bt-view-resize-b INSIDE

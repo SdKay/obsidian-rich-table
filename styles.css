@@ -64,12 +64,16 @@
 	 * Themes override by setting the same variable with higher specificity.
 	 *   --bt-wrapper-width:      table's content width (centered by default)
 	 *   --bt-wrapper-margin:     auto → horizontal centering
-	 *   --bt-title-mb-pull:      0px  → no overlap between title and table
+	 *   --bt-title-mb-pull:      -20px → title sits closer to the table at rest
 	 *   --bt-cell-border:        none → all-sides cell border shorthand
 	 *   --bt-cell-border-top/right/bottom/left  per-side overrides, fall back to --bt-cell-border */
 	--bt-wrapper-width:  max-content;
 	--bt-wrapper-margin: auto;
-	--bt-title-mb-pull:  0px;
+	/* Only affects the AT-REST gap: hover always cancels this via
+	 * --bt-title-mb-adj (see .bt-table-title's own comment), reserving the
+	 * full --bt-title-sel-pad space for the col-selector strip regardless of
+	 * this value — raising it can never make the strip overlap the title. */
+	--bt-title-mb-pull:  -20px;
 	--bt-cell-border:    none;
 	/* Per-cell override variables — reset to their guaranteed-invalid value here
 	 * so var(--x, fallback) below correctly falls back to `fallback` for any
@@ -428,10 +432,11 @@
 
 
 /* ── Table title ─────────────────────────────────────────────────────────── */
-/* --bt-title-mb-pull: 主题通过此变量表达"拉近标题与表格距离"的意图（默认 0px）。
- * renderer.ts 负责将 root 上的该变量桥接到 titleEl（兄弟节点无法直接继承）；桥接
- * 在极少数时机（尚未桥接完成）下可能读不到值，calc() 的 fallback 必须与基准主题
- * 默认值一致（0px，而非旧的 -9px），否则会短暂出现标题压进表格的重叠。
+/* --bt-title-mb-pull: 主题通过此变量表达"拉近标题与表格距离"的意图（基准默认
+ * -20px，主题可覆盖成别的值）。renderer.ts 负责将 root 上的该变量桥接到 titleEl
+ * （兄弟节点无法直接继承）；桥接在极少数时机（尚未桥接完成）下可能读不到值，
+ * calc() 的 fallback 必须与基准主题默认值一致（-20px），否则会短暂出现标题与
+ * 表格间距变宽的跳变。
  * --bt-title-mb-adj: JS 在 hover 时设为 -mb-pull（动态抵消，而非固定值），让标题
  * 紧贴 col-selector 顶部，不会在主题的拉近值之上再叠加一段空隙。
  * --bt-title-sel-pad: renderer.ts 在创建 titleEl 时设一次、之后不再改动（跟
@@ -444,8 +449,15 @@
 	font-size: var(--h4-size, 1.1em);
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
-	margin: 0 0 calc(var(--bt-title-mb-pull, 0px) + var(--bt-title-mb-adj, 0px) + var(--bt-title-sel-pad, 0px));
+	margin: 0 0 calc(var(--bt-title-mb-pull, -20px) + var(--bt-title-mb-adj, 0px) + var(--bt-title-sel-pad, 0px));
 	line-height: 1.4;
+	/* --bt-title-center-adj (renderer.ts's updateOuterFrame): re-centers the
+	 * title over <table>'s own box instead of the wider box text-align:center
+	 * centers it in by default — see that function's own comment for why the
+	 * two can differ. transform, not margin — a translate never affects any
+	 * OTHER element's layout, so this can't reopen the title/table-gap issue
+	 * margin-bottom is otherwise responsible for. */
+	transform: translateX(var(--bt-title-center-adj, 0px));
 }
 
 /* ── Table footer ────────────────────────────────────────────────────────── */
@@ -3297,7 +3309,6 @@
 /* ── Root variables & cursor glow ────────────────────────────────────── */
 .bt-render-root.bt-theme-plain {
     --bt-cell-border:   none;
-    --bt-title-mb-pull: 0px;
     animation: bt-plain-hue 10s linear infinite;
 
     /* Cursor atmosphere — visible at root edges, strip area, add-row zone */
