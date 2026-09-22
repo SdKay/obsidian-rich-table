@@ -540,6 +540,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		const option = choiceType ? registry.getOption(col.type, trimmed) : undefined;
 
 		const pill = el.createSpan({ cls: 'bt-choice' });
+		pill.dataset.choiceType = col.type;
 
 		if (option) {
 			if (option.color) pill.setCssProps({ '--bt-choice-bg': option.color });

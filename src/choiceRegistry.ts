@@ -4,11 +4,12 @@ const BUILTIN_CHOICES: ChoiceType[] = [
 	{
 		id: 'task-status',
 		options: [
-			{ value: 'todo',        label: 'Todo',        color: 'rgba(120,120,120,0.15)' },
-			{ value: 'pending',     label: 'Pending',     color: 'rgba(59,130,246,0.20)'  },
-			{ value: 'in-progress', label: 'In Progress', color: 'rgba(249,115,22,0.25)'  },
-			{ value: 'done',        label: 'Done',        color: 'rgba(34,197,94,0.25)'   },
-			{ value: 'cancel',      label: 'Cancel',      color: 'rgba(239,68,68,0.15)'   },
+			{ value: 'none',        label: 'None',        color: '#A1A1AA' },
+			{ value: 'todo',        label: 'Todo',        color: '#A78BFA' },
+			{ value: 'pending',     label: 'Pending',     color: '#FDE047' },
+			{ value: 'in-progress', label: 'In Progress', color: '#38BDF8' },
+			{ value: 'done',        label: 'Done',        color: '#34D399' },
+			{ value: 'cancel',      label: 'Cancel',      color: '#FF6B81' },
 		],
 	},
 	{

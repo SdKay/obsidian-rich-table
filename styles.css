@@ -1957,6 +1957,17 @@
 	white-space: nowrap;
 }
 
+/* task-status pills read as state labels rather than plain tags — bolder
+ * weight sets them apart from the medium-weight default every other choice
+ * type still uses. Text color is fixed dark, not --tag-color: that variable
+ * assumes the low-opacity pastel backgrounds every OTHER choice type still
+ * uses, and reads as low-contrast gray against task-status's own solid,
+ * saturated backgrounds (reported: "字体颜色好像都是浅灰色，对比度很差"). */
+.bt-choice[data-choice-type="task-status"] {
+	font-weight: var(--font-bold);
+	color: #1a1a1a;
+}
+
 .bt-choice-unknown {
 	background-color: var(--background-modifier-error);
 	color: var(--text-normal);
