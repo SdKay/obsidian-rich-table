@@ -128,12 +128,32 @@ export function matchesCell(t: StyleTargetV2, rowId: string, colId: string, mode
  *
  * Per-attribute merge: more specific wins per property (not whole-rule replace).
  */
-/** True if a style rule applies to a header cell (colId). */
-export function matchesHeaderCell(t: StyleTargetV2, colId: string): boolean {
+/**
+ * True if a style rule applies to a header cell (colId). A 'rect' whose
+ * corner is literally "header" (a whole-table select-all range, header
+ * included) needs the same -1 row-index sentinel resolveMergeRowIndex
+ * already uses for merges — without it, a rect target never matches the
+ * header at all (findIndex on 'header' in model.rows is always -1, which
+ * matchesHeaderCell had no case for), so an align/style op applied to a
+ * range that includes the header silently skipped the header cells
+ * entirely (reported: github.com/SdKay/obsidian-rich-table/issues/8 —
+ * "全选table后设置对齐...表头总是保持居中").
+ */
+export function matchesHeaderCell(t: StyleTargetV2, colId: string, model: TableModelV2): boolean {
 	switch (t.kind) {
 		case 'header':      return true;  // applies to all header cells
 		case 'header-cell': return t.colId === colId;
 		case 'col':         return t.colId === colId; // column-wide rules cover header too
+		case 'rect': {
+			const sRi = t.startRowId === 'header' ? -1 : model.rows.findIndex(r => r.id === t.startRowId);
+			const eRi = t.endRowId   === 'header' ? -1 : model.rows.findIndex(r => r.id === t.endRowId);
+			const sCi = model.columns.findIndex(c => c.id === t.startColId);
+			const eCi = model.columns.findIndex(c => c.id === t.endColId);
+			const ci  = model.columns.findIndex(c => c.id === colId);
+			return ci >= 0
+				&& -1 >= Math.min(sRi, eRi) && -1 <= Math.max(sRi, eRi)
+				&& ci >= Math.min(sCi, eCi) && ci <= Math.max(sCi, eCi);
+		}
 		default:            return false;
 	}
 }
@@ -212,7 +232,7 @@ export function resolveHeaderStylesV2(
 	const matching: { priority: number; rule: StyleRuleV2 }[] = [];
 	for (const rule of styles) {
 		const t = parseStyleTarget(rule.target);
-		if (!t || !matchesHeaderCell(t, colId)) continue;
+		if (!t || !matchesHeaderCell(t, colId, model)) continue;
 		matching.push({ priority: targetPriority(t), rule });
 	}
 	matching.sort((a, b) => a.priority - b.priority);

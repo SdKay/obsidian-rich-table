@@ -68,6 +68,43 @@ test.describe('cell alignment menus', () => {
 		expect(ops).toContainEqual({ type: 'set-align', target: 'r_0.c_0:r_1.c_1', align: 'left' });
 	});
 
+	test('select-all + Align applies to the header too, not just data cells (issue #8)', async ({ page, renderBlock }) => {
+		// renderBlock, not renderFull: this is exactly the "does the op have a
+		// real visible effect after a genuine write-back + re-render" question
+		// that bit here — the underlying bug (matchesHeaderCell had no case
+		// for a 'rect' target) is invisible to a test that only inspects the
+		// captured op itself, since the op it produces (a rect spanning
+		// header.c_0:r_1.c_1) is correct either way; only resolving that
+		// target against the header was ever broken.
+		const source = `---
+version: 2
+columns:
+  - { id: c_0, name: A }
+  - { id: c_1, name: B }
+rows:
+  - { id: r_0, cells: { c_0: a1, c_1: b1 } }
+  - { id: r_1, cells: { c_0: a2, c_1: b2 } }
+---
+| A | B |
+| --- | --- |
+| a1 | b1 |
+| a2 | b2 |
+`;
+		const block = await renderBlock(source);
+		await page.locator('table.bt-table').hover();
+		await page.locator('.bt-ctrl-btn[aria-label="Select all and open menu"]').click();
+		await openAlignSubmenu(page);
+		expect(await clickMenuItem(page, 'Align right')).toBe(true);
+
+		await expect.poll(() => block.noteText()).toContain('header.c_0');
+		await block.reprocess();
+
+		await expect.poll(() => page.locator('th[data-row="0"][data-col="0"]').evaluate(el => getComputedStyle(el).textAlign))
+			.toBe('right');
+		await expect.poll(() => page.locator('[data-row="1"][data-col="0"]').evaluate(el => getComputedStyle(el).textAlign))
+			.toBe('right');
+	});
+
 	test('the column-selector strip\'s Align sets the whole-column default (set-col-align), not set-align', async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		const wrapperBox = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;

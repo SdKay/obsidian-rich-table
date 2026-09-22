@@ -77,6 +77,46 @@ describe('align resolution — column-default fallback', () => {
 	});
 });
 
+describe('a rect target covering the header row (whole-table select-all range) — regression, issue #8', () => {
+	// select-all's range target looks like "header.c_0:r_1.c_1" when the
+	// selection spans the header down through data rows — parseStyleTarget
+	// resolves this to a 'rect', but matchesHeaderCell had no case for
+	// 'rect' at all, so the header silently never received the rule
+	// (reported: "全选table后设置对齐...表头总是保持居中" — setting align
+	// on a whole-table selection left the header stuck at its old alignment
+	// no matter what was picked, while every data cell changed correctly).
+	it('a rect rule spanning header through data rows applies to the header cell too', () => {
+		const model = baseModel();
+		model.styles.push({ target: 'header.c_0:r_1.c_1', align: 'right' });
+		expect(resolveHeaderStylesV2(model.styles, 'c_0', model).align).toBe('right');
+		expect(resolveHeaderStylesV2(model.styles, 'c_1', model).align).toBe('right');
+		// Data rows in range still resolve correctly too — this rect matches
+		// them via the pre-existing matchesCell path, unaffected by this fix.
+		expect(resolveStylesV2(model.styles, 'r_0', 'c_0', model).align).toBe('right');
+	});
+
+	it('a rect rule whose header side is the END, not the start, still matches', () => {
+		const model = baseModel();
+		model.styles.push({ target: 'r_0.c_0:header.c_1', align: 'left' });
+		expect(resolveHeaderStylesV2(model.styles, 'c_0', model).align).toBe('left');
+		expect(resolveHeaderStylesV2(model.styles, 'c_1', model).align).toBe('left');
+	});
+
+	it('a rect rule NOT spanning the header row leaves the header untouched', () => {
+		const model = baseModel();
+		model.styles.push({ target: 'r_0.c_0:r_1.c_1', align: 'center' });
+		expect(resolveHeaderStylesV2(model.styles, 'c_0', model).align).toBeUndefined();
+	});
+
+	it('a rect rule spanning the header only touches columns within its own column span', () => {
+		const model = baseModel();
+		model.columns.push({ id: 'c_2', name: 'C' });
+		model.styles.push({ target: 'header.c_0:r_0.c_0', align: 'center' }); // column c_0 only
+		expect(resolveHeaderStylesV2(model.styles, 'c_0', model).align).toBe('center');
+		expect(resolveHeaderStylesV2(model.styles, 'c_2', model).align).toBeUndefined();
+	});
+});
+
 describe('set-align op', () => {
 	it('creates a new rule for a target with no existing style', () => {
 		const model = baseModel();

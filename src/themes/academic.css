@@ -38,3 +38,18 @@
 .bt-theme-academic .bt-table tbody {
     box-shadow: inset 0 -1.5px 0 var(--text-muted);
 }
+
+/* Also drawn directly on the last row's own cells: a per-cell background
+ * (applyResolvedStyle, inline !important) paints on top of tbody's own
+ * box-shadow — table cells paint after their row group under normal CSS
+ * table-painting order — hiding the rule wherever the last row has a
+ * background set (reported: github.com/SdKay/obsidian-rich-table/issues/8).
+ * Kept ALONGSIDE the tbody rule above, not instead of it: a rowspanned cell
+ * reaching the last row has no <td> of its own in that row's <tr> (its cell
+ * lives in the earlier row it started in), so this selector alone would
+ * leave that column with no rule under it — exactly the gap the tbody rule
+ * exists to cover. Two rules, two different failure modes; both are real. */
+.bt-theme-academic .bt-table tbody > tr:last-child > .bt-td,
+.bt-theme-academic .bt-table tbody > tr:last-child > .bt-th {
+    box-shadow: inset 0 -1.5px 0 var(--text-muted);
+}

@@ -101,7 +101,7 @@ export function buildCellStyleContext(
 			if (s.target === single) return false;
 			const t = parseStyleTarget(s.target);
 			if (!t) return false;
-			return rId ? matchesCell(t, rId, cId, model) : matchesHeaderCell(t, cId);
+			return rId ? matchesCell(t, rId, cId, model) : matchesHeaderCell(t, cId, model);
 		}) ?? null)
 		: null;
 	const exactTarget = merge ? sTarget : (rangeRule?.target ?? single);
