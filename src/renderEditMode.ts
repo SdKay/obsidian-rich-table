@@ -141,7 +141,10 @@ export function enterDateEditMode(
 /**
  * Inline editor for title (single-line) and footer (multi-line).
  * Single-line: Enter = save, Escape = cancel.
- * Multi-line:  Enter = newline, Shift+Enter = save, Escape = cancel.
+ * Multi-line:  Enter = save, Shift+Enter = newline, Escape = cancel — matches
+ * the cell editor's own convention (renderCell.ts), rather than the reverse
+ * (reported: user reached for Shift+Enter out of habit and it saved instead
+ * of adding a line, reading as "manual line breaks aren't supported").
  */
 export function enterLineEdit(
 	el: HTMLElement,
@@ -180,7 +183,9 @@ export function enterLineEdit(
 		textarea.addEventListener('blur', save);
 		textarea.addEventListener('keydown', (evt: KeyboardEvent) => {
 			if (evt.key === 'Escape') { evt.preventDefault(); cancel(); }
-			if (evt.key === 'Enter' && evt.shiftKey) { evt.preventDefault(); textarea.blur(); }
+			// Plain Enter commits; Shift+Enter is left alone so the textarea's own
+			// default behavior inserts a newline — same split as the cell editor.
+			if (evt.key === 'Enter' && !evt.shiftKey) { evt.preventDefault(); textarea.blur(); }
 		});
 		textarea.focus();
 		// Move cursor to end so Enter adds a line break rather than replacing all text

@@ -261,8 +261,8 @@ export async function renderTable(
 	// a wide/scrollable table, the footer rendered underneath the scrollbar —
 	// container's own bottom edge sits below wrapper's, scrollbar included,
 	// so a footer appended there always lands past it, however close or far).
-	function renderFooter(parent: HTMLElement = container): void {
-		if (!model.footer || model.collapsed) return;
+	function renderFooter(parent: HTMLElement = container): HTMLElement | null {
+		if (!model.footer || model.collapsed) return null;
 		// Flatten array and split strings on \n so YAML arrays and \n-strings both work
 		const rawLines = Array.isArray(model.footer) ? model.footer : [model.footer];
 		const lines = rawLines.flatMap(l => l.split('\n'));
@@ -290,6 +290,7 @@ export async function renderTable(
 				}, true /* multiLine */);
 			});
 		}
+		return footerEl;
 	}
 
 	const occupied = buildOccupied(model);
@@ -1546,7 +1547,25 @@ export async function renderTable(
 	// Inside wrapper (before addRowBtn, see renderFooter's own comment) — NOT
 	// container's default, which would land the footer below wrapper's entire
 	// box, horizontal scrollbar included.
-	renderFooter(wrapper);
+	const footerEl = renderFooter(wrapper);
+	// Caps the footer's own width to contentRow's (table + addColBtn) rendered
+	// width, wrapping onto more lines instead of continuing to widen wrapper
+	// past the table itself (reported: "脚注的最大宽度应该不超过表格本身的宽
+	// 度，超过之后应该自动换行"). Same --strip-max-width pattern addRowBtn
+	// already uses just below (contentRow.getBoundingClientRect().width /
+	// zoom) — kept live via the same ResizeObserver(table) positionStatusBar
+	// already uses, so a column resize (or the view-width drag) reflows the
+	// footer's own wrap points immediately, not just on the next full render.
+	// Unconditional (not gated on onStructuralOp, unlike positionEdgeStrips'
+	// own --strip-max-width write) — a locked/read-only table has a footer
+	// too and needs the same cap.
+	if (footerEl) {
+		const positionFooter = () => {
+			footerEl.setCssProps({ '--bt-footer-max-width': `${contentRow.getBoundingClientRect().width / zoom}px` });
+		};
+		positionFooter();
+		new ResizeObserver(positionFooter).observe(table);
+	}
 
 	// ── Status bar (FR-017) ───────────────────────────────────────────────────
 	// A sibling of `root` under `shell`, NOT a child of root — the status bar

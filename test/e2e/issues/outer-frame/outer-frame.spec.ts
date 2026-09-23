@@ -36,17 +36,19 @@ test.describe('outer frame', () => {
 	// 贴着view右边界...它跑到列增加按钮左侧...状态栏也没有移动到view框内，穿出去
 	// 了"): a footer (.bt-table-footer, a plain sibling of contentRow INSIDE
 	// wrapper — see renderer.ts's renderFooter) wider than <table>+addColBtn
-	// combined pushes wrapper (and therefore the frame) wider than the table
-	// alone — that part already worked. The handle and the status bar didn't
-	// follow: the handle used to track <table>'s own edge specifically (to
-	// exclude addColBtn's slot), and the status bar only ever narrowed in
-	// manual-width mode — neither one re-derives off wrapper's ACTUAL box,
-	// which is what the footer moves. Now all three (frame, handle, status
-	// bar) read the exact same `right` value in updateOuterFrame, so a wide
-	// footer moves all of them together automatically.
-	test('a footer wider than the table pulls the handle and the status bar out to wrapper\'s new (footer-widened) edge, not just the frame', async ({ page, renderFull }) => {
-		const wideFooter = '这是一个比table本身宽很多的很长很长很长很长很长很长很长很长的注脚文字';
-		await renderFull(tableSource({ widths: [50], rows: [{ 0: 'x' }], footer: wideFooter }));
+	// combined used to push wrapper (and therefore the frame) wider than the
+	// table alone; the handle and the status bar didn't follow that widened
+	// edge. Superseded by a follow-up report ("脚注的最大宽度应该不超过表格本身
+	// 的宽度，超过之后应该自动换行") asking for the OPPOSITE: the footer should
+	// now be capped to contentRow's own width (renderer.ts's positionFooter,
+	// --bt-footer-max-width) and wrap onto more lines instead of widening
+	// wrapper at all — so this scenario no longer arises from a wide footer.
+	// Kept as a manually-set viewWidth instead, which still legitimately makes
+	// wrapper wider than <table>+addColBtn — the handle/frame/status-bar
+	// consistency this test actually checks is unrelated to which of the two
+	// causes it.
+	test('a view wider than the table pulls the handle and the status bar out to wrapper\'s new edge, not just the frame', async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [50], rows: [{ 0: 'x' }], viewWidth: 400 }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
 		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
@@ -56,8 +58,8 @@ test.describe('outer frame', () => {
 		const addColBtn = page.locator('.bt-edge-add-col');
 		if (await addColBtn.count() > 0) {
 			const addColBox = (await addColBtn.boundingBox())!;
-			// The footer must actually be the widest thing here, or this test
-			// isn't exercising the reported scenario at all.
+			// wrapper must actually be the widest thing here, or this test isn't
+			// exercising the reported scenario at all.
 			expect(wrapperBox.x + wrapperBox.width).toBeGreaterThan(addColBox.x + addColBox.width + 20);
 		}
 

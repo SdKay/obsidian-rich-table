@@ -473,15 +473,22 @@
 /* ── Table footer ────────────────────────────────────────────────────────── */
 .bt-table-footer {
 	text-align: center;
-	margin: 0;
+	margin: 0 auto;
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	line-height: 1.4;
+	/* Capped to contentRow's own rendered width (renderer.ts's positionFooter),
+	 * kept live via ResizeObserver — a footer line longer than the table wraps
+	 * onto more visual lines instead of widening the table's own wrapper past
+	 * it (wrapper's width: max-content otherwise follows whichever of its
+	 * children is currently widest — see .bt-table-wrapper's own comment). */
+	max-width: var(--bt-footer-max-width, none);
 }
 
 .bt-table-footer-line {
 	margin: 0;
 	padding: 0;
+	overflow-wrap: break-word;
 }
 
 /* ── Editable title / footer (click to edit) ─────────────────────────────── */
