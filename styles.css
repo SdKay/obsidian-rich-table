@@ -185,6 +185,16 @@
 	overflow: hidden;
 }
 .bt-table-wrapper {
+	/* border-box: --bt-wrapper-pad-right (below) must not grow wrapper's own
+	 * rendered width past whatever `width`/--bt-view-width already set —
+	 * content-box (the default) would add the padding ON TOP of that,
+	 * silently inflating every width measurement/computation downstream
+	 * (view-resize-handle drag math, zoom-scaled width persistence, the
+	 * footer's width cap, the custom scrollbar's thumb-drag math) by the
+	 * padding amount. Confirmed via this file's own e2e suite: several
+	 * pixel-exact tests broke by exactly the padding's own width the moment
+	 * --bt-wrapper-pad-right was introduced without this. */
+	box-sizing: border-box;
 	/* The view is a real, bounded scroll container on both axes. overflow-x
 	 * gives wide tables horizontal scroll; overflow-y + the max-height below
 	 * make it a genuine vertical scroll container too, which is what a frozen
@@ -207,6 +217,11 @@
 	max-width: 100%;
 	margin-inline: var(--bt-wrapper-margin, auto);
 	margin-block: 0;
+	/* Breathing room past addColBtn's own sticky right:0 (renderer.ts sets
+	 * this only when addColBtn exists) — see that JS comment for why this is
+	 * a scroll-container padding-right rather than a JS nudge to any derived
+	 * "right edge" value. */
+	padding-right: var(--bt-wrapper-pad-right, 0px);
 }
 /* Manual height: exact, no viewport cap — set by drag-resize or the view
  * settings menu (renderer.ts sets --bt-view-height and toggles this class). */

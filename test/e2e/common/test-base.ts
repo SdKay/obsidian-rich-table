@@ -218,6 +218,15 @@ export const test = base.extend<{
 				document.querySelectorAll('table.bt-table').forEach(window.RichTableReal.applyAutoColWidths);
 				// Same mirroring, for the inline-code line-height fix (renderAutofit.ts).
 				document.querySelectorAll('table.bt-table').forEach(window.RichTableReal.applyCodeLineHeightFix);
+				// Same mirroring, for the left-padding/outer-frame initial-paint passes
+				// tableBlock.ts's render() runs post-swap (renderGeometry.ts) — without
+				// this, renderFull's first hover was the FIRST time the left-padding
+				// reservation ever ran at all, which (now that it's a flat, unconditional
+				// reservation rather than an on-demand measurement) visibly shifted the
+				// table sideways on that first hover in a way the real app never shows
+				// (there, this settles before the table is ever interactive).
+				document.querySelectorAll('.bt-render-root').forEach(window.RichTableReal.reserveSelectorLeftPad);
+				document.querySelectorAll('.bt-render-root').forEach(window.RichTableReal.applyOuterFrame);
 				const wrapper = document.querySelector('.bt-table-wrapper');
 				if (scrollLeft !== undefined) wrapper.scrollLeft = scrollLeft;
 				if (scrollTop !== undefined) wrapper.scrollTop = scrollTop;
