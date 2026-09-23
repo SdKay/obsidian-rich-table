@@ -55,6 +55,13 @@ export function renderZoomControl(
 	getPercent: () => number,
 	onStructuralOp: StructuralOpHandler | undefined,
 	applyLive: (percent: number) => void,
+	// Fired true on the slider's own pointerdown, false on pointerup/blur —
+	// lets a caller pause any real-layout write to statusBar's own box while
+	// the native <input type=range> is mid-drag (see updateOuterFrame's own
+	// comment on why writing --sb-pinned-w during that window is unsafe).
+	// Optional: the -/+ buttons and click-to-type never hold the pointer down
+	// across multiple frames, so they have no equivalent window to guard.
+	onSliderDragChange?: (dragging: boolean) => void,
 ): HTMLElement {
 	const zoomEl = statusBar.createDiv({ cls: 'bt-status-zoom' });
 	if (!onStructuralOp) {
@@ -92,7 +99,13 @@ export function renderZoomControl(
 	// 'input' fires continuously while dragging (live preview, no write-back);
 	// 'change' fires once on release/keyboard-commit (persists).
 	slider.addEventListener('input', () => setLive(Number(slider.value)));
-	slider.addEventListener('change', () => commit(Number(slider.value)));
+	// 'change' also clears the drag flag — the belt-and-suspenders half of
+	// pointerup below, since 'change' is guaranteed to fire on release even
+	// if the pointer strayed off the slider first (a keyboard-driven commit
+	// with no pointerdown at all never sets the flag, so this is a no-op then).
+	slider.addEventListener('change', () => { commit(Number(slider.value)); onSliderDragChange?.(false); });
+	slider.addEventListener('pointerdown', () => onSliderDragChange?.(true));
+	slider.addEventListener('pointerup', () => onSliderDragChange?.(false));
 
 	// Click-to-type — same enterLineEdit-adjacent affordance the title/footer
 	// use elsewhere in this file, but simple enough (one numeric value, no

@@ -13,16 +13,60 @@ import { tableSource } from '../../common/fixtures';
 // a hover-mode status bar needs this special-casing instead of the frame
 // just hugging `shell`'s own layout box.
 test.describe('outer frame', () => {
-	test('at rest, the frame covers exactly the root+status-bar area, pinned mode', async ({ page, renderFull }) => {
+	// An auto-width table's frame hugs the table (via wrapper's own box), not
+	// the full page — same narrowing a manual viewWidth already gets (below),
+	// now unconditional. Never narrower than wrapper's own box — the status
+	// bar's own content (sheet tabs/stats/zoom) can need more room than a
+	// small table does, in which case the frame widens to fit the BAR
+	// instead, still well short of the full page.
+	test('at rest, an auto-width table\'s frame hugs the table (or the status bar, whichever is wider), not the full page', async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const shell = page.locator('.bt-render-root-shell');
+		const wrapper = page.locator('.bt-table-wrapper');
 		const frame = page.locator('.bt-outer-frame');
 		const shellBox = (await shell.boundingBox())!;
+		const wrapperBox = (await wrapper.boundingBox())!;
 		const frameBox = (await frame.boundingBox())!;
-		expect(frameBox.x).toBeCloseTo(shellBox.x, 0);
+		expect(frameBox.width).toBeGreaterThanOrEqual(wrapperBox.width - 0.5);
+		expect(frameBox.width).toBeLessThan(shellBox.width - 10);
 		expect(frameBox.y).toBeCloseTo(shellBox.y, 0);
-		expect(frameBox.width).toBeCloseTo(shellBox.width, 0);
-		expect(frameBox.height).toBeCloseTo(shellBox.height, 0);
+	});
+
+	// Reported ("一个注脚比table宽的图标，外侧view宽度适配了注脚宽度...列宽把手没有
+	// 贴着view右边界...它跑到列增加按钮左侧...状态栏也没有移动到view框内，穿出去
+	// 了"): a footer (.bt-table-footer, a plain sibling of contentRow INSIDE
+	// wrapper — see renderer.ts's renderFooter) wider than <table>+addColBtn
+	// combined pushes wrapper (and therefore the frame) wider than the table
+	// alone — that part already worked. The handle and the status bar didn't
+	// follow: the handle used to track <table>'s own edge specifically (to
+	// exclude addColBtn's slot), and the status bar only ever narrowed in
+	// manual-width mode — neither one re-derives off wrapper's ACTUAL box,
+	// which is what the footer moves. Now all three (frame, handle, status
+	// bar) read the exact same `right` value in updateOuterFrame, so a wide
+	// footer moves all of them together automatically.
+	test('a footer wider than the table pulls the handle and the status bar out to wrapper\'s new (footer-widened) edge, not just the frame', async ({ page, renderFull }) => {
+		const wideFooter = '这是一个比table本身宽很多的很长很长很长很长很长很长很长很长的注脚文字';
+		await renderFull(tableSource({ widths: [50], rows: [{ 0: 'x' }], footer: wideFooter }));
+		const root = page.locator('.bt-render-root');
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await page.waitForTimeout(50);
+
+		const wrapperBox = (await page.locator('.bt-table-wrapper').boundingBox())!;
+		const addColBtn = page.locator('.bt-edge-add-col');
+		if (await addColBtn.count() > 0) {
+			const addColBox = (await addColBtn.boundingBox())!;
+			// The footer must actually be the widest thing here, or this test
+			// isn't exercising the reported scenario at all.
+			expect(wrapperBox.x + wrapperBox.width).toBeGreaterThan(addColBox.x + addColBox.width + 20);
+		}
+
+		const frameBox = (await page.locator('.bt-outer-frame').boundingBox())!;
+		const handleBox = (await page.locator('.bt-view-resize-r').boundingBox())!;
+		const statusBarBox = (await page.locator('.bt-status-bar').boundingBox())!;
+		expect(frameBox.x + frameBox.width).toBeCloseTo(wrapperBox.x + wrapperBox.width, 0);
+		expect(handleBox.x + handleBox.width).toBeCloseTo(wrapperBox.x + wrapperBox.width, 0);
+		expect(statusBarBox.x + statusBarBox.width).toBeCloseTo(wrapperBox.x + wrapperBox.width, 0);
 	});
 
 	test('on hover, the frame grows to cover the row/col selector strips and left toolbar, none of which spill outside it', async ({ page, renderFull }) => {
@@ -128,15 +172,24 @@ test.describe('outer frame', () => {
 		expect(frameBox.width).toBeLessThan(rootBox.width - 10);
 	});
 
-	// A manually-narrower frame should read as one consistent box — the
-	// PINNED status bar (sheet tabs/stats/zoom) shares its left/width, not
-	// spanning the full available space while the grid above it narrows
-	// ("让外边框的宽度和view宽度保持视觉上的一致"). The width AND height
-	// drag-resize handles get the exact same symmetric treatment (matching
-	// how the height handle already behaves, by living inside the now-
-	// narrowed status bar) — both hug the frame's real right/bottom edge, not
-	// root's full-available one, and their discoverability dashes ride along.
-	test('a manually-narrowed frame keeps the PINNED status bar and both resize handles aligned to its own edge, not root\'s', async ({ page, renderFull }) => {
+	// A manually-narrower frame should read as one consistent box on its
+	// RIGHT edge — the PINNED status bar (sheet tabs/stats/zoom) shares the
+	// frame's own right edge, not spanning the full available space while the
+	// grid above it narrows ("让外边框的宽度和view宽度保持视觉上的一致"). The
+	// width AND height drag-resize handles get the exact same symmetric
+	// treatment (matching how the height handle already behaves, by living
+	// inside the now-narrowed status bar) — both hug the frame's real
+	// right/bottom edge, not root's full-available one, and their
+	// discoverability dashes ride along.
+	//
+	// The LEFT edge is deliberately NOT asserted to match here: on hover, the
+	// frame widens further left to keep covering the ctrl column/row
+	// selector (see the "on hover, the frame grows to cover..." test above),
+	// while the status bar's own left intentionally does NOT follow — see
+	// updateOuterFrame's own comment on why sharing that hover-widened edge
+	// would shift the status bar's own layout sideways purely from
+	// hover/unhover.
+	test('a manually-narrowed frame keeps the PINNED status bar and both resize handles aligned to its own right edge, not root\'s', async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], viewWidth: 400 }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
@@ -145,8 +198,7 @@ test.describe('outer frame', () => {
 
 		const frameBox = (await page.locator('.bt-outer-frame').boundingBox())!;
 		const statusBarBox = (await page.locator('.bt-status-bar').boundingBox())!;
-		expect(statusBarBox.x).toBeCloseTo(frameBox.x, 0);
-		expect(statusBarBox.width).toBeCloseTo(frameBox.width, 0);
+		expect(statusBarBox.x + statusBarBox.width).toBeCloseTo(frameBox.x + frameBox.width, 0);
 
 		const handleRBox = (await page.locator('.bt-view-resize-r').boundingBox())!;
 		expect(handleRBox.x + handleRBox.width).toBeCloseTo(frameBox.x + frameBox.width, 0);
@@ -185,10 +237,58 @@ test.describe('outer frame', () => {
 
 		const wrapperDuring = (await page.locator('.bt-table-wrapper').boundingBox())!;
 		const frameDuring = (await page.locator('.bt-outer-frame').boundingBox())!;
+		const rootDuring = (await root.boundingBox())!;
 		// Still mid-drag — no pointerup, no op dispatched, no re-render — yet
-		// the frame must already match wrapper's own (already-narrower) box.
-		expect(frameDuring.width).toBeCloseTo(wrapperDuring.width, 0);
-		expect(frameDuring.x).toBeCloseTo(wrapperDuring.x, 0);
+		// the frame must already be narrower than root's full width, hugging
+		// wrapper's own right edge (or wider still, if the status bar's own
+		// content needs more room than the now-narrow table does — see the
+		// "at rest, an auto-width table's frame hugs..." test's own comment;
+		// never narrower than wrapper's edge, only possibly wider).
+		expect(frameDuring.x + frameDuring.width).toBeGreaterThanOrEqual(wrapperDuring.x + wrapperDuring.width - 0.5);
+		expect(frameDuring.width).toBeLessThan(rootDuring.width - 10);
+		await page.mouse.up();
+	});
+
+	// In auto mode the handle sits at the frame's own real right edge (which
+	// is also wrapper's, UNLESS the status bar's own content needs more room
+	// than the table does — see the "at rest, an auto-width table's frame
+	// hugs..." test above), not root's (the full page width). The handle, the
+	// frame, and the status bar all read the exact same edge — see
+	// updateOuterFrame's own comment on why.
+	test('the width handle sits at the auto-width table\'s real edge at rest, not root\'s wide page edge', async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
+		const root = page.locator('.bt-render-root');
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await page.waitForTimeout(50);
+
+		const frameBox = (await page.locator('.bt-outer-frame').boundingBox())!;
+		const handleBox = (await page.locator('.bt-view-resize-r').boundingBox())!;
+		expect(handleBox.x + handleBox.width).toBeCloseTo(frameBox.x + frameBox.width, 0);
+		// The auto-width table is genuinely narrower than the page here — this
+		// assertion is only meaningful if root's own edge is somewhere else.
+		expect(frameBox.width).toBeLessThan(rootBox.width - 10);
+	});
+
+	// Dragging from that resting position must move continuously, no snap.
+	test('dragging the width handle from its auto-width resting position moves it continuously, no jump', async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
+		const root = page.locator('.bt-render-root');
+		const rootBox = (await root.boundingBox())!;
+		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+		await page.waitForTimeout(50);
+
+		const handle = page.locator('.bt-view-resize-r');
+		const handleBoxBefore = (await handle.boundingBox())!;
+
+		await page.mouse.move(handleBoxBefore.x + handleBoxBefore.width / 2, handleBoxBefore.y + handleBoxBefore.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(handleBoxBefore.x + handleBoxBefore.width / 2 - 1, handleBoxBefore.y + handleBoxBefore.height / 2, { steps: 1 });
+
+		const handleBoxDuring = (await handle.boundingBox())!;
+		// A single 1px move must produce a small, continuous shift — not a jump
+		// across the (previously page-width-sized) gap to root's edge.
+		expect(Math.abs(handleBoxDuring.x - handleBoxBefore.x)).toBeLessThan(30);
 		await page.mouse.up();
 	});
 

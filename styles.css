@@ -341,7 +341,7 @@
  * status bar had to move out of root. A root-only :hover rule would drop
  * this the moment the cursor crosses from the table into the status bar. */
 .bt-render-root-shell:hover .bt-view-resize { opacity: 1; }
-.bt-view-resize-b { left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
+.bt-view-resize-b { left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; }
 /* --of-r-gap (renderer.ts's updateOuterFrame): how far root's own right edge
  * sits past the frame's real right border once a manual viewWidth narrows
  * it — 0 for an unnarrowed table, so this defaults to the exact same `right:
@@ -349,10 +349,12 @@
  * true right edge instead of root's own, the same symmetry the height
  * handle already gets for free by living INSIDE the (now frame-width-
  * matching) status bar — see updateOuterFrame's own comment. */
-.bt-view-resize-r { top: 0; bottom: 0; right: var(--of-r-gap, 0px); width: 6px; cursor: ew-resize; }
+.bt-view-resize-r { top: 0; bottom: 0; right: var(--of-r-gap, 0px); width: 8px; cursor: ew-resize; }
 .bt-view-resize-br { right: var(--of-r-gap, 0px); bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; }
-.bt-view-resize:hover { background: var(--interactive-accent); opacity: 0.35; }
-.bt-view-resize-br:hover { opacity: 0.55; }
+/* Corner handle has no dash of its own (below) to recolor on hover, so it
+ * keeps a small tint of its own — a 12x12px hotspot, not the full-edge
+ * "long line" the -b/-r dash recoloring below replaces. */
+.bt-view-resize-br:hover { background: var(--interactive-accent); opacity: 0.35; }
 /* Height handle now lives inside .bt-status-bar (Task 8) — a short dash marks
  * its middle as the drag point, since a plain background tint reads
  * ambiguously inside a bar that already has its own background/text.
@@ -371,13 +373,13 @@
 	position: absolute;
 	top: 50%;
 	left: 50%;
-	width: 24px;
-	height: 2px;
+	width: 32px;
+	height: 3px;
 	background: var(--text-faint);
-	border-radius: 1px;
+	border-radius: 1.5px;
 	transform: translate(-50%, -50%);
 	opacity: 0;
-	transition: opacity 0.12s;
+	transition: opacity 0.12s, background-color 0.12s;
 }
 .bt-render-root-shell:hover .bt-view-resize-b::after { opacity: 1; }
 /* Width handle's own mirror of the dash above — same "一般人都不知道...能调"
@@ -391,15 +393,23 @@
 	position: absolute;
 	top: 50%;
 	left: 50%;
-	width: 2px;
-	height: 24px;
+	width: 3px;
+	height: 32px;
 	background: var(--text-faint);
-	border-radius: 1px;
+	border-radius: 1.5px;
 	transform: translate(-50%, -50%);
 	opacity: 0;
-	transition: opacity 0.12s;
+	transition: opacity 0.12s, background-color 0.12s;
 }
 .bt-render-root-shell:hover .bt-view-resize-r::after { opacity: 1; }
+/* Pinpointing the grabbable hotspot without the previous full-edge "long
+ * blue line" (removed: "调整宽度和高度hover边界时有一条长蓝线...不好看") —
+ * only the short dash itself recolors to the accent on hover, not the whole
+ * 6px-tall/-wide strip it sits in. */
+.bt-view-resize-b:hover::after,
+.bt-view-resize-r:hover::after {
+	background: var(--interactive-accent);
+}
 /* Suppress Obsidian-theme margins and cell borders that bleed into rich-table.
  * Themes control lines via CSS variables (§15: themes only set variables, base sets properties):
  *   --bt-cell-border          shorthand for all four sides  (default: none)
@@ -2857,6 +2867,24 @@
 	display: flex;
 	align-items: center;
 	overflow: hidden;
+}
+/* Momentary probe classes (updateOuterFrame, renderer.ts) — always applied
+ * together, one synchronous read: .bt-status-bar's own switches to
+ * max-content so it stops constraining ANY child (not just the flex-grow
+ * one) to less than its natural size, and .bt-status-tabs opts out of
+ * "fill whatever space isn't otherwise claimed" so its own min-content
+ * width is what gets measured, not an expand-to-fill one. Without the BAR's
+ * own override, its fixed-size siblings (stats/zoom/scroll) stayed clipped
+ * to the still-narrow bar and reported wrong "current" widths, which fed
+ * back into a wrong natural-width estimate (reported: sheet tabs and
+ * .bt-status-stats visibly overlapping — the bar had been narrowed to less
+ * than its fixed-size children's own combined width, not just the tabs'). */
+.bt-status-bar.bt-measure-natural {
+	width: max-content !important;
+}
+.bt-status-tabs.bt-measure-natural {
+	flex: 0 0 auto;
+	overflow: visible;
 }
 .bt-status-stats {
 	flex: 0 0 auto;

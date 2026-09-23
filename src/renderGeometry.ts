@@ -264,11 +264,62 @@ export function applyOuterFrame(root: HTMLElement): void {
 	if (rr.width === 0) return;
 	const shellRect = shell.getBoundingClientRect();
 	const wr = wrapper.getBoundingClientRect();
-	const narrower = wrapper.hasClass('bt-view-fixed-w') && wr.width < rr.width - 0.5;
-	const left = narrower ? wr.left : rr.left;
-	const right = narrower ? wr.right : rr.right;
+	// Narrows whenever wrapper is genuinely narrower than root — no longer
+	// gated on a manual viewWidth, so an auto-width table's frame also hugs
+	// the table. See renderer.ts's updateOuterFrame for the full reasoning;
+	// kept in sync with that function.
+	const narrower = wr.width < rr.width - 0.5;
+	// left widens to cover the ctrl column/row selector's worst-case left
+	// extent, but only while they could actually be showing — same
+	// CTRL_COL_LEFT_GAP arithmetic reserveSelectorLeftPad above already uses
+	// (DOM presence, not a live rect read on those elements themselves), and
+	// kept in sync with renderer.ts's updateOuterFrame, whose own comment has
+	// the full "why not measure them live" reasoning.
+	const ctrlColEl = root.querySelector<HTMLElement>(':scope > .bt-ctrl-col');
+	const hasSelectors = !!root.querySelector(':scope > .bt-col-selector, :scope > .bt-row-selector');
+	const stripsShowing = !!ctrlColEl && (ctrlColEl.hasClass('is-locked') || shell.matches(':hover'));
+	const leftNeed = hasSelectors ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
+	const leftStripEdge = stripsShowing ? wr.left - leftNeed : wr.left;
+	const left = narrower ? leftStripEdge : rr.left;
+	// `right` is THE one answer to "where is the view's real right edge" —
+	// the width handle, the status bar's own box, and the frame border all
+	// read this SAME value below. See renderer.ts's updateOuterFrame for the
+	// full reasoning (an earlier version had the handle and the status bar
+	// each re-derive their own version of wrapper's right edge, which broke
+	// the instant something else inside wrapper — e.g. a footer wider than
+	// the table — pushed wr.right past where either of their own derivations
+	// assumed it would be).
+	let right = narrower ? wr.right : rr.right;
 	const statusBar = shell.querySelector<HTMLElement>(':scope > .bt-status-bar');
 	const statusBarPinned = !!statusBar && !statusBar.hasClass('bt-status-mode-hover');
+	// The status bar's own left is wr.left (NOT `left` above), same reasoning
+	// as renderer.ts's updateOuterFrame — it has nothing to its own left that
+	// needs covering.
+	if (statusBar && statusBarPinned) {
+		const sbLeft = narrower ? wr.left : rr.left;
+		let sbRight = right;
+		// bt-measure-natural on BOTH the bar and statusTabs together — matches
+		// renderer.ts's updateOuterFrame (see its own comment for why measuring
+		// only the tabs, off the bar's own already-narrowed current width, fed
+		// back a wrong estimate whenever the bar's OTHER fixed-size children
+		// were also being clipped by that same narrowing).
+		if (narrower) {
+			const statusTabs = statusBar.querySelector<HTMLElement>(':scope > .bt-status-tabs');
+			if (statusTabs) {
+				statusBar.addClass('bt-measure-natural');
+				statusTabs.addClass('bt-measure-natural');
+				const barNaturalWidth = statusBar.scrollWidth;
+				statusBar.removeClass('bt-measure-natural');
+				statusTabs.removeClass('bt-measure-natural');
+				sbRight = Math.min(rr.right, Math.max(sbRight, sbLeft + barNaturalWidth));
+				right = Math.max(right, sbRight);
+			}
+		}
+		statusBar.setCssProps({
+			'--sb-pinned-l': `${sbLeft - shellRect.left}px`,
+			'--sb-pinned-w': `${sbRight - sbLeft}px`,
+		});
+	}
 	let bottom = rr.bottom;
 	if (statusBar) {
 		if (statusBarPinned) bottom = shellRect.bottom;
@@ -283,12 +334,6 @@ export function applyOuterFrame(root: HTMLElement): void {
 		'--of-w': `${right - left}px`,
 		'--of-h': `${bottom - rr.top}px`,
 	});
-	if (statusBar && statusBarPinned) {
-		statusBar.setCssProps({
-			'--sb-pinned-l': `${left - shellRect.left}px`,
-			'--sb-pinned-w': `${right - left}px`,
-		});
-	}
 	const zoom = measureZoomFactor(root);
 	root.setCssProps({ '--of-r-gap': `${(rr.right - right) / zoom}px` });
 }

@@ -1592,7 +1592,19 @@ export async function renderTable(
 	// tradeoff — confirmed via diagnostic logging to actually corrupt a pinned
 	// column width (squeeze it into a visible, self-correcting wrap) rather
 	// than just "lag a little", so it isn't a tradeoff worth keeping.
-	renderZoomControl(statusBar, () => model.zoom ?? 100, onStructuralOp, (percent) => { applyZoom(root, percent); zoom = zoomFactor(percent); });
+	// While the zoom slider is mid-drag, updateOuterFrame skips writing
+	// statusBar's own real width — see that function's own comment for why
+	// (writing a real layout property on the element the native <input
+	// type=range> lives inside, every zoom-driven tick, corrupted the
+	// slider's own drag math). sliderDragging is the flag it checks.
+	let sliderDragging = false;
+	renderZoomControl(statusBar, () => model.zoom ?? 100, onStructuralOp, (percent) => { applyZoom(root, percent); zoom = zoomFactor(percent); }, (dragging) => {
+		sliderDragging = dragging;
+		// Writes skipped during the drag (see updateOuterFrame's own comment)
+		// need one flush once it's safe again, or statusBar's own width stays
+		// stale at whatever it was when the drag started.
+		if (!dragging) updateOuterFrame();
+	});
 	const statusDivider    = statusBar.createDiv({ cls: 'bt-status-divider', attr: { 'aria-hidden': 'true' } });
 	const statusScroll     = statusBar.createDiv({ cls: 'bt-status-scroll' });
 	if (model.statusBarScrollWidth) statusScroll.setCssProps({ '--bt-status-scroll-w': `${model.statusBarScrollWidth}px` });
@@ -1835,9 +1847,104 @@ export async function renderTable(
 		// "首次拖动调整宽度的时候，外边框没有跟着移动...之后再调整宽度的时候
 		// 外边框就跟着移动了". Matches renderGeometry.ts's applyOuterFrame,
 		// which already used the class for exactly this reason.
-		const narrower = wrapper.hasClass('bt-view-fixed-w') && wr.width < rr.width - 0.5;
-		const left = narrower ? wr.left : rr.left;
-		const right = narrower ? wr.right : rr.right;
+		// Narrows to the wrapper's real box whenever it's genuinely narrower than
+		// root — no longer gated on a manual viewWidth, so an auto-width table's
+		// frame also hugs the table instead of always spanning the full page
+		// (reported: "auto宽度状态下view框宽度还是page宽度").
+		const narrower = wr.width < rr.width - 0.5;
+		const tableRect = table.getBoundingClientRect();
+		// left widens to cover the ctrl column/row selector's worst-case left
+		// extent (CTRL_COL_LEFT_GAP, already the exact constant their own
+		// --cc-left/--rs-left/--cs-left position math subtracts from wrapper's
+		// left edge — see positionCtrlCol/positionSelectors), but only while
+		// they could actually be showing — `shell.matches(':hover')` is a
+		// cheap style read, not a forced layout, so it's safe to check on
+		// every tick unlike the alternative below. A locked table's ctrl
+		// column is permanently visible regardless of hover (`.is-locked`'s
+		// own CSS) so it always needs the gap. This is a pure arithmetic
+		// derivation, not a live getBoundingClientRect() on those elements —
+		// an EARLIER version DID measure them live: this function is also a
+		// ResizeObserver callback firing on every CSS-zoom tick (the zoom
+		// slider sets root.style.zoom on every drag 'input' event), and
+		// forcing three extra layout reads on every one of those, while the
+		// browser was still mid-reflow, corrupted the *next* pointermove's
+		// own hit-testing (reported: the zoom slider itself ran away on a
+		// small drag).
+		const stripsShowing = (onStructuralOp || onToggleLock) && (root.hasClass('is-locked') || shell.matches(':hover'));
+		const leftStripEdge = stripsShowing ? wr.left - CTRL_COL_LEFT_GAP : wr.left;
+		const left = narrower ? leftStripEdge : rr.left;
+		// `right` is THE one answer to "where is the view's real right edge" —
+		// the width handle, the status bar's own box, and the frame border
+		// all read this SAME value below, rather than each re-deriving their
+		// own version of "narrower ? wrapper's edge : root's edge". They used
+		// to: the handle tracked <table>'s own edge (to exclude addColBtn's
+		// reserved slot), and the status bar tracked wr.right directly — both
+		// silently assumed wrapper's right edge is always wherever <table>
+		// ends, which broke the instant something ELSE inside wrapper (a
+		// footer wider than the table, see .bt-table-footer) pushed wr.right
+		// past that point: the handle stranded itself to the left of
+		// addColBtn, and the status bar (gated on manual-width mode only)
+		// never moved at all (reported: "列宽把手没有贴着view右边界...它跑到列
+		// 增加按钮左侧...状态栏也没有移动到view框内，穿出去了"). wr.right is
+		// wrapper's own real box regardless of WHAT inside it is currently
+		// widest, so building everything off it directly is both simpler and
+		// correct for any future "something new can widen wrapper" case, not
+		// just the ones already known about.
+		let right = narrower ? wr.right : rr.right;
+		// The status bar's own left is wr.left (NOT `left` above) even while
+		// the frame's own left widened to cover the hover-only ctrl column/row
+		// selector — the bar has nothing to its own left that needs covering,
+		// and sharing that widened edge shifted the bar's own layout (and
+		// everything inside it, e.g. the zoom slider) sideways purely from
+		// hover/unhover, the same "table drifts sideways" class of bug this
+		// file works hard to avoid elsewhere.
+		//
+		// sliderDragging: while the zoom slider (a native <input type=range>
+		// living inside statusBar) is mid-drag, skip re-deriving statusBar's
+		// own real width altogether — writing that real layout property on
+		// every zoom-driven tick fought with the slider's own native drag math
+		// (reported: the slider itself ran away on a small drag).
+		// renderZoomControl's own onSliderDragChange callback calls this
+		// function once more right after the drag ends, to flush whatever was
+		// skipped meanwhile.
+		if (statusBarPinned && !sliderDragging) {
+			const sbLeft = narrower ? wr.left : rr.left;
+			let sbRight = right;
+			// The bar's own content (sheet tabs, stats, zoom widget) has a real
+			// minimum width that can exceed a narrow table's — its children
+			// don't reposition on overflow, they just spill past the bar
+			// (reported: clicking a sheet tab hit .bt-status-stats instead).
+			// bt-measure-natural on BOTH the bar (width: max-content) and
+			// statusTabs (opts its own flex-grow child out of "fill the
+			// remaining space") together, not just the tabs alone — measuring
+			// only the tabs first tried reusing the bar's CURRENT (already
+			// narrowed) width as "the rest of the bar's width", but every
+			// OTHER fixed-size sibling (stats/zoom/scroll) was just as clipped
+			// by that same narrowing, so their current widths were already
+			// wrong inputs to build a natural-width estimate from (reported:
+			// sheet tabs and .bt-status-stats visibly overlapping — the bar
+			// had narrowed below its fixed-size children's own combined
+			// width, not just the tabs'). Measuring the whole bar's
+			// scrollWidth with both constraints lifted at once sidesteps that
+			// — nothing is being squeezed at measurement time, so every
+			// child (grow or fixed) reports its own true size.
+			if (narrower) {
+				statusBar.addClass('bt-measure-natural');
+				statusTabs.addClass('bt-measure-natural');
+				const barNaturalWidth = statusBar.scrollWidth;
+				statusBar.removeClass('bt-measure-natural');
+				statusTabs.removeClass('bt-measure-natural');
+				sbRight = Math.min(rr.right, Math.max(sbRight, sbLeft + barNaturalWidth));
+				// The visible frame must stay at least as wide as the bar
+				// sitting inside it, or the bar's own now-wider box would
+				// visibly poke out past the frame's right border.
+				right = Math.max(right, sbRight);
+			}
+			statusBar.setCssProps({
+				'--sb-pinned-l': `${sbLeft - shellRect.left}px`,
+				'--sb-pinned-w': `${sbRight - sbLeft}px`,
+			});
+		}
 		const bottom = statusBarPinned ? shellRect.bottom : rr.bottom;
 		// outerFrame lives in `shell`, which — like the status bar itself — is
 		// never zoomed (see `shell`'s own doc comment above), so these stay RAW
@@ -1850,23 +1957,6 @@ export async function renderTable(
 			'--of-w': `${right - left}px`,
 			'--of-h': `${bottom - rr.top}px`,
 		});
-		// A PINNED status bar shares the frame's own left/width — a manually
-		// narrowed view should look like one consistent box, statistics bar
-		// included, not have the bar keep spanning the full available width
-		// while everything above it narrows ("外边框的宽度和view宽度保持视觉
-		// 上的一致"). --sb-pinned-l/-w reuse the exact same shell-relative
-		// values --of-l/-w just got, rather than a separate computation, since
-		// the two really are the same box. A no-op (falls back to 100%/0) when
-		// statusBarPinned is false — the hover-mode bar already clips to the
-		// table's own visible width via --sb-width (positionStatusBar, above),
-		// which already accounts for a narrower manual viewWidth since it's
-		// derived from the table/wrapper's own rects, not root's.
-		if (statusBarPinned) {
-			statusBar.setCssProps({
-				'--sb-pinned-l': `${left - shellRect.left}px`,
-				'--sb-pinned-w': `${right - left}px`,
-			});
-		}
 		// Center the title over <table>'s own box, not the wider box
 		// text-align:center actually centers it in: an editable table's
 		// contentRow permanently reserves addColBtn's width alongside
@@ -1885,7 +1975,6 @@ export async function renderTable(
 		if (titleEl) {
 			titleEl.setCssProps({ '--bt-title-center-adj': '0px' });
 			const naturalRect = titleEl.getBoundingClientRect();
-			const tableRect = table.getBoundingClientRect();
 			const naturalCenter = naturalRect.left + naturalRect.width / 2;
 			const tableCenter = tableRect.left + tableRect.width / 2;
 			titleEl.setCssProps({ '--bt-title-center-adj': `${(tableCenter - naturalCenter) / zoom}px` });
@@ -1896,14 +1985,15 @@ export async function renderTable(
 		// statusBar, so once statusBar's own box narrows (just above) that
 		// handle rides along with it automatically. bt-view-resize-r has no
 		// such built-in symmetry — it's root's own direct child — so its right
-		// offset is set explicitly here to match the same narrowed edge,
-		// keeping both handles equally glued to the frame's real right border
-		// ("调整宽度的把手和调整高度的把手应该是一致的行为"). Unlike --of-*/
-		// --sb-pinned-* (both `shell`-relative, and shell is never zoomed —
-		// see its own doc comment), `.bt-view-resize-r` lives INSIDE root's
-		// zoomed subtree, so this needs the same `/ zoom` correction as every
-		// other root-relative distance in this file (NO_ZOOM's own doc
-		// comment) — (rr.right - right) is a difference of two VISUAL rects.
+		// offset is set explicitly here, reading the SAME `right` the frame
+		// and status bar just settled on, keeping all three glued to one
+		// consistent edge ("调整宽度的把手和调整高度的把手应该是一致的行为").
+		// Unlike --of-*/--sb-pinned-* (both `shell`-relative, and shell is
+		// never zoomed — see its own doc comment), `.bt-view-resize-r` lives
+		// INSIDE root's zoomed subtree, so this needs the same `/ zoom`
+		// correction as every other root-relative distance in this file
+		// (NO_ZOOM's own doc comment) — (rr.right - right) is a difference of
+		// two VISUAL rects.
 		root.setCssProps({ '--of-r-gap': `${(rr.right - right) / zoom}px` });
 	};
 	window.requestAnimationFrame(updateOuterFrame);
