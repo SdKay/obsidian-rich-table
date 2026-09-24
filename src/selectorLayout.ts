@@ -36,3 +36,17 @@ export const AUTOFIT_OFFSET = SEL_CELL; // 18
  *  Wider than the 8px resize handle itself so the handle's hit-area clears
  *  addColBtn's clickable box entirely, not just its visual edge. */
 export const RIGHT_STRIP_GAP = 10;
+
+/** Minimum cosmetic gap between the outer frame's own border and the
+ *  table's real left/right edge, enforced unconditionally — see
+ *  FRAME_MIN_GAP's own call sites in renderer.ts's updateOuterFrame /
+ *  renderGeometry.ts's applyOuterFrame. Every OTHER reason the frame can
+ *  widen (the hover-only ctrl column/row selector strip, a wider status
+ *  bar) is conditional on some other state, so a table that happens to
+ *  trigger none of them at rest — an unlocked table before its first
+ *  hover, or a locked one (whose ctrl column is permanently visible but
+ *  whose real width still fits inside the table's own box) — rendered the
+ *  frame border flush against the table's own edge with zero breathing
+ *  room, reported as looking cramped/ugly. This is the floor under EVERY
+ *  other widening reason, not a replacement for any of them. */
+export const FRAME_MIN_GAP = 8;
