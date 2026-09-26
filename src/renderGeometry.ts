@@ -220,21 +220,21 @@ export function computeVisibleGeom(table: HTMLElement, root: HTMLElement, wrappe
  * selector-strip elements at all) rather than threaded in from renderer.ts's
  * own CTRL_COL_LEFT_GAP, since this runs from an entirely separate call site
  * with no access to that closure.
+ *
+ * A FLAT reservation, not "only if the table's natural centering margin is
+ * short" — matches renderer.ts's own reserveLeftPad (see that function's own
+ * doc comment for the full reasoning: measuring `wrapper.left - root.left`
+ * and topping up the deficit never converges under root's own
+ * `margin-inline:auto` centering, since reserving padding-left only moves
+ * wrapper's actual left edge by HALF of what was reserved, so a second call
+ * measures a different deficit than the first).
  */
 export function reserveSelectorLeftPad(root: HTMLElement): void {
 	const wrapper = root.querySelector<HTMLElement>('.bt-table-wrapper');
 	if (!wrapper) return;
 	const hasSelectors = !!root.querySelector('.bt-col-selector, .bt-row-selector');
-	const leftNeed = hasSelectors ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
-	const zoom = measureZoomFactor(root);
-	const wr0 = wrapper.getBoundingClientRect();
-	const rr0 = root.getBoundingClientRect();
+	const leftPad = hasSelectors ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
 	const currentPad = parseFloat(root.style.getPropertyValue('--bt-sel-pad-left')) || 0;
-	// (wr0.left - rr0.left) is visual; currentPad is the logical px this
-	// function itself already wrote — same unit-consistency correction as
-	// renderer.ts's own reserveLeftPad (see that function's own comment).
-	const leftRoom = (wr0.left - rr0.left) / zoom - currentPad;
-	const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
 	if (leftPad !== currentPad) root.setCssProps({ '--bt-sel-pad-left': `${leftPad}px` });
 }
 

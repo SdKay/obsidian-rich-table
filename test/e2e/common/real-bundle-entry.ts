@@ -11,7 +11,7 @@ export { scrollContentOffset } from '../../../src/renderGeometry';
 // module. Previously untestable in any form.
 export { renderTable } from '../../../src/renderer';
 export { applyAutoColWidths, applyCodeLineHeightFix } from '../../../src/renderAutofit';
-export { reserveSelectorLeftPad } from '../../../src/renderGeometry';
+export { reserveSelectorLeftPad, applyOuterFrame } from '../../../src/renderGeometry';
 export { ChoiceRegistry } from '../../../src/choiceRegistry';
 // The shim's Component, so a test can hand renderTable a real lifecycle owner.
 export { Component as ShimComponent } from './obsidian-shim';

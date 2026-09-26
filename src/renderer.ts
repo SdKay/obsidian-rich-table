@@ -8,7 +8,7 @@ import { BUILTIN_THEMES } from './themes/index';
 import type { TableModelV2, AggType, CtrlColButtonId } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
-import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
+import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET, RIGHT_STRIP_GAP } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
 import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler, SnapshotKind } from './renderTypes';
 import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue, resolveMergeBounds, computeHeaderRowSpan } from './renderGridHelpers';
@@ -686,42 +686,38 @@ export async function renderTable(
 	// title being covered by the strip on hover.
 	const TOP_STRIP_PAD = model.title ? 0 : SEL_TOTAL + (isNested ? 0 : 28);
 
-	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
-	// its container flush-left, leaving no natural margin for the row selector +
-	// ctrl column to sit in on the left. Extracted out of prepareLayout (below,
-	// only assigned a real implementation when onStructuralOp is present, i.e.
-	// selector strips exist) so the CTRL COLUMN — which stays visible while a
-	// table is locked via .is-locked, with no row/col selectors at all in that
-	// state — can still call this on its own. Without it, a wide LOCKED table's
-	// unlock button rendered at a negative left with nothing reserving room for
-	// it, landing permanently off-screen (reported: wide table, once locked,
-	// permanently hides the top-left unlock button — narrow tables have enough
-	// natural margin there regardless, which is why this only ever showed up on
-	// a wide one).
+	// Reserves --bt-sel-pad-left (root's own padding-left) so the row selector +
+	// ctrl column always have room to sit on the left. Extracted out of
+	// prepareLayout (below, only assigned a real implementation when
+	// onStructuralOp is present, i.e. selector strips exist) so the CTRL
+	// COLUMN — which stays visible while a table is locked via .is-locked, with
+	// no row/col selectors at all in that state — can still call this on its
+	// own. Without it, a wide LOCKED table's unlock button rendered at a
+	// negative left with nothing reserving room for it, landing permanently
+	// off-screen (reported: wide table, once locked, permanently hides the
+	// top-left unlock button — narrow tables have enough natural margin there
+	// regardless, which is why this only ever showed up on a wide one).
+	//
+	// A FLAT reservation of CTRL_COL_LEFT_GAP, not "only if the table's natural
+	// centering margin is short" (an earlier version measured
+	// `wrapper.left - root.left` and topped up the deficit) — that measurement
+	// is unstable under root's own `margin-inline:auto` centering: reserving
+	// padding-left shrinks root's CONTENT box on the left, but wrapper (still
+	// centered via auto margins) only picks up HALF of that as an actual left
+	// shift, the other half redistributing to wrapper's right edge instead. A
+	// second call therefore measures a *different* deficit than the first
+	// (confirmed by direct measurement: an identical table converged to 34px at
+	// rest and then 54px on the very next hover, a visible jump) — the
+	// measure-then-top-up approach can never reach a fixed point on its own.
+	// Reported ("hover前后view矩形框保持宽度和位置不变"): the fix is to stop
+	// measuring room at all and always reserve the same flat amount, exactly
+	// like --bt-sel-pad (top) already does — a table with plenty of natural
+	// margin now keeps a small reserved gutter on the left it didn't have
+	// before, trading "flush when there happens to be slack" for "identical
+	// rect before and after hover, unconditionally".
 	const reserveLeftPad = () => {
-		const wr0 = wrapper.getBoundingClientRect();
-		const rr0 = root.getBoundingClientRect();
-		const leftNeed = CTRL_COL_LEFT_GAP;
-		// Subtract whatever padding-left this function itself already reserved
-		// (never collapsed back to 0 — same permanent-reservation reasoning as
-		// --bt-sel-pad above) before measuring room, so repeat calls are
-		// idempotent. Without this, wr0.left already includes OUR OWN prior
-		// reservation (wrapper sits inside root, shifted right by root's own
-		// padding) — a second call would measure plenty of "room" (the padding
-		// it's currently sitting in), conclude none is needed, and reset it back
-		// to 0, undoing the first call. Reproduced: the ctrl column (which calls
-		// this from every mouseenter, unlike the selector strips' prepareLayout,
-		// which only ever gets a fresh measurement right after restoreLayout
-		// resets this same property back to 0 on mouseleave) landed correctly on
-		// first paint and then snapped back off-screen the moment the pointer
-		// actually entered the table.
+		const leftPad = CTRL_COL_LEFT_GAP;
 		const currentPad = parseFloat(root.style.getPropertyValue('--bt-sel-pad-left')) || 0;
-		// (wr0.left - rr0.left) is visual (both getBoundingClientRect); currentPad
-		// is the LOGICAL px this function itself already wrote into --bt-sel-pad-left
-		// — dividing only the visual term keeps the subtraction in one consistent
-		// (logical) unit, same correction shape as scrollContentOffset's own.
-		const leftRoom = (wr0.left - rr0.left) / zoom - currentPad;
-		const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
 		if (leftPad === currentPad) return;
 		// A manually-set view width (--bt-view-width) is a FIXED, border-box width
 		// on root — reserving padding-left there doesn't grow root, it shrinks the
@@ -2126,6 +2122,25 @@ export async function renderTable(
 
 		const addColBtn = contentRow.createDiv({ cls: 'bt-edge-add-col' });
 		addColBtn.createSpan({ cls: 'bt-edge-plus', text: '+' });
+
+		// addColBtn's own sticky right:0 always resolves flush against
+		// wrapper's padding edge, which is also exactly where the width-resize
+		// handle/outer frame/PINNED status bar anchor (via updateOuterFrame's
+		// `right`, itself derived from wrapper's real box) — reported ("把手
+		// 叠到列增加按钮里了"): the handle's hit-area sat directly on top of
+		// the button's. A CSS-only reservation, not a JS nudge to `right`
+		// after the fact: pushing `right` past root's own border-box edge
+		// risks getting clipped by root's `clip-path: inset(0)` (the resting-
+		// state overflow guard for the left-side strips, see .bt-has-strips'
+		// own comment) in exactly the "table already fills the pane" case
+		// this is meant to fix. `padding-right` on the SCROLL CONTAINER itself
+		// instead grows wrapper's own padding-box (and therefore scrollWidth
+		// AND clientWidth together, so the scrollable range is unchanged — no
+		// dead space past the last column), which is what every consumer of
+		// wrapper's box (updateOuterFrame's `wr.right`, positionStatusBar,
+		// addRowBtn's own sticky bottom/left/right) already reads from,
+		// getting the extra clearance for free with no separate code path.
+		wrapper.setCssProps({ '--bt-wrapper-pad-right': `${RIGHT_STRIP_GAP}px` });
 
 		isEdgeStripsVisible = () => addRowBtn.hasClass('bt-strip-visible') || addColBtn.hasClass('bt-strip-visible');
 

@@ -1,5 +1,6 @@
 import { test, expect } from '../../common/test-base';
 import { tableSource } from '../../common/fixtures';
+import { RIGHT_STRIP_GAP } from '../../../../src/selectorLayout';
 
 test.describe('table footer — manual line breaks and width cap', () => {
 	// Reported ("脚注似乎不能支持手动换行") — turned out to be a key-binding
@@ -80,8 +81,10 @@ footer:
 		await renderFull(tableSource({ widths: [50], rows: [{ 0: 'x' }], footer: longFooter }));
 		const wrapper = (await page.locator('.bt-table-wrapper').boundingBox())!;
 		const contentRow = (await page.locator('.bt-table-content-row').boundingBox())!;
-		// wrapper stays capped to contentRow's own width — not widened by the footer.
-		expect(wrapper.width).toBeCloseTo(contentRow.width, 0);
+		// wrapper stays capped to contentRow's own width (plus the fixed
+		// RIGHT_STRIP_GAP breathing room past addColBtn, see wrapper's own
+		// --bt-wrapper-pad-right) — not further widened by the footer.
+		expect(wrapper.width).toBeCloseTo(contentRow.width + RIGHT_STRIP_GAP, 0);
 		const footer = (await page.locator('.bt-table-footer').boundingBox())!;
 		// The single long line word-wrapped onto more than one visual line —
 		// its rendered height is now taller than contentRow's plain line-height.
@@ -140,7 +143,7 @@ footer: 这是一个比table本身宽很多的很长很长很长很长很长很�
 		const contentRow = page.locator('.bt-table-content-row:not(#contentRow)');
 		const wrapperBoxBefore = (await wrapper.boundingBox())!;
 		const contentRowBoxBefore = (await contentRow.boundingBox())!;
-		expect(wrapperBoxBefore.width).toBeCloseTo(contentRowBoxBefore.width, 0);
+		expect(wrapperBoxBefore.width).toBeCloseTo(contentRowBoxBefore.width + RIGHT_STRIP_GAP, 0);
 
 		// Trigger a real write-back rebuild (insert a row via the "+" button).
 		// renderBlock only rewrites the underlying note on this click — it does
@@ -155,6 +158,6 @@ footer: 这是一个比table本身宽很多的很长很长很长很长很长很�
 
 		const wrapperBoxAfter = (await wrapper.boundingBox())!;
 		const contentRowBoxAfter = (await contentRow.boundingBox())!;
-		expect(wrapperBoxAfter.width).toBeCloseTo(contentRowBoxAfter.width, 0);
+		expect(wrapperBoxAfter.width).toBeCloseTo(contentRowBoxAfter.width + RIGHT_STRIP_GAP, 0);
 	});
 });

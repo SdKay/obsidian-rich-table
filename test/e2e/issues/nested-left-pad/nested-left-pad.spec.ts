@@ -14,31 +14,37 @@ import { tableSource } from '../../common/fixtures';
 // checked here against a plain table with no nested-specific setup at all.
 const SOURCE = tableSource({ widths: [60], rows: [{ 0: 'x' }] });
 
-test('reserveSelectorLeftPad reserves room for the selector strips against a flush-left table', async ({ page, renderFull }) => {
+// Reported again, later ("hover前后view矩形框保持宽度和位置不变"): even the
+// PERMANENT reservation above still measured how much room was already
+// naturally available and only topped up the shortfall — which itself never
+// converges under root's own margin-inline:auto centering (a second call
+// after the first reservation measures a DIFFERENT deficit than the first,
+// since only half of any added padding becomes real left-shift, see
+// reserveLeftPad's own doc comment in renderer.ts). Fixed by dropping the
+// measurement entirely: reserveSelectorLeftPad now reserves the same flat
+// amount unconditionally, from the very first call, regardless of how much
+// natural slack the table already had.
+test('reserveSelectorLeftPad reserves a flat amount unconditionally, even with plenty of natural slack', async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
-	const before = await page.locator('.bt-render-root').evaluate(el =>
-		parseFloat((el as HTMLElement).style.getPropertyValue('--bt-sel-pad-left')) || 0);
-	expect(before, 'nothing has reserved this yet').toBe(0);
-
-	await page.evaluate(() => {
-		const root = document.querySelector<HTMLElement>('.bt-render-root')!;
-		const wrapper = root.querySelector<HTMLElement>('.bt-table-wrapper')!;
-		// .bt-table-wrapper centers within root via margin-inline:auto — this
-		// test's shell is a wide viewport with a narrow table, leaving plenty of
-		// natural centering slack on both sides. Pin root's own width to the
-		// wrapper's natural content width to remove that slack, matching a
-		// table with no room of its own to spare (e.g. a nested table's cell).
-		root.style.width = `${wrapper.getBoundingClientRect().width}px`;
-		window.RichTableReal.reserveSelectorLeftPad(root);
-	});
-
-	const after = await page.locator('.bt-render-root').evaluate(el =>
+	// renderFull mirrors tableBlock.ts's own post-swap pass, so this is already
+	// reserved from the very first paint, exactly like the real app — no hover,
+	// no artificial slack removal, needed to observe it.
+	const pad = await page.locator('.bt-render-root').evaluate(el =>
 		parseFloat((el as HTMLElement).style.getPropertyValue('--bt-sel-pad-left')) || 0);
 	// 54px = SEL_TOTAL(32) + AUTOFIT_OFFSET(18) + 4 (selectorLayout.ts) — this
-	// table has real selector strips (not locked), and the test shell's root
-	// starts flush against its container with no natural margin of its own.
-	expect(after).toBe(54);
+	// table has real selector strips (not locked).
+	expect(pad).toBe(54);
+
+	// A second call (e.g. a later hover) must not change it — no measurement,
+	// so nothing to re-converge.
+	await page.evaluate(() => {
+		const root = document.querySelector<HTMLElement>('.bt-render-root')!;
+		window.RichTableReal.reserveSelectorLeftPad(root);
+	});
+	const padAfterSecondCall = await page.locator('.bt-render-root').evaluate(el =>
+		parseFloat((el as HTMLElement).style.getPropertyValue('--bt-sel-pad-left')) || 0);
+	expect(padAfterSecondCall).toBe(54);
 });
 
 test("a table's left-padding reservation survives mouseleave — no longer collapsed back to 0", async ({ page, renderFull }) => {

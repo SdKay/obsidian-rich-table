@@ -29,3 +29,10 @@ export const SEL_CELL = SEL_LABEL - 4; // 18
  *    button width = SEL_CELL = 18  →  left = (tl - 9) - 9 = tl - 18
  *    18 = SEL_CELL                                                       */
 export const AUTOFIT_OFFSET = SEL_CELL; // 18
+
+/** Breathing room between addColBtn's own right edge and the view's right
+ *  strip (width-resize handle, outer frame, PINNED status bar) — see
+ *  RIGHT_STRIP_GAP's own call sites in renderer.ts/renderGeometry.ts.
+ *  Wider than the 8px resize handle itself so the handle's hit-area clears
+ *  addColBtn's clickable box entirely, not just its visual edge. */
+export const RIGHT_STRIP_GAP = 10;
