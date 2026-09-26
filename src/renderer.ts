@@ -8,7 +8,7 @@ import { BUILTIN_THEMES } from './themes/index';
 import type { TableModelV2, AggType, CtrlColButtonId } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
-import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET, RIGHT_STRIP_GAP } from './selectorLayout';
+import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET, RIGHT_STRIP_GAP, FRAME_MIN_GAP } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
 import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler, SnapshotKind } from './renderTypes';
 import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue, resolveMergeBounds, computeHeaderRowSpan } from './renderGridHelpers';
@@ -1885,9 +1885,29 @@ export async function renderTable(
 		// browser was still mid-reflow, corrupted the *next* pointermove's
 		// own hit-testing (reported: the zoom slider itself ran away on a
 		// small drag).
-		const stripsShowing = (onStructuralOp || onToggleLock) && (root.hasClass('is-locked') || shell.matches(':hover'));
+		// `.is-locked` is set on the ctrl column itself (`ctrlCol`, created
+		// further down this closure), never on `root` — querying it here
+		// rather than checking `root.hasClass('is-locked')` (a check that
+		// could never be true, since nothing ever sets that class on root)
+		// mirrors the already-correct check in renderGeometry.ts's
+		// applyOuterFrame. Same cheap-DOM-read reasoning as `shell.matches
+		// (':hover')` just below — no forced layout, safe on every tick.
+		const ctrlColEl = root.querySelector<HTMLElement>(':scope > .bt-ctrl-col');
+		const stripsShowing = (onStructuralOp || onToggleLock) && (!!ctrlColEl?.hasClass('is-locked') || shell.matches(':hover'));
 		const leftStripEdge = stripsShowing ? wr.left - CTRL_COL_LEFT_GAP : wr.left;
-		const left = narrower ? leftStripEdge : rr.left;
+		// FRAME_MIN_GAP is a floor under every other widening reason above,
+		// not a replacement — reported ("未lock时，未hover的时候view左边界完全
+		// 贴合table左边界...太丑了"): with strips not showing (unlocked,
+		// unhovered) there was nothing widening the frame past the TABLE's
+		// own edge at all, landing it flush. Measured from tableRect.left,
+		// not wr.left — a manually-narrower viewWidth already centers the
+		// table within a WIDER wrapper, which already has its own natural
+		// gap on this side; measuring from wr.left there would incorrectly
+		// widen the frame an extra FRAME_MIN_GAP past that already-sufficient
+		// gap (confirmed: a 400px viewWidth around a ~200px table rendered
+		// the frame 408px wide instead of narrowing to exactly 400).
+		const leftStripOrMinEdge = Math.min(leftStripEdge, tableRect.left - FRAME_MIN_GAP);
+		const left = narrower ? leftStripOrMinEdge : rr.left;
 		// `right` is THE one answer to "where is the view's real right edge" —
 		// the width handle, the status bar's own box, and the frame border
 		// all read this SAME value below, rather than each re-deriving their
@@ -1906,6 +1926,16 @@ export async function renderTable(
 		// correct for any future "something new can widen wrapper" case, not
 		// just the ones already known about.
 		let right = narrower ? wr.right : rr.right;
+		// Same FRAME_MIN_GAP floor as the left edge above, mirrored for the
+		// right — a LOCKED table has no addColBtn at all (onStructuralOp is
+		// undefined while locked, see addColBtn's own creation gate), so it
+		// never gets the --bt-wrapper-pad-right reservation RIGHT_STRIP_GAP
+		// sets for an editable one, and landed flush against the table's own
+		// right edge with zero breathing room (reported: "lock时view右边界
+		// 完全贴合table右边界，也没有padding...太丑了"). A no-op for an
+		// editable table, whose wrapper padding (RIGHT_STRIP_GAP, 10px) is
+		// already wider than this floor (8px).
+		right = Math.max(right, tableRect.right + FRAME_MIN_GAP);
 		// The status bar's own left is wr.left (NOT `left` above) even while
 		// the frame's own left widened to cover the hover-only ctrl column/row
 		// selector — the bar has nothing to its own left that needs covering,

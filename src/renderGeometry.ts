@@ -1,4 +1,4 @@
-import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
+import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET, FRAME_MIN_GAP } from './selectorLayout';
 
 /**
  * `renderZoom.ts`'s `zoom` (CSS `zoom`, not `transform`) scales every
@@ -259,9 +259,11 @@ export function applyOuterFrame(root: HTMLElement): void {
 	const shell = root.closest<HTMLElement>('.bt-render-root-shell');
 	const frame = shell?.querySelector<HTMLElement>(':scope > .bt-outer-frame');
 	const wrapper = root.querySelector<HTMLElement>(':scope > .bt-table-wrapper');
-	if (!shell || !frame || !wrapper) return;
+	const table = root.querySelector<HTMLElement>(':scope > .bt-table-wrapper table.bt-table');
+	if (!shell || !frame || !wrapper || !table) return;
 	const rr = root.getBoundingClientRect();
 	if (rr.width === 0) return;
+	const tableRect = table.getBoundingClientRect();
 	const shellRect = shell.getBoundingClientRect();
 	const wr = wrapper.getBoundingClientRect();
 	// Narrows whenever wrapper is genuinely narrower than root — no longer
@@ -280,7 +282,14 @@ export function applyOuterFrame(root: HTMLElement): void {
 	const stripsShowing = !!ctrlColEl && (ctrlColEl.hasClass('is-locked') || shell.matches(':hover'));
 	const leftNeed = hasSelectors ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
 	const leftStripEdge = stripsShowing ? wr.left - leftNeed : wr.left;
-	const left = narrower ? leftStripEdge : rr.left;
+	// FRAME_MIN_GAP: a floor under every other widening reason above, not a
+	// replacement — measured from tableRect.left, not wr.left, since a
+	// manually-narrower viewWidth already centers the table within a wider
+	// wrapper (which already has its own natural gap on this side). See
+	// renderer.ts's updateOuterFrame for the full reasoning (kept in sync
+	// with that function).
+	const leftStripOrMinEdge = Math.min(leftStripEdge, tableRect.left - FRAME_MIN_GAP);
+	const left = narrower ? leftStripOrMinEdge : rr.left;
 	// `right` is THE one answer to "where is the view's real right edge" —
 	// the width handle, the status bar's own box, and the frame border all
 	// read this SAME value below. See renderer.ts's updateOuterFrame for the
@@ -290,6 +299,9 @@ export function applyOuterFrame(root: HTMLElement): void {
 	// the table — pushed wr.right past where either of their own derivations
 	// assumed it would be).
 	let right = narrower ? wr.right : rr.right;
+	// Same FRAME_MIN_GAP floor as the left edge above, mirrored for the
+	// right — see renderer.ts's updateOuterFrame for the full reasoning.
+	right = Math.max(right, tableRect.right + FRAME_MIN_GAP);
 	const statusBar = shell.querySelector<HTMLElement>(':scope > .bt-status-bar');
 	const statusBarPinned = !!statusBar && !statusBar.hasClass('bt-status-mode-hover');
 	// The status bar's own left is wr.left (NOT `left` above), same reasoning
