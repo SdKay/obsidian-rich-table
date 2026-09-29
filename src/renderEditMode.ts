@@ -232,6 +232,15 @@ export function enterLineEdit(
 	}
 }
 
+/** Pastes the clipboard as plain text: a native paste inserts the clipboard's
+ *  HTML, which turns `![[a.png]]` copied from a note into just "a.png". */
+function pastePlainText(evt: ClipboardEvent): void {
+	const text = evt.clipboardData?.getData('text/plain');
+	if (!text || evt.defaultPrevented) return;
+	evt.preventDefault();
+	activeDocument.execCommand('insertText', false, text);
+}
+
 /**
  * Replaces cell content with a contenteditable div wired to WikilinkInputSuggest
  * (AbstractInputSuggest subclass) for native Obsidian wikilink suggestions.
@@ -445,6 +454,7 @@ export function enterEditMode(
 			onPasteGrid(values, parsed?.merges);
 		});
 	}
+	editor.addEventListener('paste', (evt: ClipboardEvent) => pastePlainText(evt));
 	/**
 	 * Where the caret sits within the cell's text, or null when there's a
 	 * selection rather than a caret (or the caret isn't in this editor at all).

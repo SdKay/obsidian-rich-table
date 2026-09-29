@@ -104,3 +104,24 @@ test.describe('clipboard-paste', () => {
 		expect(pasteOps[0]!.values).toEqual([['Name', 'Age'], ['Alice', '30']]);
 	});
 });
+
+test.describe('clipboard-paste — wikilinks', () => {
+	const CELL = '.bt-td[data-row="1"][data-col="0"]';
+	const SOURCE = scrollableTable({ theme: 'grid' });
+
+	for (const [name, html] of [['plain text only', undefined], ['with an HTML payload', '<span>hahaha.png</span>']] as const) {
+		test(`an image wikilink pasted into a cell keeps its ![[ ]] (${name})`, async ({ page, renderFull }) => {
+			await renderFull(SOURCE);
+			await page.locator(CELL).first().click();
+			await expect.poll(() => page.locator(`${CELL}.bt-editing`).count()).toBe(1);
+			await page.evaluate((html) => {
+				const dt = new DataTransfer();
+				dt.setData('text/plain', '![[hahaha.png]]');
+				if (html) dt.setData('text/html', html);
+				const editor = document.querySelector('.bt-editing .bt-cell-editor')!;
+				editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+			}, html);
+			await expect(page.locator(`${CELL} .bt-cell-editor`)).toHaveText('![[hahaha.png]]');
+		});
+	}
+});
