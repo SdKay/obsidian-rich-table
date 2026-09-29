@@ -324,6 +324,7 @@ export class TableBlock extends MarkdownRenderChild {
 		// .markdown-reading-view is the correct selector — same as v1, works after rAF.
 		const isReadingView = !!(this.containerEl.closest('.markdown-reading-view'));
 		const editAllowed   = (!isReadingView || this.plugin.settings.allowReadingViewEdit);
+		if (!this.containerEl.isConnected) this.recheckViewModeOnAttach(isReadingView);
 
 		const source     = isEmpty ? getEmptyTemplate() : this.source;
 		const tableV     = isEmpty ? CURRENT_TABLE_VERSION : getTableVersion(source);
@@ -903,6 +904,19 @@ export class TableBlock extends MarkdownRenderChild {
 	private async switchXlsxSheet(sheetId: string): Promise<void> {
 		this.xlsxActiveSheetId = sheetId;
 		await this.render();
+	}
+
+	/** The reading-view check above is only meaningful once the container is in
+	 *  the DOM. If it wasn't yet, re-check when it gets attached (bounded wait)
+	 *  and re-render if the answer changed. */
+	private recheckViewModeOnAttach(usedReadingView: boolean, framesLeft = 180): void {
+		window.requestAnimationFrame(() => {
+			if (!this.containerEl.isConnected) {
+				if (framesLeft > 0) this.recheckViewModeOnAttach(usedReadingView, framesLeft - 1);
+				return;
+			}
+			if (!!this.containerEl.closest('.markdown-reading-view') !== usedReadingView) void this.render();
+		});
 	}
 
 	/** liveInstances/refreshAllTableBlocks' entry point — same in-place
