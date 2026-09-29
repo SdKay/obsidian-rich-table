@@ -9,6 +9,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.4.1", date: "2026-09-26", changes: [
+		"fix: footer Shift+Enter matched cell convention, and capped footer width to the table",
+		"fix: view-width resize handle and outer frame stayed at page width in auto mode",
+		"feat: bolder, higher-contrast task-status pills with a new None option",
+		"fix: two academic-theme/alignment bugs from issue #8",
+		"fix: give .bt-status-stats a state class so resting/selection can be styled separately",
+		"fix: title sat right of the table on editable tables, and too far above it at rest",
+		"fix: column-selector strip drifted off frozen/centered columns, and frozen columns stuttered/lagged during a view-resize drag",
+		"fix: merging cells silently dropped a value that wasn't on the anchor",
+	] },
 	{ version: "1.4.0", date: "2026-09-19", changes: [
 		"fix: outer frame lagged on the first width drag, and width tracked the cursor at half speed",
 		"fix: discoverability and manual-viewWidth alignment for the resize handles",

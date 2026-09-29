@@ -35,10 +35,10 @@ test('reserveSelectorLeftPad reserves room for the selector strips against a flu
 
 	const after = await page.locator('.bt-render-root').evaluate(el =>
 		parseFloat((el as HTMLElement).style.getPropertyValue('--bt-sel-pad-left')) || 0);
-	// 54px = SEL_TOTAL(32) + AUTOFIT_OFFSET(18) + 4 (selectorLayout.ts) — this
+	// 44px = SEL_UNIT(22) + AUTOFIT_OFFSET(18) + 4 (selectorLayout.ts) — this
 	// table has real selector strips (not locked), and the test shell's root
 	// starts flush against its container with no natural margin of its own.
-	expect(after).toBe(54);
+	expect(after).toBe(44);
 });
 
 test("a table's left-padding reservation survives mouseleave — no longer collapsed back to 0", async ({ page, renderFull }) => {

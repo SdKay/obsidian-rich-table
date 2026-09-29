@@ -66,11 +66,11 @@ test.describe('title sits closer to the table at rest, without losing hover clea
 			const table = document.querySelector('table.bt-table') as HTMLElement;
 			return table.getBoundingClientRect().top - title.getBoundingClientRect().bottom;
 		});
-		expect(gap).toBeLessThan(32);
+		expect(gap).toBeLessThan(22);
 		expect(gap).toBeGreaterThanOrEqual(0); // never negative — title must never overlap the table
 	});
 
-	test('hover still reserves the full 32px clearance for the column-selector strip', async ({ page, renderFull }) => {
+	test('hover still reserves the full 22px (SEL_UNIT) clearance for the column-selector strip', async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await page.waitForTimeout(50);
 		const wrapperBox = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;
@@ -82,6 +82,6 @@ test.describe('title sits closer to the table at rest, without losing hover clea
 			const table = document.querySelector('table.bt-table') as HTMLElement;
 			return table.getBoundingClientRect().top - title.getBoundingClientRect().bottom;
 		});
-		expect(gap).toBeCloseTo(32, 0);
+		expect(gap).toBeCloseTo(22, 0);
 	});
 });

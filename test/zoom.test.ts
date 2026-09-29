@@ -2,7 +2,7 @@
  * Whole-table zoom (model.ts's `TableModelV2.zoom`) — the pure-logic pieces:
  * the `set-zoom` reducer (operations.ts), YAML normalization (parser.ts), and
  * the percent→factor conversion (renderZoom.ts). The actual `zoom` CSS
- * property application and the status-bar widget are covered end to end in
+ * property application is covered end to end in
  * test/e2e/issues/zoom/.
  */
 import { describe, it, expect } from 'vitest';

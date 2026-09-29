@@ -33,4 +33,18 @@ test.describe('untitled table reserves extra top clearance', () => {
 		expect(untitled, 'untitled table should reserve extra clearance for Obsidian\'s own toolbar')
 			.toBeGreaterThan(titled);
 	});
+
+	// Reported: locking an untitled table collapsed this same clearance to 0
+	// — Obsidian's floating toolbar still covers the same corner regardless
+	// of lock state, but TOP_STRIP_PAD's write used to be nested inside an
+	// onStructuralOp-only block, so a locked table (no onStructuralOp) never
+	// got it at all. Locked has no column selector, so its own share of the
+	// reservation is correctly 0 — the assertion here is specifically that
+	// the OBSIDIAN-toolbar share survives locking, not that locked matches
+	// unlocked's full amount.
+	test('a locked untitled table still reserves top clearance for Obsidian\'s own toolbar', async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], locked: true }));
+		const padTop = await page.locator('.bt-render-root').evaluate((el: HTMLElement) => parseFloat(getComputedStyle(el).paddingTop));
+		expect(padTop).toBeGreaterThan(0);
+	});
 });

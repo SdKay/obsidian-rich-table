@@ -1,19 +1,7 @@
 /* Rich Table plugin */
 
-/* Never zoomed — see renderer.ts's own doc comment on `shell` for why the
- * status bar (its other child, alongside .bt-render-root) has to live
- * outside the zoomed subtree. position:relative is load-bearing, not
- * incidental: the hover-only status bar (.bt-status-mode-hover) is
- * position:absolute with --sb-top/-left computed (renderer.ts) relative to
- * ROOT's own box — before the status bar moved out here, root itself
- * supplied that positioning context for free. Without shell also being a
- * positioned ancestor, the status bar's absolute box resolves against
- * whatever positioned ancestor comes next up the DOM (typically the
- * viewport), landing nowhere near where those coordinates meant it to. This
- * is a separate bug from --sb-top's own formula overlapping the add-row "+"
- * button (see positionStatusBar's own comment, renderer.ts) — that one is a
- * wrong anchor point (table's bottom vs. wrapper's), not a wrong coordinate
- * space, and needed its own fix. */
+/* Never zoomed: the multi-sheet status bar (a sibling of .bt-render-root)
+ * must stay outside the zoomed subtree. */
 .bt-render-root-shell {
 	display: block;
 	position: relative;
@@ -52,11 +40,13 @@
 
 .bt-render-root {
 	position: relative;
-	/* Selector strip layout constants — keep in sync with src/selectorLayout.ts */
-	--bt-sel-total: 32px; /* full width (row selector) / height (col selector)   */
-	--bt-sel-grip:  10px; /* drag-grip zone                                       */
-	--bt-sel-label: 22px; /* label-cell zone = total - grip                       */
-	--bt-sel-cell:  18px; /* sel-cell height (col selector) / width (row selector)*/
+	/* Selector strip layout constants — keep in sync with src/selectorLayout.ts.
+	 * --bt-sel-unit is the ONE width every left/right-side component (toolbar,
+	 * row/col selector, row/col adder, vertical scrollbar) is sized off — see
+	 * selectorLayout.ts's own doc comment for why the selector no longer needs
+	 * a separate grip sub-zone. */
+	--bt-sel-unit: 22px; /* full width (row selector) / height (col selector)    */
+	--bt-sel-cell: 18px; /* sel-cell height (col selector) / width (row selector)*/
 	/* root stays plain block — no flex/grid (flex/grid collapses scroll-container
 	 * height to 0, breaking getBoundingClientRect-based overlay positioning).
 	 *
@@ -164,8 +154,8 @@
 	left:   var(--cs-left,  0px);
 	top:    var(--cs-top,   0px);
 	width:  var(--cs-width, 100px);
-	height: var(--bt-sel-total); /* grip zone (top) + label zone (bottom) */
-	/* Clip column letters/grips/seams to the visible viewport: the strip is pinned to
+	height: var(--bt-sel-unit); /* single click-to-select zone */
+	/* Clip column letters/seams to the visible viewport: the strip is pinned to
 	 * the visible region and its .bt-sel-track child is transformed to track
 	 * horizontal scroll (see that class's own comment below), so anything scrolled
 	 * past either edge is hidden rather than spilling over the row selector /
@@ -174,9 +164,9 @@
 }
 .bt-render-root.bt-has-strips .bt-row-selector {
 	position: absolute;
-	left:   var(--rs-left,  calc(-1 * var(--bt-sel-total)));
-	top:    var(--rs-top,   var(--bt-sel-total));
-	width:  var(--bt-sel-total); /* grip zone (left) + label zone (right) */
+	left:   var(--rs-left,  calc(-1 * var(--bt-sel-unit)));
+	top:    var(--rs-top,   var(--bt-sel-unit));
+	width:  var(--bt-sel-unit); /* single click-to-select zone */
 	height: var(--rs-height, 100px);
 	/* Vertical mirror of the col selector: pinned to the visible band and
 	 * clipped, so row numbers — shifted by its own .bt-sel-track's transform to
@@ -214,16 +204,16 @@
 	height: var(--bt-view-height);
 	max-height: none;
 }
-/* Native horizontal scrollbar hidden — the status bar (below) draws its own,
- * synced to this element's real scrollLeft/scrollWidth/clientWidth. Actual
- * wheel/trackpad/keyboard scrolling is untouched; only the native track/thumb
- * stops painting. `:horizontal` specifically, not the blanket `display:none`
- * .bt-ctrl-col uses for its own (single-axis) scroll — this wrapper scrolls
- * on BOTH axes, and the vertical scrollbar stays native. No `scrollbar-width`
- * override either, for the same reason (Firefox has no per-axis equivalent,
- * but Obsidian never runs on a Firefox engine, so this is dead code there
- * either way — left out rather than hiding an axis it shouldn't). */
-.bt-table-wrapper::-webkit-scrollbar:horizontal {
+/* Native scrollbars hidden on both axes now — the horizontal one was already
+ * replaced by the status bar's own custom track/thumb; the vertical one is
+ * replaced by .bt-view-scroll (below), the right-side mirror of that same
+ * custom-scrollbar pattern, part of the left/right symmetry design (toolbar+
+ * row-selector on the left pair with vertical-scrollbar+col-adder on the
+ * right). Actual wheel/trackpad/keyboard scrolling is untouched on either
+ * axis; only the native track/thumb stops painting. No `scrollbar-width`
+ * override (Firefox has no per-axis equivalent, but Obsidian never runs on a
+ * Firefox engine, so this would be dead code there either way). */
+.bt-table-wrapper::-webkit-scrollbar {
 	display: none;
 }
 /* Manual width: exact (still capped at the container so it can't overflow the
@@ -296,7 +286,8 @@
 	position: relative;
 }
 .bt-table-content-row > .bt-table,
-.bt-table-content-row > .bt-edge-add-col {
+.bt-table-content-row > .bt-edge-add-col,
+.bt-table-content-row > .bt-view-scroll {
 	flex-shrink: 0;
 	/* Flex's default align-items:stretch would otherwise force <table> to
 	 * contentRow's cross-size on every layout pass — normally a no-op once
@@ -335,22 +326,30 @@
 	opacity: 0;
 	transition: opacity 0.12s;
 }
-/* Keyed on .bt-render-root-shell, not .bt-render-root itself: the shell wraps
- * BOTH root and the status bar (bt-view-resize-b lives inside the latter),
- * as two siblings — see renderer.ts's own shell doc comment for why the
- * status bar had to move out of root. A root-only :hover rule would drop
- * this the moment the cursor crosses from the table into the status bar. */
+/* Handles are shell children laid out from the outer frame's --of-* box, so
+ * they sit on the view's own edges (status bar included) and center on it. */
 .bt-render-root-shell:hover .bt-view-resize { opacity: 1; }
-.bt-view-resize-b { left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; }
-/* --of-r-gap (renderer.ts's updateOuterFrame): how far root's own right edge
- * sits past the frame's real right border once a manual viewWidth narrows
- * it — 0 for an unnarrowed table, so this defaults to the exact same `right:
- * 0` these always had. Glues the handle (and its dash below) to the frame's
- * true right edge instead of root's own, the same symmetry the height
- * handle already gets for free by living INSIDE the (now frame-width-
- * matching) status bar — see updateOuterFrame's own comment. */
-.bt-view-resize-r { top: 0; bottom: 0; right: var(--of-r-gap, 0px); width: 8px; cursor: ew-resize; }
-.bt-view-resize-br { right: var(--of-r-gap, 0px); bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+.bt-view-resize-b {
+	left: var(--of-l, 0px);
+	top: calc(var(--of-t, 0px) + var(--of-h, 100%) - 8px);
+	width: var(--of-w, 100%);
+	height: 8px;
+	cursor: ns-resize;
+}
+.bt-view-resize-r {
+	left: calc(var(--of-l, 0px) + var(--of-w, 100%) - 8px);
+	top: var(--of-t, 0px);
+	width: 8px;
+	height: var(--of-h, 100%);
+	cursor: ew-resize;
+}
+.bt-view-resize-br {
+	left: calc(var(--of-l, 0px) + var(--of-w, 100%) - 12px);
+	top: calc(var(--of-t, 0px) + var(--of-h, 100%) - 12px);
+	width: 12px;
+	height: 12px;
+	cursor: nwse-resize;
+}
 /* Corner handle has no dash of its own (below) to recolor on hover, so it
  * keeps a small tint of its own — a 12x12px hotspot, not the full-edge
  * "long line" the -b/-r dash recoloring below replaces. */
@@ -862,37 +861,34 @@
 	position: absolute;
 	inset: 0;
 }
-/* Col selector: labels sit in the lower label zone; top grip zone reserved for drag grips. */
+/* Col selector: single click-to-select zone spanning the whole strip height
+ * (no separate grip sub-zone — see selectorLayout.ts's own doc comment). The
+ * label glyph itself is still inset to --bt-sel-cell via flex centering on
+ * the base .bt-sel-cell rule above. */
 .bt-col-selector .bt-sel-cell {
-	top: var(--bt-sel-grip); height: var(--bt-sel-cell);
+	top: 0; height: var(--bt-sel-unit);
 	left:  var(--cl, 0px);
 	width: var(--cw, 60px);
 }
 .bt-col-selector .bt-sel-cell.bt-sel-cell-frozen {
-	/* Both cell and grip are already position:absolute with an opaque
-	 * background (base rules above) — DOM order alone decides paint order
-	 * otherwise, and a frozen cell is added to colSel earlier than the
-	 * track (whose non-frozen cells scroll past it), so without a higher
-	 * z-index the track's contents painted on top as they slid underneath,
-	 * covering the now-fixed frozen label — reported as still being
-	 * "curtained" even after the position fix. z-index 2 matches the real
-	 * frozen table cells' own z-index for the same reason. */
+	/* The cell is already position:absolute with an opaque background (base
+	 * rule above) — DOM order alone decides paint order otherwise, and a
+	 * frozen cell is added to colSel earlier than the track (whose non-frozen
+	 * cells scroll past it), so without a higher z-index the track's contents
+	 * painted on top as they slid underneath, covering the now-fixed frozen
+	 * label — reported as still being "curtained" even after the position
+	 * fix. z-index 2 matches the real frozen table cells' own z-index for the
+	 * same reason. */
 	z-index: 2;
 }
-.bt-col-selector .bt-sel-col-drag.bt-sel-cell-frozen {
-	z-index: 2;
-}
-/* Row selector: labels sit in the right label zone; left grip zone reserved for drag grips */
+/* Row selector: single click-to-select zone spanning the whole strip width. */
 .bt-row-selector .bt-sel-cell {
-	left: calc(var(--bt-sel-total) - var(--bt-sel-cell)); width: var(--bt-sel-cell);
+	left: 0; width: var(--bt-sel-unit);
 	top:    var(--rt, 0px);
 	height: var(--rh, 30px);
 }
 /* Z-index only — same reasoning as the frozen-column rule above. */
 .bt-row-selector .bt-sel-cell.bt-sel-cell-frozen {
-	z-index: 2;
-}
-.bt-row-selector .bt-sel-row-drag.bt-sel-cell-frozen {
 	z-index: 2;
 }
 
@@ -904,16 +900,14 @@
 /* Resize handles living in the selector strips — one per column / row.
  * Positioned at each column's right edge / row's bottom edge. Work regardless
  * of cell merges since they read <col>/<tr> geometry. */
-/* z-index 3, above BOTH the label cells and the drag grips (2 when frozen). A
- * resize seam is 9px wide and must be grabbable along the boundary's whole
- * length, so it has to win over whatever is drawn either side of it. At 1 it lost
- * to a frozen label cell — which occupies the strip's middle band (top:
- * --bt-sel-grip 10px, height --bt-sel-cell 18px, of 32px total) — leaving the
- * seam grabbable only in the 10px above and 4px below it, reported as column
- * resize working "只在 A 的右上角和右下角". A frozen row's label covers its strip's
- * right band (left: 14px of 32px) for the same reason. Non-frozen labels have no
- * z-index of their own, so the seam already won there; this only ever affected
- * frozen rows/columns.
+/* z-index 3, above the label cells (2 when frozen). A resize seam is 9px wide
+ * and must be grabbable along the boundary's whole length, so it has to win
+ * over whatever is drawn either side of it. At 1 it lost to a frozen label
+ * cell — which used to occupy only part of the strip's band when the strip
+ * still split grip/label sub-zones — leaving the seam grabbable only in part
+ * of it, reported as column resize working "只在 A 的右上角和右下角". Non-frozen
+ * labels have no z-index of their own, so the seam already won there; this
+ * only ever affected frozen rows/columns.
  *
  * A first attempt at this was reverted because Obsidian hung: raising the seam
  * made it receive mouseenter along the whole boundary for the first time, which
@@ -938,7 +932,7 @@
 .bt-sel-resize-col {
 	position: absolute;
 	top: 0;
-	height: var(--bt-sel-total); /* spans full col-selector height */
+	height: var(--bt-sel-unit); /* spans full col-selector height */
 	width: 9px;
 	left: var(--rx, 0px);
 	transform: translateX(-50%);
@@ -948,7 +942,7 @@
 .bt-sel-resize-row {
 	position: absolute;
 	left: 0;
-	width: var(--bt-sel-total); /* spans full row-selector width */
+	width: var(--bt-sel-unit); /* spans full row-selector width */
 	height: 9px;
 	top: var(--ry, 0px);
 	transform: translateY(-50%);
@@ -962,6 +956,7 @@
 /* ── Edge-hover add strips ─────────────────────────────────────────────────── */
 .bt-edge-add-row,
 .bt-edge-add-col {
+	box-sizing: border-box;
 	z-index: 10;
 	display: flex;
 	align-items: center;
@@ -1013,9 +1008,14 @@
 	bottom: 0;
 	left:   0;
 	right:  0;
-	max-width: var(--strip-max-width, none);
+	/* Body only: content-row width minus the column adder and vertical scrollbar
+	 * that sit to its right; the shift restores the content row's own centering. */
+	width: calc(min(var(--strip-max-width, 100%), 100%) - 2 * var(--bt-sel-unit));
 	margin-inline: auto;
-	height: 18px;
+	translate: calc(-1 * var(--bt-sel-unit));
+	/* --bt-sel-unit — matches the toolbar/selector/vertical-scrollbar width so
+	 * every left/right-side strip in the symmetry design shares one size. */
+	height: var(--bt-sel-unit);
 }
 
 /* addColBtn is a flex sibling of <table> inside .bt-table-content-row (see
@@ -1063,11 +1063,71 @@
 	position:   sticky;
 	cursor:     pointer;
 	top:        0;
-	right:      0;
+	/* Offset by the vertical scrollbar's own width (.bt-view-scroll, its next
+	 * flex sibling in .bt-table-content-row — see that rule's own comment) so
+	 * the two sit side by side instead of both pinning to right:0 and
+	 * overlapping. */
+	right:      var(--bt-sel-unit);
 	align-self: flex-start;
-	width:      18px;
+	/* --bt-sel-unit — see .bt-edge-add-row's own comment. */
+	width:      var(--bt-sel-unit);
 	height:     var(--strip-height, 40px);
 	overflow:   hidden;
+}
+
+/* ── Vertical scrollbar — right-side mirror of the row selector's left-side
+ * pairing with the toolbar, replacing the native vertical scrollbar the
+ * wrapper used to draw. A flex sibling of <table>/addColBtn in
+ * .bt-table-content-row (same reasoning as addColBtn's own creation comment
+ * in renderer.ts — a real flex child permanently reserves its own layout
+ * width via flex-shrink:0 below, instead of a JS-toggled size that would
+ * shift the table sideways on hover, the exact bug class documented on
+ * .bt-edge-add-col above). Visibility mirrors .bt-ctrl-col EXACTLY (hover on
+ * unlocked, permanent on locked) — the two are the left/right pair the
+ * symmetry design pairs at every state. */
+.bt-view-scroll {
+	position:   sticky;
+	top:        0;
+	right:      0;
+	align-self: flex-start;
+	width:      var(--bt-sel-unit);
+	height:     var(--strip-height, 40px);
+	display:    flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	transition: opacity 0.08s;
+}
+.bt-render-root-shell:hover .bt-view-scroll { opacity: 1; }
+.bt-view-scroll.is-locked                   { opacity: 1; }
+.bt-view-scroll-track {
+	position: relative;
+	width: 6px;
+	height: 100%;
+	background: var(--background-modifier-border);
+	border-radius: 3px;
+}
+/* Top/height are JS-set (renderer.ts's syncVScrollThumb), mirroring the real
+ * wrapper's scrollTop/scrollHeight/clientHeight — vertical analogue of
+ * .bt-status-scroll-thumb. */
+.bt-view-scroll-thumb {
+	position: absolute;
+	left: 0;
+	top: var(--bt-view-thumb-t, 0px);
+	width: 100%;
+	height: var(--bt-view-thumb-h, 30%);
+	background: var(--text-faint);
+	border-radius: 3px;
+	cursor: pointer;
+}
+.bt-view-scroll-thumb:hover {
+	background: var(--text-muted);
+}
+/* No overflow to scroll — same "fill the whole track instead of disappearing"
+ * treatment as .bt-status-scroll-empty (see its own comment). */
+.bt-view-scroll.bt-view-scroll-empty .bt-view-scroll-thumb {
+	cursor: default;
+	pointer-events: none;
 }
 
 .bt-edge-add-row:hover,
@@ -1081,58 +1141,17 @@
 	line-height: 1;
 }
 
-/* ── Drag-reorder handles ────────────────────────────────────────────────── */
-
-
-/* ── Drag-reorder grips in selector strips ──────────────────────────────────
- * Row grips: sibling elements in the row selector, occupying the outer 10px
- * zone (left side) — completely separate from the 22px selection label area.
- * Col grips: sibling elements in the col selector, occupying the upper 10px
- * zone (top side) — separate from the 22px label zone below.
- * Both are hidden by default and shown when the respective selector is hovered. */
-.bt-sel-row-drag {
-	position: absolute;
-	left: 1px;
-	width: var(--bt-sel-grip);
-	height: var(--bt-sel-cell);
-	top: var(--rdy, 0px);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: grab;
-	opacity: 0;
-	transition: opacity 80ms;
-	color: var(--text-faint);
-}
-.bt-sel-col-drag {
-	position: absolute;
-	top: 1px;
-	height: var(--bt-sel-grip);
-	width: var(--bt-sel-cell);
-	left: var(--cdx, 0px);
-	transform: translateX(-50%); /* centers the grip on the boundary point */
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: grab;
-	opacity: 0;
-	transition: opacity 80ms;
-	color: var(--text-faint);
-}
-.bt-sel-row-drag svg,
-.bt-sel-col-drag svg {
-	width: 8px;
-	height: 8px;
-}
-.bt-row-selector.bt-strip-visible:hover .bt-sel-row-drag {
-	opacity: 1;
-}
-.bt-col-selector.bt-strip-visible:hover .bt-sel-col-drag {
-	opacity: 1;
-}
-.bt-sel-row-drag:active,
-.bt-sel-col-drag:active {
+/* ── Row/column reorder via Ctrl/Cmd+drag on the selector strip ──────────────
+ * No dedicated grip element any more — the whole selector cell is both the
+ * click-to-select target and (with Ctrl/Cmd held) the reorder handle. CSS has
+ * no reliable way to detect a held modifier key on hover, so there's no
+ * cursor affordance before the drag starts (aria-label on .bt-sel-cell itself
+ * documents the gesture for assistive tech); once a reorder drag is actually
+ * under way the dragged cell dims, same visual language the old drag-grip
+ * gave. */
+.bt-sel-cell.bt-dragging {
 	cursor: grabbing;
+	opacity: 0.6;
 }
 
 /* ── Row height: height on td/th acts as minimum row height ─────────────── */
@@ -2800,14 +2819,10 @@
 	max-width: 200px;
 }
 
-/* ── Status bar (FR-017) ──────────────────────────────────────────────────── */
-/* Sibling of .bt-table-wrapper, below the scrollable region — not part of the
- * scrolling grid, same as Excel's own status bar. Pinned mode (the default —
- * see model.ts) just leaves this permanently in normal flow; hover mode
- * reuses the existing bt-strip-visible opacity/visibility toggle other
- * strips already use (wired up once that mode lands). */
+/* ── Status bar ──────────────────────────────────────────────────── */
+/* Only rendered for a 2+-sheet workbook, where it hosts the sheet tabs.
+ * Sits in normal flow below the scrollable region. */
 .bt-status-bar {
-	position: relative; /* containing block for .bt-view-resize-b, its child */
 	display: flex;
 	align-items: stretch;
 	height: 28px;
@@ -2826,47 +2841,6 @@
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 	user-select: none;
-}
-/* Hover mode: taken out of flow entirely (position:absolute, --sb-top/left/
- * width JS-set by positionStatusBar to track the visible table area — see
- * renderer.ts) instead of toggling height on the in-flow version, which
- * would reintroduce the exact scroll-jump/document-height-collapse bug class
- * the hover-strip flicker fixes elsewhere in this file exist to prevent (see
- * the matching comment at this class's assignment in renderer.ts). Opacity-
- * only toggle, same bt-strip-visible convention as every other hover strip.
- *
- * Reported ("状态栏不常驻时，hover之后底部外边框消失了，像是被什么遮挡了，高度
- * 调节也不能hover出来"): this used to float BELOW the table's own visible box
- * (--sb-top anchored past root's bottom edge — see positionStatusBar's own
- * comment for the exact history). Obsidian wraps every rendered code block's
- * content in a real `contain: paint` + `overflow: hidden` container sized to
- * the content's normal FLOW box (see gridSizePicker.ts's own doc comment for
- * the confirmed mechanism) — an absolutely-positioned element that extends
- * past that flow box doesn't just get z-fought, it gets clipped away
- * entirely, invisible regardless of z-index. No test caught this because the
- * test harness has no such wrapper. Fixed by having the hover bar OVERLAY the
- * table's own last row(s) instead of floating below them — --sb-top now
- * anchors to (root's own visible bottom − this bar's height), i.e. strictly
- * INSIDE root's box, which the real wrapper's flow-box sizing already
- * accounts for. A solid background (not transparent) is load-bearing now
- * that it sits over real cell content instead of empty space below it. */
-.bt-status-bar.bt-status-mode-hover {
-	position: absolute;
-	top: var(--sb-top, 0px);
-	left: var(--sb-left, 0px);
-	width: var(--sb-width, auto);
-	background: var(--background-primary);
-	box-shadow: 0 -1px 0 0 var(--background-modifier-border);
-	opacity: 0;
-	visibility: hidden;
-	pointer-events: none;
-	transition: opacity 0.08s;
-	z-index: 10;
-}
-.bt-status-bar.bt-status-mode-hover.bt-strip-visible {
-	opacity: 1;
-	visibility: visible;
-	pointer-events: auto;
 }
 .bt-status-tabs {
 	flex: 1 1 auto;

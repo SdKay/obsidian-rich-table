@@ -22,14 +22,14 @@ test('a nested (untitled) table skips the extra top clearance a top-level untitl
 	await renderFull(UNTITLED, { cacheKey: 'test.md:nested-abc' });
 	const pad = await page.locator('.bt-render-root').evaluate(el =>
 		parseFloat((el as HTMLElement).style.getPropertyValue('--bt-sel-pad')) || 0);
-	// 32px = SEL_TOTAL alone (selectorLayout.ts) — no +28px block-hover-toolbar
+	// 22px = SEL_UNIT alone (selectorLayout.ts) — no +28px block-hover-toolbar
 	// clearance, unlike the same untitled table at the top level below.
-	expect(pad).toBe(32);
+	expect(pad).toBe(22);
 });
 
 test('an untitled top-level table still reserves the extra clearance', async ({ page, renderFull }) => {
 	await renderFull(UNTITLED);
 	const pad = await page.locator('.bt-render-root').evaluate(el =>
 		parseFloat((el as HTMLElement).style.getPropertyValue('--bt-sel-pad')) || 0);
-	expect(pad).toBe(60);
+	expect(pad).toBe(50);
 });

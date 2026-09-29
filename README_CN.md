@@ -161,7 +161,7 @@
 
 ![类型列与样式演示](docs/demo-03-style.gif)
 
-**4 · 拖拽排序 & 行列操作** — ⠿ 手柄拖排 + 双击弹出操作菜单
+**4 · 排序 & 行列操作** — 选中整行/整列后按住 Ctrl/Cmd 拖拽选择器，或按 Alt+Shift+方向键；双击弹出操作菜单
 
 ![排序与操作演示](docs/demo-05-reorder.gif)
 
@@ -213,7 +213,7 @@
 
 ![单元格拆分](docs/demo-cell-split.gif)
 
-**17 · 状态栏** — 显示行列总数，选中范围时显示其大小和求和/平均值；拖拽分割线调整自带滚动条的占位宽度；⚙️ 视图设置可切换常驻或仅 hover 显示
+**17 · 状态栏** — 显示行列总数，选中范围时显示其大小和求和/平均值；拖拽分割线调整自带滚动条的占位宽度；⚙️ 视图设置可显示或隐藏（多 sheet 工作簿始终显示）；Shift+滚轮可横向滚动
 
 ![状态栏](docs/demo-status-bar.gif)
 
@@ -369,7 +369,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
   <td>合并单元格，以及把普通单元格拆成两行或两列——表头行也可以拆分，并向下与数据行合并</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
-<tr><td>拖拽重排行列；拖拽调整宽高即固定，双击或 ⊞ 清空恢复为 auto（跟随内容）</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>重排行列——选中整行/整列后按住 Ctrl/Cmd 拖拽选择器，或按 Alt+Shift+方向键；拖拽调整宽高即固定，双击或 ⊞ 清空恢复为 auto（跟随内容）</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>插入、隐藏、删除行列；悬停边缘出现 <b>+</b> 快捷条</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>冻结表头及前 N 行 / 前 N 列</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>一键转置——交换行与列</td><td align="center">✅</td><td align="center">—</td></tr>
@@ -397,7 +397,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>折叠——隐藏表体，保留标题与表头行</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>状态栏——显示行列总数，选中范围时显示大小和求和/平均值；自带滚动条可拖拽调整占位宽度；可设为常驻或仅 hover 显示</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>状态栏——显示行列总数，选中范围时显示大小和求和/平均值；自带滚动条可拖拽调整占位宽度；可在视图设置中隐藏（多 sheet 工作簿始终显示）；Shift+滚轮可横向滚动</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>缩放——状态栏里仿 Excel 的 −/滑块/+ 控件，等比例缩放整张表格（内容、图片、单元格尺寸），范围 25%–400%，随表格保存</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>生成快照——把当前表格导出成清晰的 PNG（复制到剪贴板或保存）或 SVG，不包含 hover 才显示的界面元素，即便表格被滚动/限高也会导出完整内容</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>导出为 <code>.xlsx</code>（见<a href="#导出为-xlsx">导出为 .xlsx</a>）——仅限原生（非引用外部文件）表格；可选目标文件夹/文件名，工作簿会导出全部 sheet</td><td align="center">✅</td><td align="center">—</td></tr>

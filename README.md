@@ -159,7 +159,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![Typed columns and style demo](docs/demo-03-style.gif)
 
-**4 · Drag to reorder & row/column ops** — ⠿ handle + double-click menu
+**4 · Reorder & row/column ops** — select a row/column, then Ctrl/Cmd+drag the selector strip or press Alt+Shift+Arrow; double-click for the ops menu
 
 ![Reorder and ops demo](docs/demo-05-reorder.gif)
 
@@ -211,7 +211,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![split-cell](docs/demo-cell-split.gif)
 
-**17 · Status bar** — row/column totals, selection size and sum/average; drag the divider to resize its own scrollbar track; ⚙️ view settings to pin it or show only on hover
+**17 · Status bar** — row/column totals, selection size and sum/average; drag the divider to resize its own scrollbar track; ⚙️ view settings to show or hide it (always shown for a 2+-sheet workbook); Shift+wheel scrolls horizontally
 
 ![状态栏](docs/demo-status-bar.gif)
 
@@ -366,7 +366,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
   <td>Merge cells, and split a plain cell into two rows or columns — including the header row, which can split and merge downward into data rows</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
-<tr><td>Drag to reorder rows / columns; drag to resize (fixes a size) or double-click / ⊞ to clear back to auto (tracks content)</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Reorder rows / columns — Ctrl/Cmd+drag the selector strip, or Alt+Shift+Arrow on a selected row/column; drag to resize (fixes a size) or double-click / ⊞ to clear back to auto (tracks content)</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Insert, hide and delete rows / columns; hover an edge for <b>+</b> strips</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Freeze the header plus the first N rows / columns</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Transpose in place — swap rows and columns</td><td align="center">✅</td><td align="center">—</td></tr>
@@ -394,7 +394,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
   <td align="center">✅</td><td align="center">—</td>
 </tr>
 <tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; pinned or hover-only</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; can be hidden from view settings (always shown for 2+ sheets); Shift+wheel scrolls horizontally</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Zoom — Excel-style −/slider/+ control in the status bar scales the whole table (content, images, cell sizes) 25%–400%, persisted per table</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Snapshot — export the current table as a sharp PNG (copy to clipboard, or save) or SVG, hover-only chrome excluded and the full table captured even if it's scrolled/bounded</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Export as <code>.xlsx</code> (see <a href="#export-as-xlsx">Export as .xlsx</a>) — a native (non xlsx-backed) table only; pick a destination folder/filename, every sheet if it's a workbook</td><td align="center">✅</td><td align="center">—</td></tr>

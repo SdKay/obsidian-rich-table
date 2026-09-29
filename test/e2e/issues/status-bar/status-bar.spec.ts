@@ -116,74 +116,6 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 	});
 });
 
-test.describe('status bar — pinned vs hover mode (Task 6)', () => {
-	const PINNED = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }] });
-	const HOVER = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], statusBarMode: 'hover' });
-
-	test('pinned (default) mode shows the bar with no hover needed', async ({ page, renderFull }) => {
-		await renderFull(PINNED);
-		await expect(page.locator('.bt-status-bar')).not.toHaveClass(/bt-status-mode-hover/);
-		await expect(page.locator('.bt-status-bar')).toBeVisible();
-	});
-
-	test('hover mode hides the bar until the table is hovered, then hides again on leave', async ({ page, renderFull }) => {
-		await renderFull(HOVER);
-		const root = page.locator('.bt-render-root');
-		const bar = page.locator('.bt-status-bar');
-		await expect(bar).toHaveClass(/bt-status-mode-hover/);
-		await expect(bar).not.toHaveClass(/bt-strip-visible/);
-
-		const rootBox = (await root.boundingBox())!;
-		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
-		await expect(bar).toHaveClass(/bt-strip-visible/);
-
-		await page.mouse.move(rootBox.x - 50, rootBox.y - 50);
-		await expect(bar).not.toHaveClass(/bt-strip-visible/);
-	});
-
-	// The hover bar overlays root's own last row (see positionStatusBar's own
-	// comment in renderer.ts for why: anything anchored past root's flow-box
-	// gets clipped by Obsidian's real code-block container, which no earlier
-	// version of this test could catch since the harness has no such
-	// wrapper) — it must stay entirely within root's own box, above (never
-	// overlapping) the add-row strip that lives further down inside the
-	// scroll wrapper.
-	test('the hovering bar overlays the table\'s own last row, never the add-row button below it', async ({ page, renderFull }) => {
-		await renderFull(HOVER);
-		const root = page.locator('.bt-render-root');
-		const bar = page.locator('.bt-status-bar');
-		const addRow = page.locator('.bt-edge-add-row');
-
-		const rootBox = (await root.boundingBox())!;
-		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
-		await expect(bar).toHaveClass(/bt-strip-visible/);
-
-		const barBox = (await bar.boundingBox())!;
-		const addRowBox = (await addRow.boundingBox())!;
-		expect(barBox.y).toBeGreaterThanOrEqual(rootBox.y - 1);
-		expect(barBox.y + barBox.height).toBeLessThanOrEqual(rootBox.y + rootBox.height + 1);
-		expect(barBox.y + barBox.height).toBeLessThanOrEqual(addRowBox.y + 1);
-	});
-
-	test('the settings menu toggles statusBarMode via the "Pin status bar" entry', async ({ page, renderFull }) => {
-		await renderFull(PINNED);
-		const root = page.locator('.bt-render-root');
-		const rootBox = (await root.boundingBox())!;
-		await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
-
-		await page.locator('.bt-ctrl-btn[aria-label="View settings"]').click();
-		const clicked = await page.evaluate(() => {
-			const menu = window.RichTableReal.ShimMenu.opened[0];
-			return menu ? menu.clickItem('Pin status bar') : false;
-		});
-		expect(clicked, 'the menu should have a "Pin status bar" entry').toBe(true);
-
-		expect(await page.evaluate(() => window.__btOps)).toEqual([
-			{ type: 'set-status-bar-mode', mode: 'hover' },
-		]);
-	});
-});
-
 test.describe('status bar — divider drag + persistence (Task 7)', () => {
 	const WIDE = tableSource({ widths: [150, 150, 150, 150, 150], rows: [{ 0: 'a1' }], viewWidth: 400 });
 	const WITH_WIDTH = tableSource({
@@ -223,23 +155,31 @@ test.describe('status bar — divider drag + persistence (Task 7)', () => {
 	});
 });
 
-test.describe('status bar — height-resize handle relocation (Task 8)', () => {
+test.describe('status bar — height-resize handle', () => {
 	const EDITABLE = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }] });
 	const LOCKED = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], locked: true });
 
-	test('the height handle is mounted inside the status bar, not root', async ({ page, renderFull }) => {
+	test('the height handle is a direct child of root, with or without the status bar', async ({ page, renderFull }) => {
 		await renderFull(EDITABLE);
-		const handle = page.locator('.bt-status-bar .bt-view-resize-b');
-		await expect(handle).toHaveCount(1);
-		// Sanity check it isn't ALSO still a direct child of root from the old
-		// mount point — there should be exactly one bt-view-resize-b in the DOM.
+		await expect(page.locator('.bt-render-root-shell > .bt-view-resize-b')).toHaveCount(1);
 		await expect(page.locator('.bt-view-resize-b')).toHaveCount(1);
+		await expect(page.locator('.bt-status-bar')).toHaveCount(1);
+	});
+
+	test('the height handle sits on the view bottom edge (the bar\'s bottom) and is centered on the view', async ({ page, renderFull }) => {
+		await renderFull(EDITABLE);
+		const frame = (await page.locator('.bt-outer-frame').boundingBox())!;
+		const bar = (await page.locator('.bt-status-bar').boundingBox())!;
+		const handle = (await page.locator('.bt-view-resize-b').boundingBox())!;
+		expect(handle.y + handle.height).toBeCloseTo(frame.y + frame.height, 0);
+		expect(frame.y + frame.height).toBeCloseTo(bar.y + bar.height, 0);
+		expect(handle.x + handle.width / 2).toBeCloseTo(frame.x + frame.width / 2, 0);
 	});
 
 	test('dragging it resizes the wrapper and commits set-view-height on release', async ({ page, renderFull }) => {
 		await renderFull(EDITABLE);
 		const wrapper = page.locator('.bt-table-wrapper');
-		const handle = page.locator('.bt-status-bar .bt-view-resize-b');
+		const handle = page.locator('.bt-render-root-shell > .bt-view-resize-b');
 
 		const before = (await wrapper.boundingBox())!;
 		const handleBox = (await handle.boundingBox())!;
@@ -265,7 +205,7 @@ test.describe('status bar — height-resize handle relocation (Task 8)', () => {
 	test('hovering anywhere over the table reveals the height-handle dash, not just the handle\'s own hotspot', async ({ page, renderFull }) => {
 		await renderFull(EDITABLE);
 		const root = page.locator('.bt-render-root');
-		const handle = page.locator('.bt-status-bar .bt-view-resize-b');
+		const handle = page.locator('.bt-render-root-shell > .bt-view-resize-b');
 		const opacityBefore = await handle.evaluate(el => getComputedStyle(el, '::after').opacity);
 		expect(opacityBefore).toBe('0');
 
@@ -283,6 +223,59 @@ test.describe('status bar — height-resize handle relocation (Task 8)', () => {
 		await expect(page.locator('.bt-status-stats')).toBeVisible();
 		await expect(page.locator('.bt-status-stats')).not.toBeEmpty();
 	});
+});
+
+test.describe('status bar — show/hide toggle', () => {
+	const SRC = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }] });
+	const HIDDEN = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], statusBarMode: 'hover' });
+	const WIDE = tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250 });
+
+	test('shown by default', async ({ page, renderFull }) => {
+		await renderFull(SRC);
+		await expect(page.locator('.bt-status-bar')).toHaveCount(1);
+	});
+
+	test('a table with the bar turned off renders none of it, but keeps the height handle on the view', async ({ page, renderFull }) => {
+		await renderFull(HIDDEN);
+		await expect(page.locator('.bt-status-bar')).toHaveCount(0);
+		await expect(page.locator('.bt-render-root-shell > .bt-view-resize-b')).toHaveCount(1);
+	});
+
+	test('the view-settings "Show status bar" entry is checked when shown and toggles via set-status-bar-mode', async ({ page, renderFull }) => {
+		await renderFull(SRC);
+		await page.locator('.bt-ctrl-btn[aria-label="View settings"]').click();
+		const checked = await page.evaluate(() => window.RichTableReal.ShimMenu.opened.at(-1)!.items.find(i => i.title === 'Show status bar')?.checked);
+		expect(checked).toBe(true);
+		await page.evaluate(() => window.RichTableReal.ShimMenu.opened.at(-1)!.clickItem('Show status bar'));
+		const ops = await page.evaluate(() => window.__btOps);
+		expect(ops).toContainEqual({ type: 'set-status-bar-mode', mode: 'hover' });
+	});
+
+	test('when the bar is off, the entry is unchecked and turns it back on', async ({ page, renderFull }) => {
+		await renderFull(HIDDEN);
+		await page.locator('.bt-ctrl-btn[aria-label="View settings"]').click();
+		const checked = await page.evaluate(() => window.RichTableReal.ShimMenu.opened.at(-1)!.items.find(i => i.title === 'Show status bar')?.checked);
+		expect(checked).toBe(false);
+		await page.evaluate(() => window.RichTableReal.ShimMenu.opened.at(-1)!.clickItem('Show status bar'));
+		const ops = await page.evaluate(() => window.__btOps);
+		expect(ops).toContainEqual({ type: 'set-status-bar-mode', mode: null });
+	});
+
+	for (const [label, src] of [['shown', SRC], ['hidden', HIDDEN]] as const) {
+		test(`Shift+wheel scrolls horizontally with the bar ${label}`, async ({ page, renderFull }) => {
+			await renderFull(label === 'shown'
+				? tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250 })
+				: tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250, statusBarMode: 'hover' }));
+			void src; void WIDE;
+			const wrapper = page.locator('.bt-table-wrapper');
+			const box = (await wrapper.boundingBox())!;
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+			await page.keyboard.down('Shift');
+			await page.mouse.wheel(0, 120);
+			await page.keyboard.up('Shift');
+			await expect.poll(() => wrapper.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+		});
+	}
 });
 
 test.describe('status bar — multi-sheet tab integration (Task 9)', () => {
@@ -331,7 +324,7 @@ test.describe('status bar — multi-sheet tab integration (Task 9)', () => {
 	// all (mounted inside .bt-status-bar) — if a sheet's own statusBarMode
 	// were honored verbatim on a 2+-sheet workbook, setting it to 'hover'
 	// would hide the workbook's own navigation, not just its stats.
-	test('a 2+-sheet workbook forces the bar pinned even if the active sheet requests hover mode', async ({ page, renderBlock }) => {
+	test('a 2+-sheet workbook always shows the bar even if the active sheet turned it off', async ({ page, renderBlock }) => {
 		const HOVER_WORKBOOK = [
 			'---', 'version: 3', 'active_sheet: s_1', 'sheets:',
 			'  - id: s_1', '    statusBarMode: hover',
@@ -342,8 +335,7 @@ test.describe('status bar — multi-sheet tab integration (Task 9)', () => {
 			'---', '',
 		].join('\n');
 		await renderBlock(HOVER_WORKBOOK);
-		await expect(page.locator('.bt-status-bar')).not.toHaveClass(/bt-status-mode-hover/);
-		await expect(page.locator('.bt-status-bar')).toBeVisible();
+				await expect(page.locator('.bt-status-bar')).toBeVisible();
 		await expect(page.locator('.bt-status-bar .bt-status-tabs .bt-sheet-tab')).toHaveCount(2);
 	});
 
@@ -352,7 +344,7 @@ test.describe('status bar — multi-sheet tab integration (Task 9)', () => {
 	// renderer.ts) — hidden entirely rather than shown disabled, per the
 	// user's own call: a disabled item nobody can act on isn't worth the
 	// extra "why is this greyed out" UI.
-	test('the view-settings menu omits "Pin status bar" entirely for a 2+-sheet workbook', async ({ page, renderBlock }) => {
+	test('the view-settings menu omits "Show status bar" entirely for a 2+-sheet workbook', async ({ page, renderBlock }) => {
 		await renderBlock(WORKBOOK);
 		const root = page.locator('.bt-render-root:not(#root)');
 		const rootBox = (await root.boundingBox())!;
@@ -360,7 +352,7 @@ test.describe('status bar — multi-sheet tab integration (Task 9)', () => {
 		await page.locator('.bt-ctrl-btn[aria-label="View settings"]').click();
 		const hasPinEntry = await page.evaluate(() => {
 			const menu = window.RichTableReal.ShimMenu.opened[0];
-			return menu ? menu.clickItem('Pin status bar') : null;
+			return menu ? menu.clickItem('Show status bar') : null;
 		});
 		expect(hasPinEntry).toBe(false);
 	});

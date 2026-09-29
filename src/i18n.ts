@@ -87,9 +87,9 @@ const EN = {
 	clickToEditTitle:  'Click to edit title',
 	clickToEditFooter: 'Click to edit footer',
 
-	// Drag handles
-	dragReorderCol: 'Drag to reorder column',
-	dragReorderRow: 'Drag to reorder row',
+	// Reorder gesture hints
+	dragReorderCol: 'Ctrl/Cmd+drag to reorder column, or Alt+Shift+Left/Right',
+	dragReorderRow: 'Ctrl/Cmd+drag to reorder row, or Alt+Shift+Up/Down',
 
 	// Choice pill
 	changeValue: 'Change value',
@@ -144,7 +144,7 @@ const EN = {
 	aggCount: 'Count',
 	aggMore:  'More statistics',
 	clearAggregate:  'Remove this summary row',
-	dragReorderAgg:  'Drag to reorder summary rows',
+	dragReorderAgg:  'Ctrl/Cmd+drag to reorder summary rows',
 
 	// Views (table / kanban / calendar switcher)
 	views:            'Views',
@@ -181,7 +181,7 @@ const EN = {
 	viewSettings:  'View settings',
 	autoWidth:     'Auto width',
 	autoHeight:    'Auto height',
-	pinStatusBar:  'Pin status bar',
+	showStatusBar: 'Show status bar',
 	addTitle:      'Add title',
 	addFooter:     'Add footer',
 	titlePlaceholder:  'Title',
@@ -326,8 +326,8 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	clickToEditTitle:  '点击编辑标题',
 	clickToEditFooter: '点击编辑备注',
 
-	dragReorderCol: '拖拽调整列顺序',
-	dragReorderRow: '拖拽调整行顺序',
+	dragReorderCol: '按住 Ctrl/Cmd 拖拽调整列顺序，或 Alt+Shift+左右方向键',
+	dragReorderRow: '按住 Ctrl/Cmd 拖拽调整行顺序，或 Alt+Shift+上下方向键',
 
 	changeValue: '切换值',
 
@@ -349,6 +349,7 @@ const ZH: { [K in keyof typeof EN]: string } = {
 
 	autoFitAll: '自动调整所有列宽和行高',
 
+
 	zoomOut: '缩小',
 	zoomIn:  '放大',
 
@@ -369,7 +370,7 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	aggCount: '计数',
 	aggMore:  '更多统计',
 	clearAggregate:  '删除这一行统计',
-	dragReorderAgg:  '拖拽调整统计行顺序',
+	dragReorderAgg:  '按住 Ctrl/Cmd 拖拽调整统计行顺序',
 
 	views:            '视图',
 	defaultTableView: '表格',
@@ -401,7 +402,7 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	viewSettings:  '视图设置',
 	autoWidth:     '自动宽度',
 	autoHeight:    '自动高度',
-	pinStatusBar:  '常驻状态栏',
+	showStatusBar: '显示状态栏',
 	addTitle:      '添加标题',
 	addFooter:     '添加页脚',
 	titlePlaceholder:  '标题',

@@ -1,4 +1,4 @@
-import { SEL_TOTAL, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
+import { SEL_UNIT, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
 
 /**
  * `renderZoom.ts`'s `zoom` (CSS `zoom`, not `transform`) scales every
@@ -225,7 +225,7 @@ export function reserveSelectorLeftPad(root: HTMLElement): void {
 	const wrapper = root.querySelector<HTMLElement>('.bt-table-wrapper');
 	if (!wrapper) return;
 	const hasSelectors = !!root.querySelector('.bt-col-selector, .bt-row-selector');
-	const leftNeed = hasSelectors ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
+	const leftNeed = hasSelectors ? (SEL_UNIT + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
 	const zoom = measureZoomFactor(root);
 	const wr0 = wrapper.getBoundingClientRect();
 	const rr0 = root.getBoundingClientRect();
@@ -250,10 +250,7 @@ export function reserveSelectorLeftPad(root: HTMLElement): void {
  * (already in normal flow, so shell's own rect already includes it) or a
  * currently-VISIBLE hover-mode one (position:absolute, never contributing to
  * shell's box on its own — see renderer.ts's own updateOuterFrame for the
- * full reasoning). Also mirrors that function's two other consumers of the
- * same narrowed edge: a PINNED bar's own --sb-pinned-l/-w, and the width
- * handle's --of-r-gap (root-relative, so it alone needs /zoom — see
- * updateOuterFrame's own comment on both).
+ * full reasoning). Also mirrors the status bar's own --sb-pinned-l/-w.
  */
 export function applyOuterFrame(root: HTMLElement): void {
 	const shell = root.closest<HTMLElement>('.bt-render-root-shell');
@@ -270,16 +267,15 @@ export function applyOuterFrame(root: HTMLElement): void {
 	// kept in sync with that function.
 	const narrower = wr.width < rr.width - 0.5;
 	// left widens to cover the ctrl column/row selector's worst-case left
-	// extent, but only while they could actually be showing — same
-	// CTRL_COL_LEFT_GAP arithmetic reserveSelectorLeftPad above already uses
-	// (DOM presence, not a live rect read on those elements themselves), and
-	// kept in sync with renderer.ts's updateOuterFrame, whose own comment has
-	// the full "why not measure them live" reasoning.
-	const ctrlColEl = root.querySelector<HTMLElement>(':scope > .bt-ctrl-col');
+	// extent — no hover check, --bt-sel-pad-left reserves this room
+	// permanently now (reserveSelectorLeftPad), matching the right edge's
+	// own unconditional treatment below. Kept in sync with renderer.ts's
+	// updateOuterFrame.
+	// .bt-ctrl-col always exists (see renderer.ts's own creation comment),
+	// so this is unconditional too — no hover check.
 	const hasSelectors = !!root.querySelector(':scope > .bt-col-selector, :scope > .bt-row-selector');
-	const stripsShowing = !!ctrlColEl && (ctrlColEl.hasClass('is-locked') || shell.matches(':hover'));
-	const leftNeed = hasSelectors ? (SEL_TOTAL + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
-	const leftStripEdge = stripsShowing ? wr.left - leftNeed : wr.left;
+	const leftNeed = hasSelectors ? (SEL_UNIT + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
+	const leftStripEdge = wr.left - leftNeed;
 	const left = narrower ? leftStripEdge : rr.left;
 	// `right` is THE one answer to "where is the view's real right edge" —
 	// the width handle, the status bar's own box, and the frame border all
@@ -291,12 +287,10 @@ export function applyOuterFrame(root: HTMLElement): void {
 	// assumed it would be).
 	let right = narrower ? wr.right : rr.right;
 	const statusBar = shell.querySelector<HTMLElement>(':scope > .bt-status-bar');
-	const statusBarPinned = !!statusBar && !statusBar.hasClass('bt-status-mode-hover');
-	// The status bar's own left is wr.left (NOT `left` above), same reasoning
-	// as renderer.ts's updateOuterFrame — it has nothing to its own left that
-	// needs covering.
-	if (statusBar && statusBarPinned) {
-		const sbLeft = narrower ? wr.left : rr.left;
+	// A multi-sheet workbook's status bar shares the frame's left edge — see
+	// renderer.ts's updateOuterFrame.
+	if (statusBar) {
+		const sbLeft = left;
 		let sbRight = right;
 		// bt-measure-natural on BOTH the bar and statusTabs together — matches
 		// renderer.ts's updateOuterFrame (see its own comment for why measuring
@@ -320,20 +314,14 @@ export function applyOuterFrame(root: HTMLElement): void {
 			'--sb-pinned-w': `${sbRight - sbLeft}px`,
 		});
 	}
-	let bottom = rr.bottom;
-	if (statusBar) {
-		if (statusBarPinned) bottom = shellRect.bottom;
-		else if (statusBar.hasClass('bt-strip-visible')) bottom = Math.max(bottom, statusBar.getBoundingClientRect().bottom);
-	}
+	const bottom = statusBar ? shellRect.bottom : rr.bottom;
 	// Raw visual px, no zoom division — `.bt-outer-frame` lives in `shell`,
 	// which is never zoomed (see renderer.ts's own `shell` doc comment), same
 	// treatment as the status bar's own --sb-* properties.
-	frame.setCssProps({
+	shell.setCssProps({
 		'--of-l': `${left - shellRect.left}px`,
 		'--of-t': `${rr.top - shellRect.top}px`,
 		'--of-w': `${right - left}px`,
 		'--of-h': `${bottom - rr.top}px`,
 	});
-	const zoom = measureZoomFactor(root);
-	root.setCssProps({ '--of-r-gap': `${(rr.right - right) / zoom}px` });
 }
