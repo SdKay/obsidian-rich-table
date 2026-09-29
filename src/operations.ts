@@ -14,11 +14,13 @@ export type StructuralOpV2 =
 	| { type: 'insert-row';      afterRowId: string | null }
 	| { type: 'delete-row';      rowId: string }
 	| { type: 'move-row';        fromRowId: string; toRowId: string }
+	| { type: 'move-rows';       rowIds: string[]; beforeRowId: string | null }
 	| { type: 'hide-row';        rowId: string }
 	| { type: 'show-row-group';  rowIds: string[] }
 	| { type: 'insert-col';      afterColId: string | null }
 	| { type: 'delete-col';      colId: string }
 	| { type: 'move-col';        fromColId: string; toColId: string }
+	| { type: 'move-cols';       colIds: string[]; beforeColId: string | null }
 	| { type: 'hide-col';        colId: string }
 	| { type: 'show-col-group';  colIds: string[] }
 	| { type: 'merge-cells';     anchorRowId: string; anchorColId: string; endRowId: string; endColId: string }
@@ -193,6 +195,11 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			reanchorRowMerges(model, snapshots);
 			break;
 		}
+		case 'move-rows': {
+			const snapshots = moveBlock(model.rows, op.rowIds, op.beforeRowId, idx => snapshotRowMergesContaining(model, idx));
+			if (snapshots) reanchorRowMerges(model, snapshots);
+			break;
+		}
 		case 'hide-row': {
 			const row = model.rows.find(r => r.id === op.rowId);
 			if (row) row.hidden = true;
@@ -247,6 +254,11 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			const [col] = model.columns.splice(fromIdx, 1);
 			if (col) model.columns.splice(toIdx, 0, col);
 			reanchorColMerges(model, snapshots);
+			break;
+		}
+		case 'move-cols': {
+			const snapshots = moveBlock(model.columns, op.colIds, op.beforeColId, idx => snapshotColMergesContaining(model, idx));
+			if (snapshots) reanchorColMerges(model, snapshots);
 			break;
 		}
 		case 'hide-col': {
@@ -1229,6 +1241,29 @@ function splitMergedCellIntoCols(model: TableModelV2, covering: MergeRangeV2): v
 	}
 	extendStylesPastSplitCol(model, anchorColId, newCol.id);
 	duplicateCellStyle(model, anchorRowId, anchorColId, anchorRowId, newCol.id);
+}
+
+/** Moves the items named by `ids` (keeping their relative order) to just
+ *  before `beforeId` (null = the end), in place. Returns the merge snapshots
+ *  taken beforehand, or null when nothing moved. */
+function moveBlock<T extends { id: string }, S extends { merge: MergeRangeV2 }>(
+	items: T[], ids: string[], beforeId: string | null, snapshotAt: (idx: number) => S[],
+): S[] | null {
+	const moving = new Set(ids);
+	if (moving.size === 0 || (beforeId !== null && moving.has(beforeId))) return null;
+	if (beforeId !== null && !items.some(i => i.id === beforeId)) return null;
+	const block = items.filter(i => moving.has(i.id));
+	if (block.length === 0) return null;
+	const rest = items.filter(i => !moving.has(i.id));
+	const at = beforeId === null ? rest.length : rest.findIndex(i => i.id === beforeId);
+	const next = [...rest.slice(0, at), ...block, ...rest.slice(at)];
+	if (next.every((item, i) => item === items[i])) return null;
+	const snapshots = new Map<MergeRangeV2, S>();
+	items.forEach((item, idx) => {
+		if (moving.has(item.id)) for (const sn of snapshotAt(idx)) snapshots.set(sn.merge, sn);
+	});
+	items.splice(0, items.length, ...next);
+	return [...snapshots.values()];
 }
 
 interface RowMergeSnapshot { merge: MergeRangeV2; memberIds: string[] }

@@ -161,7 +161,7 @@
 
 ![类型列与样式演示](docs/demo-03-style.gif)
 
-**4 · 排序 & 行列操作** — 选中整行/整列后按住 Ctrl/Cmd 拖拽选择器，或按 Alt+Shift+方向键；双击弹出操作菜单
+**4 · 排序 & 行列操作** — 选中多行/多列后长按已选中的选择器并拖动，整块移动、其余行列自动让位；单行/单列也可按住 Ctrl/Cmd 拖拽或按 Alt+Shift+方向键；双击弹出操作菜单
 
 ![排序与操作演示](docs/demo-05-reorder.gif)
 
@@ -369,7 +369,7 @@ cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
   <td>合并单元格，以及把普通单元格拆成两行或两列——表头行也可以拆分，并向下与数据行合并</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
-<tr><td>重排行列——选中整行/整列后按住 Ctrl/Cmd 拖拽选择器，或按 Alt+Shift+方向键；拖拽调整宽高即固定，双击或 ⊞ 清空恢复为 auto（跟随内容）</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>重排行列——选中范围后长按已选中的选择器并拖动，整块移动（冻结区保持不动，合并单元格只能整体移动；存在隐藏行列或实时排序时不可用）；单行/单列也可按住 Ctrl/Cmd 拖拽或按 Alt+Shift+方向键；拖拽调整宽高即固定，双击或 ⊞ 清空恢复为 auto（跟随内容）</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>插入、隐藏、删除行列；悬停边缘出现 <b>+</b> 快捷条</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>冻结表头及前 N 行 / 前 N 列</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>一键转置——交换行与列</td><td align="center">✅</td><td align="center">—</td></tr>

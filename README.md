@@ -159,7 +159,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![Typed columns and style demo](docs/demo-03-style.gif)
 
-**4 · Reorder & row/column ops** — select a row/column, then Ctrl/Cmd+drag the selector strip or press Alt+Shift+Arrow; double-click for the ops menu
+**4 · Reorder & row/column ops** — select rows/columns, then long-press the selected strip and drag the block (the others slide aside), or Ctrl/Cmd+drag / Alt+Shift+Arrow for a single one; double-click for the ops menu
 
 ![Reorder and ops demo](docs/demo-05-reorder.gif)
 
@@ -366,7 +366,7 @@ Status: **✅** shipped · **🔜** planned. Priority reflects how well somethin
   <td>Merge cells, and split a plain cell into two rows or columns — including the header row, which can split and merge downward into data rows</td>
   <td align="center">✅</td><td align="center">—</td>
 </tr>
-<tr><td>Reorder rows / columns — Ctrl/Cmd+drag the selector strip, or Alt+Shift+Arrow on a selected row/column; drag to resize (fixes a size) or double-click / ⊞ to clear back to auto (tracks content)</td><td align="center">✅</td><td align="center">—</td></tr>
+<tr><td>Reorder rows / columns — select a range, long-press the selected strip and drag it as a block (frozen areas stay put, and a merged cell only moves as a whole; not offered with hidden rows/columns or live sort), or Ctrl/Cmd+drag / Alt+Shift+Arrow on a single row/column; drag to resize (fixes a size) or double-click / ⊞ to clear back to auto (tracks content)</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Insert, hide and delete rows / columns; hover an edge for <b>+</b> strips</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Freeze the header plus the first N rows / columns</td><td align="center">✅</td><td align="center">—</td></tr>
 <tr><td>Transpose in place — swap rows and columns</td><td align="center">✅</td><td align="center">—</td></tr>

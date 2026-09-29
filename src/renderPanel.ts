@@ -187,7 +187,7 @@ export function clampPanelToViewport(
 
 	let top = anchor.bottom + 4;
 	if (top + h > vh - gap) top = anchor.top - h - 4;      // flip above the anchor
-	if (top + h > vh - gap) top = vh - gap - h;            // still overflowing: pin to bottom edge
+	if (top < gap || top + h > vh - gap) top = vh - gap - h; // fits neither way: pin to the bottom edge, off the selector strip
 	top = Math.max(gap, top);
 
 	let left = anchor.left;

@@ -33,6 +33,8 @@ import { renderViewToolbar, buildViewSwitcherMenu } from './renderViews';
 import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
 import { applyFreeze } from './renderFreeze';
 import { ownCells, ownCols, ownRows } from './renderOwnScope';
+import { blockReorderBlocker, blockFloor, axisSpans } from './reorderPlan';
+import { liftBlock, type BlockLift } from './renderReorderDrag';
 import { canFreezeRows, canFreezeCols } from './operations';
 import { computeSelectionStats } from './renderStatusBar';
 
@@ -3351,15 +3353,96 @@ export async function renderTable(
 
 		// Ctrl/Cmd held on pointerdown routes the whole drag to the reorder path
 		// instead of range-selection — see reorderAxis's own declaration above.
+		// Long-press inside the CURRENT selection lifts the whole selected block
+		// (liftBlock); a press that moves or releases early falls back to the
+		// ordinary select-drag / click.
+		const LONG_PRESS_MS = 350, LONG_PRESS_SLOP = 4;
+		let pressed: { axis: 'col' | 'row'; idx: number; lo: number; hi: number; evt: PointerEvent; wrap: HTMLElement; timer: number } | null = null;
+		let lift: { axis: 'col' | 'row'; lo: number; hi: number; handle: BlockLift; wrap: HTMLElement } | null = null;
+		const pressPos = (axis: 'col' | 'row', e: PointerEvent) => axis === 'col' ? e.clientX : e.clientY;
+
+		const beginLift = () => {
+			if (!pressed) return;
+			const { axis, wrap, evt, lo, hi } = pressed;
+			pressed = null;
+			closeSelectorPanel();
+			const count = axis === 'col' ? model.columns.length : model.rows.length + 1;
+			lift = { axis, lo, hi, wrap, handle: liftBlock(table, axis, lo, hi, count, pressPos(axis, evt), zoom, blockFloor(model, axis), axisSpans(model, axis)) };
+			wrap.addClass('bt-reorder-armed');
+		};
+		const releasePress = (): typeof pressed => {
+			const p = pressed;
+			if (p) window.clearTimeout(p.timer);
+			pressed = null;
+			return p;
+		};
+		const pressAsSelectDrag = (p: NonNullable<typeof pressed>) => {
+			startDrag(p.axis, p.idx, p.evt, p.wrap);
+		};
+		const tryArmLift = (axis: 'col' | 'row', idx: number, e: PointerEvent, wrap: HTMLElement): boolean => {
+			if (selAxis !== axis || selDragging) return false;
+			const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
+			if (idx < lo || idx > hi) return false;
+			const blocker = blockReorderBlocker(model, axis, lo, hi);
+			if (blocker === 'header') return false;
+			e.stopPropagation(); e.preventDefault();
+			wrap.setPointerCapture(e.pointerId);
+			const onHold = blocker ? () => new Notice(t(`reorderBlocked_${blocker}`)) : beginLift;
+			pressed = { axis, idx, lo, hi, evt: e, wrap, timer: window.setTimeout(onHold, LONG_PRESS_MS) };
+			return true;
+		};
+		const movePress = (axis: 'col' | 'row', e: PointerEvent) => {
+			if (lift?.axis === axis) { lift.handle.move(pressPos(axis, e)); return; }
+			const p = pressed;
+			if (!p || p.axis !== axis) return;
+			if (Math.hypot(e.clientX - p.evt.clientX, e.clientY - p.evt.clientY) <= LONG_PRESS_SLOP) return;
+			releasePress();
+			pressAsSelectDrag(p);
+			moveDrag(axis, e);
+		};
+		const endPress = (axis: 'col' | 'row'): boolean => {
+			if (lift?.axis === axis) {
+				const { lo, hi, handle, wrap } = lift;
+				lift = null;
+				wrap.removeClass('bt-reorder-armed');
+				const slot = handle.drop();
+				if (slot !== null) {
+					const size = hi - lo + 1;
+					if (axis === 'col') {
+						const ids = Array.from({ length: size }, (_, k) => colId(model, lo + k));
+						void onStructuralOp({ type: 'move-cols', colIds: ids, beforeColId: slot < model.columns.length ? colId(model, slot) : null });
+					} else {
+						const ids = Array.from({ length: size }, (_, k) => rowId(model, lo + k));
+						void onStructuralOp({ type: 'move-rows', rowIds: ids, beforeRowId: slot <= model.rows.length ? rowId(model, slot) : null });
+					}
+					selI1 = slot > hi ? slot - size : slot;
+					selI2 = selI1 + size - 1;
+				}
+				return true;
+			}
+			const p = releasePress();
+			if (!p || p.axis !== axis) return false;
+			pressAsSelectDrag(p);
+			return false;
+		};
+		const cancelPress = (axis: 'col' | 'row') => {
+			releasePress();
+			if (lift?.axis !== axis) return;
+			lift.handle.cancel();
+			lift.wrap.removeClass('bt-reorder-armed');
+			lift = null;
+		};
+
 		colSel.addEventListener('pointerdown', (e: PointerEvent) => {
 			const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-idx]');
 			const idx = parseInt(cell?.dataset.idx ?? '-1');
 			if (idx < 0) return;
 			if (e.ctrlKey || e.metaKey) startReorder('col', idx, e, colSel);
-			else startDrag('col', idx, e, colSel);
+			else if (!tryArmLift('col', idx, e, colSel)) startDrag('col', idx, e, colSel);
 		});
-		colSel.addEventListener('pointermove', (e: PointerEvent) => { moveDrag('col', e); moveReorder('col', e); });
-		colSel.addEventListener('pointerup', () => { endDrag('col'); endReorder('col'); });
+		colSel.addEventListener('pointermove', (e: PointerEvent) => { movePress('col', e); moveDrag('col', e); moveReorder('col', e); });
+		colSel.addEventListener('pointerup', () => { if (endPress('col')) return; endDrag('col'); endReorder('col'); });
+		colSel.addEventListener('pointercancel', () => cancelPress('col'));
 
 		rowSel.addEventListener('pointerdown', (e: PointerEvent) => {
 			const aggCell = (e.target as HTMLElement).closest<HTMLElement>('[data-agg-idx]');
@@ -3371,10 +3454,11 @@ export async function renderTable(
 			const idx = parseInt(cell?.dataset.idx ?? '-1');
 			if (idx < 0) return;
 			if (e.ctrlKey || e.metaKey) startReorder('row', idx, e, rowSel);
-			else startDrag('row', idx, e, rowSel);
+			else if (!tryArmLift('row', idx, e, rowSel)) startDrag('row', idx, e, rowSel);
 		});
-		rowSel.addEventListener('pointermove', (e: PointerEvent) => { moveDrag('row', e); moveReorder('row', e); moveReorderAgg(e); });
-		rowSel.addEventListener('pointerup', () => { endDrag('row'); endReorder('row'); endReorderAgg(); });
+		rowSel.addEventListener('pointermove', (e: PointerEvent) => { movePress('row', e); moveDrag('row', e); moveReorder('row', e); moveReorderAgg(e); });
+		rowSel.addEventListener('pointerup', () => { if (endPress('row')) return; endDrag('row'); endReorder('row'); endReorderAgg(); });
+		rowSel.addEventListener('pointercancel', () => cancelPress('row'));
 
 		// Column/row resize changes cell geometry → reposition + rebuild selector strips
 		table.addEventListener('bt-layout-changed', () => {

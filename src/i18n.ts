@@ -88,8 +88,8 @@ const EN = {
 	clickToEditFooter: 'Click to edit footer',
 
 	// Reorder gesture hints
-	dragReorderCol: 'Ctrl/Cmd+drag to reorder column, or Alt+Shift+Left/Right',
-	dragReorderRow: 'Ctrl/Cmd+drag to reorder row, or Alt+Shift+Up/Down',
+	dragReorderCol: 'Long-press the selected columns and drag to reorder, or Ctrl/Cmd+drag, or Alt+Shift+Left/Right',
+	dragReorderRow: 'Long-press the selected rows and drag to reorder, or Ctrl/Cmd+drag, or Alt+Shift+Up/Down',
 
 	// Choice pill
 	changeValue: 'Change value',
@@ -145,6 +145,10 @@ const EN = {
 	aggMore:  'More statistics',
 	clearAggregate:  'Remove this summary row',
 	dragReorderAgg:  'Ctrl/Cmd+drag to reorder summary rows',
+	reorderBlocked_sort: 'Can\'t drag-reorder rows while a live sort is on',
+	reorderBlocked_freeze: 'Frozen rows/columns can\'t be dragged — unfreeze them first',
+	reorderBlocked_hidden: 'Can\'t drag-reorder while rows/columns are hidden',
+	reorderBlocked_merge: 'Select the whole merged cell to drag it',
 
 	// Views (table / kanban / calendar switcher)
 	views:            'Views',
@@ -326,8 +330,8 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	clickToEditTitle:  '点击编辑标题',
 	clickToEditFooter: '点击编辑备注',
 
-	dragReorderCol: '按住 Ctrl/Cmd 拖拽调整列顺序，或 Alt+Shift+左右方向键',
-	dragReorderRow: '按住 Ctrl/Cmd 拖拽调整行顺序，或 Alt+Shift+上下方向键',
+	dragReorderCol: '长按已选中的列并拖动调整顺序，或按住 Ctrl/Cmd 拖拽，或 Alt+Shift+左右方向键',
+	dragReorderRow: '长按已选中的行并拖动调整顺序，或按住 Ctrl/Cmd 拖拽，或 Alt+Shift+上下方向键',
 
 	changeValue: '切换值',
 
@@ -371,6 +375,10 @@ const ZH: { [K in keyof typeof EN]: string } = {
 	aggMore:  '更多统计',
 	clearAggregate:  '删除这一行统计',
 	dragReorderAgg:  '按住 Ctrl/Cmd 拖拽调整统计行顺序',
+	reorderBlocked_sort: '开启实时排序时无法拖动调序',
+	reorderBlocked_freeze: '冻结的行列无法拖动，请先取消冻结',
+	reorderBlocked_hidden: '存在隐藏行列时无法拖动调序',
+	reorderBlocked_merge: '选区截断了合并单元格，请完整选中后再拖动',
 
 	views:            '视图',
 	defaultTableView: '表格',

@@ -3188,6 +3188,22 @@
 	padding-left: var(--size-4-5);
 }
 
+/* ── Block reorder (long-press a selected row/column strip, then drag) ─────── */
+.bt-table.bt-reordering { user-select: none; }
+.bt-table.bt-reordering-row .bt-reorder-item { transform: translateY(var(--bt-reorder-shift, 0px)); }
+.bt-table.bt-reordering-col .bt-reorder-item { transform: translateX(var(--bt-reorder-shift, 0px)); }
+.bt-table.bt-reordering .bt-reorder-item:not(.bt-reorder-lifted),
+.bt-table.bt-reorder-settling .bt-reorder-item { transition: transform 0.16s ease; }
+.bt-table.bt-reordering .bt-reorder-lifted { position: relative; z-index: 6; }
+.bt-table.bt-reordering .bt-reorder-lifted > td,
+.bt-table.bt-reordering .bt-reorder-lifted > th,
+.bt-table.bt-reordering td.bt-reorder-lifted,
+.bt-table.bt-reordering th.bt-reorder-lifted {
+	background-color: var(--background-primary);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+.bt-col-selector.bt-reorder-armed, .bt-row-selector.bt-reorder-armed { cursor: grabbing; }
+
 
 /* ── Built-in themes (auto-generated — do not edit below) ──── */
 /* @theme-label-en: Academic 📐 */
