@@ -2365,12 +2365,16 @@ export async function renderTable(
 			setIcon(settingsBtn, 'settings-2');
 			settingsBtn.addEventListener('click', (evt: MouseEvent) => {
 				const menu = new Menu();
+				// Unchecking pins the size the view has right now, so it doesn't jump.
+				const wrapperRect = wrapper.getBoundingClientRect();
 				menu.addItem(i => i.setTitle(t('autoWidth')).setIcon('move-horizontal')
 					.setChecked(model.viewWidth === undefined)
-					.onClick(() => void onStructuralOp({ type: 'set-view-width', width: null })));
+					.onClick(() => void onStructuralOp({ type: 'set-view-width',
+						width: model.viewWidth === undefined ? Math.round(wrapperRect.width / zoom) : null })));
 				menu.addItem(i => i.setTitle(t('autoHeight')).setIcon('move-vertical')
 					.setChecked(model.viewHeight === undefined)
-					.onClick(() => void onStructuralOp({ type: 'set-view-height', height: null })));
+					.onClick(() => void onStructuralOp({ type: 'set-view-height',
+						height: model.viewHeight === undefined ? Math.round(wrapperRect.height / zoom) : null })));
 				// A 2+-sheet workbook always shows the bar (its tabs live there), so
 				// the toggle would do nothing — omitted rather than shown disabled.
 				if (!forceStatusBarPinned) {
