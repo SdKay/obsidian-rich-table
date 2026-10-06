@@ -20,7 +20,7 @@ import { copyRangeToClipboard, copyRangeAsMarkdown, parseHtmlTableWithMerges, pa
 import { enterLineEdit } from './renderEditMode';
 import { colMinWidth } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
-import { selectorAxisOffset, computeVisibleGeom as computeVisibleGeomPure, type VisibleGeom } from './renderGeometry';
+import { selectorAxisOffset, computeVisibleGeom as computeVisibleGeomPure, viewSpan, type VisibleGeom } from './renderGeometry';
 import { applyZoom, zoomFactor, renderZoomControl } from './renderZoom';
 import { bindScrollSync } from './renderScrollSync';
 import { type CellOpEntry, openCellPanel, buildAlignCellOp } from './renderPanel';
@@ -1667,83 +1667,24 @@ export async function renderTable(
 		if (rr.width === 0) return;
 		const shellRect = shell.getBoundingClientRect();
 		const wr = wrapper.getBoundingClientRect();
-		// `wrapper.hasClass('bt-view-fixed-w')`, not `typeof model.viewWidth ===
-		// 'number'` — the drag-resize handle below sets the CLASS live, on every
-		// pointermove, but only writes viewWidth back to the MODEL on release
-		// (see its own onUp). Reading the model here meant the frame only
-		// started narrowing on the drag AFTER the first one, once a render
-		// with the new model.viewWidth had actually happened — reported as
-		// "首次拖动调整宽度的时候，外边框没有跟着移动...之后再调整宽度的时候
-		// 外边框就跟着移动了". Matches renderGeometry.ts's applyOuterFrame,
-		// which already used the class for exactly this reason.
-		// Narrows to the wrapper's real box whenever it's genuinely narrower than
-		// root — no longer gated on a manual viewWidth, so an auto-width table's
-		// frame also hugs the table instead of always spanning the full page
-		// (reported: "auto宽度状态下view框宽度还是page宽度").
-		const narrower = wr.width < rr.width - 0.5;
 		const tableRect = table.getBoundingClientRect();
-		// left widens to cover the ctrl column/row selector's worst-case left
-		// extent (CTRL_COL_LEFT_GAP, already the exact constant their own
-		// --cc-left/--rs-left/--cs-left position math subtracts from wrapper's
-		// left edge — see positionCtrlCol/positionSelectors), but only while
-		// they could actually be showing — `shell.matches(':hover')` is a
-		// cheap style read, not a forced layout, so it's safe to check on
-		// every tick unlike the alternative below. A locked table's ctrl
-		// column is permanently visible regardless of hover (`.is-locked`'s
-		// own CSS) so it always needs the gap. This is a pure arithmetic
-		// derivation, not a live getBoundingClientRect() on those elements —
-		// an EARLIER version DID measure them live: this function is also a
-		// ResizeObserver callback firing on every CSS-zoom tick (the zoom
-		// slider sets root.style.zoom on every drag 'input' event), and
-		// forcing three extra layout reads on every one of those, while the
-		// browser was still mid-reflow, corrupted the *next* pointermove's
-		// own hit-testing (reported: the zoom slider itself ran away on a
-		// small drag).
-		// ctrlCol always exists (see its own creation comment) and
-		// --bt-sel-pad-left reserves its room permanently from first paint
-		// (reserveSelectorLeftPad) — no hover check, matching the right
-		// edge's own unconditional treatment below.
-		const leftStripEdge = wr.left - CTRL_COL_LEFT_GAP;
-		const left = narrower ? leftStripEdge : rr.left;
-		// `right` is THE one answer to "where is the view's real right edge" —
-		// the width handle, the status bar's own box, and the frame border
-		// all read this SAME value below, rather than each re-deriving their
-		// own version of "narrower ? wrapper's edge : root's edge". They used
-		// to: the handle tracked <table>'s own edge (to exclude addColBtn's
-		// reserved slot), and the status bar tracked wr.right directly — both
-		// silently assumed wrapper's right edge is always wherever <table>
-		// ends, which broke the instant something ELSE inside wrapper (a
-		// footer wider than the table, see .bt-table-footer) pushed wr.right
-		// past that point: the handle stranded itself to the left of
-		// addColBtn, and the status bar (gated on manual-width mode only)
-		// never moved at all (reported: "列宽把手没有贴着view右边界...它跑到列
-		// 增加按钮左侧...状态栏也没有移动到view框内，穿出去了"). wr.right is
-		// wrapper's own real box regardless of WHAT inside it is currently
-		// widest, so building everything off it directly is both simpler and
-		// correct for any future "something new can widen wrapper" case, not
-		// just the ones already known about.
-		let right = narrower ? wr.right : rr.right;
-		// The status bar shares the frame's left edge and must never be narrower
-		// than its own content (tabs, stats, zoom): measured with
-		// bt-measure-natural on both the bar and its tabs so nothing is squeezed.
-		// Skipped while the zoom slider is mid-drag — writing the bar's real
-		// width fights the native range input's own drag math; the slider's
-		// drag-end callback calls this once more to flush.
-		if (statusBar && statusTabs && !sliderDragging) {
-			const sbLeft = left;
-			let sbRight = right;
-			if (narrower) {
-				statusBar.addClass('bt-measure-natural');
-				statusTabs.addClass('bt-measure-natural');
-				const barNaturalWidth = statusBar.scrollWidth;
-				statusBar.removeClass('bt-measure-natural');
-				statusTabs.removeClass('bt-measure-natural');
-				sbRight = Math.min(rr.right, Math.max(sbRight, sbLeft + barNaturalWidth));
-				right = Math.max(right, sbRight);
-			}
+		// The bar's natural (unsqueezed) width, measured with the bar and its tabs
+		// both un-clipped; skipped while the zoom slider is mid-drag (writing the
+		// bar's real width fights the native range input's drag math — the
+		// slider's drag-end callback calls this once more to flush).
+		let barNatural: number | null = null;
+		if (statusBar && statusTabs && !sliderDragging && wr.width < rr.width - 0.5) {
+			statusBar.addClass('bt-measure-natural');
+			statusTabs.addClass('bt-measure-natural');
+			barNatural = statusBar.scrollWidth;
+			statusBar.removeClass('bt-measure-natural');
+			statusTabs.removeClass('bt-measure-natural');
+		}
+		const { left, right } = viewSpan(rr, wr, CTRL_COL_LEFT_GAP, barNatural);
+		if (statusBar && !sliderDragging) {
 			statusBar.setCssProps({
-				'--sb-pinned-l': `${sbLeft - shellRect.left}px`,
-				'--sb-pinned-w': `${sbRight - sbLeft}px`,
+				'--sb-pinned-l': `${left - shellRect.left}px`,
+				'--sb-pinned-w': `${right - left}px`,
 			});
 		}
 		const bottom = statusBar ? shellRect.bottom : rr.bottom;

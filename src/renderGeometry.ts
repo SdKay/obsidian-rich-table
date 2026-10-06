@@ -239,6 +239,27 @@ export function reserveSelectorLeftPad(root: HTMLElement): void {
 }
 
 /**
+ * The view's horizontal extent: the wrapper plus the left lane (toolbar +
+ * row selector) when the wrapper is narrower than root, else root's own
+ * width. When the status bar's natural width exceeds that, the view widens to
+ * fit it, taking the extra equally from both sides so the body stays
+ * centered inside the view (clamped to root).
+ */
+export function viewSpan(
+	rr: { left: number; right: number }, wr: { left: number; right: number },
+	leftLane: number, barNaturalWidth: number | null,
+): { left: number; right: number; narrower: boolean } {
+	const narrower = wr.right - wr.left < rr.right - rr.left - 0.5;
+	const left = narrower ? wr.left - leftLane : rr.left;
+	const right = narrower ? wr.right : rr.right;
+	if (!narrower || barNaturalWidth === null || barNaturalWidth <= right - left) return { left, right, narrower };
+	const width = Math.ceil(Math.min(barNaturalWidth, rr.right - rr.left));
+	// Whole pixels, so the bar's contents (track, thumb) don't land on half-pixel boundaries.
+	const start = Math.round(Math.max(rr.left, Math.min((left + right - width) / 2, rr.right - width)));
+	return { left: start, right: start + width, narrower };
+}
+
+/**
  * The initial, first-paint counterpart of renderer.ts's own closure-local
  * `updateOuterFrame` — same "must run post-swap, against a genuinely attached
  * tree" reasoning as reserveSelectorLeftPad above, and the same "standalone,
@@ -261,59 +282,25 @@ export function applyOuterFrame(root: HTMLElement): void {
 	if (rr.width === 0) return;
 	const shellRect = shell.getBoundingClientRect();
 	const wr = wrapper.getBoundingClientRect();
-	// Narrows whenever wrapper is genuinely narrower than root — no longer
-	// gated on a manual viewWidth, so an auto-width table's frame also hugs
-	// the table. See renderer.ts's updateOuterFrame for the full reasoning;
-	// kept in sync with that function.
-	const narrower = wr.width < rr.width - 0.5;
-	// left widens to cover the ctrl column/row selector's worst-case left
-	// extent — no hover check, --bt-sel-pad-left reserves this room
-	// permanently now (reserveSelectorLeftPad), matching the right edge's
-	// own unconditional treatment below. Kept in sync with renderer.ts's
-	// updateOuterFrame.
-	// .bt-ctrl-col always exists (see renderer.ts's own creation comment),
-	// so this is unconditional too — no hover check.
 	const hasSelectors = !!root.querySelector(':scope > .bt-col-selector, :scope > .bt-row-selector');
-	const leftNeed = hasSelectors ? (SEL_UNIT + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
-	const leftStripEdge = wr.left - leftNeed;
-	const left = narrower ? leftStripEdge : rr.left;
-	// `right` is THE one answer to "where is the view's real right edge" —
-	// the width handle, the status bar's own box, and the frame border all
-	// read this SAME value below. See renderer.ts's updateOuterFrame for the
-	// full reasoning (an earlier version had the handle and the status bar
-	// each re-derive their own version of wrapper's right edge, which broke
-	// the instant something else inside wrapper — e.g. a footer wider than
-	// the table — pushed wr.right past where either of their own derivations
-	// assumed it would be).
-	let right = narrower ? wr.right : rr.right;
+	const leftLane = hasSelectors ? (SEL_UNIT + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
 	const statusBar = shell.querySelector<HTMLElement>(':scope > .bt-status-bar');
-	// A multi-sheet workbook's status bar shares the frame's left edge — see
-	// renderer.ts's updateOuterFrame.
-	if (statusBar) {
-		const sbLeft = left;
-		let sbRight = right;
-		// bt-measure-natural on BOTH the bar and statusTabs together — matches
-		// renderer.ts's updateOuterFrame (see its own comment for why measuring
-		// only the tabs, off the bar's own already-narrowed current width, fed
-		// back a wrong estimate whenever the bar's OTHER fixed-size children
-		// were also being clipped by that same narrowing).
-		if (narrower) {
-			const statusTabs = statusBar.querySelector<HTMLElement>(':scope > .bt-status-tabs');
-			if (statusTabs) {
-				statusBar.addClass('bt-measure-natural');
-				statusTabs.addClass('bt-measure-natural');
-				const barNaturalWidth = statusBar.scrollWidth;
-				statusBar.removeClass('bt-measure-natural');
-				statusTabs.removeClass('bt-measure-natural');
-				sbRight = Math.min(rr.right, Math.max(sbRight, sbLeft + barNaturalWidth));
-				right = Math.max(right, sbRight);
-			}
-		}
-		statusBar.setCssProps({
-			'--sb-pinned-l': `${sbLeft - shellRect.left}px`,
-			'--sb-pinned-w': `${sbRight - sbLeft}px`,
-		});
+	const statusTabs = statusBar?.querySelector<HTMLElement>(':scope > .bt-status-tabs') ?? null;
+	// The bar's natural (unsqueezed) width, measured with the bar and its tabs
+	// both un-clipped; only needed when the view is narrower than root.
+	let barNatural: number | null = null;
+	if (statusBar && statusTabs && wr.width < rr.width - 0.5) {
+		statusBar.addClass('bt-measure-natural');
+		statusTabs.addClass('bt-measure-natural');
+		barNatural = statusBar.scrollWidth;
+		statusBar.removeClass('bt-measure-natural');
+		statusTabs.removeClass('bt-measure-natural');
 	}
+	const { left, right } = viewSpan(rr, wr, leftLane, barNatural);
+	statusBar?.setCssProps({
+		'--sb-pinned-l': `${left - shellRect.left}px`,
+		'--sb-pinned-w': `${right - left}px`,
+	});
 	const bottom = statusBar ? shellRect.bottom : rr.bottom;
 	// Raw visual px, no zoom division — `.bt-outer-frame` lives in `shell`,
 	// which is never zoomed (see renderer.ts's own `shell` doc comment), same
