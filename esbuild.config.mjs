@@ -276,11 +276,12 @@ function appendThemeCSS() {
 	if (files.length === 0) return;
 	const separator = '\n\n/* ── Built-in themes (auto-generated — do not edit below) ──── */\n';
 	// Strip any previously appended themes block before re-appending.
-	let base = fs.readFileSync('styles.css', 'utf8');
+	// CRLF normalized so the strip also works on a Windows (autocrlf) checkout.
+	let base = fs.readFileSync('styles.css', 'utf8').replace(/\r\n/g, '\n');
 	const cutIdx = base.indexOf(separator);
 	if (cutIdx !== -1) base = base.slice(0, cutIdx);
-	const css = base + separator + files.map(f => fs.readFileSync(path.join(themeDir, f), 'utf8')).join('\n');
-	fs.writeFileSync('styles.css', css);
+	const themes = files.map(f => fs.readFileSync(path.join(themeDir, f), 'utf8').replace(/\r\n/g, '\n')).join('\n');
+	fs.writeFileSync('styles.css', base + separator + themes);
 }
 
 if (gen) {
