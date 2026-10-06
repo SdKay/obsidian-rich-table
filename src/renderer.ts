@@ -30,7 +30,6 @@ import { isHoverPinned, onHoverUnpinned, showMenuPinned, getActiveCellMenu } fro
 import { renderKanbanBoard } from './renderKanban';
 import { renderCalendarBoard } from './renderCalendar';
 import { renderViewToolbar, buildViewSwitcherMenu } from './renderViews';
-import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
 import { applyFreeze } from './renderFreeze';
 import { ownCells, ownCols, ownRows } from './renderOwnScope';
 import { blockReorderBlocker, blockFloor, axisSpans } from './reorderPlan';
@@ -625,29 +624,6 @@ export async function renderTable(
 	// whole table, further right than it needed to be.
 	const CTRL_COL_LEFT_GAP = onStructuralOp ? (SEL_UNIT + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
 
-	// Obsidian's own block-hover toolbar (the "</>" edit-source button, shown
-	// while hovering ANY code block) floats at a fixed position over the
-	// top-right of the whole rendered block — outside this plugin's control
-	// entirely, since it's Obsidian's own chrome, not something in our DOM. A
-	// title pushes the table down clear of it; without one, the table's own
-	// top edge — where the column-selector strip and its resize handles live —
-	// sits right underneath it (reported with screenshots: the toolbar's own
-	// hit area covered the last column's resize seam, only reachable once the
-	// pointer moved past it). The extra amount is a guess from those
-	// screenshots, not a measurement against the real toolbar — this plugin's
-	// e2e harness has no way to render Obsidian's own chrome to verify against
-	// — so treat this as a starting point that may need retuning after a real
-	// check in the app, not a settled constant.
-	//
-	// This toolbar can only ever float over a genuine top-level code block —
-	// Obsidian's editor has no concept of a nested ```rich-table``` fence
-	// (rendered via a recursive MarkdownRenderer.render() call, see
-	// blockCacheKey.ts) as a hoverable block of its own, so the extra clearance
-	// is a real, objective non-issue for one, not a preference. isNested here
-	// answers exactly that fact — it does not otherwise change how a nested
-	// table renders (see reserveSelectorLeftPad/statusBarPinned above, which
-	// deliberately don't distinguish the two at all).
-	const isNested = !!cacheKey?.includes(NESTED_CACHE_KEY_MARKER);
 	// With a title, the SEL_UNIT portion of this reservation moves onto the
 	// title's own margin-bottom instead (see titleEl's own --bt-title-sel-pad,
 	// set right after it's created below) — root's padding-top only carries
@@ -658,11 +634,8 @@ export async function renderTable(
 	// where the column-selector strip actually anchors (just above the
 	// table), which the strip then rendered directly over — reported as the
 	// title being covered by the strip on hover.
-	// Two independent clearances, added together: the column-selector strip's
-	// own height (only exists with onStructuralOp) and Obsidian's floating
-	// edit-source toolbar (exists for any top-level block regardless of lock
-	// state). model.title moves both onto the title's own margin instead.
-	const TOP_STRIP_PAD = model.title ? 0 : (onStructuralOp ? SEL_UNIT : 0) + (isNested ? 0 : 28);
+	// The column-selector strip's height (only with onStructuralOp).
+	const TOP_STRIP_PAD = model.title ? 0 : (onStructuralOp ? SEL_UNIT : 0);
 
 	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
 	// its container flush-left, leaving no natural margin for the row selector +
