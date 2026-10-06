@@ -2689,7 +2689,15 @@ export async function renderTable(
 				// behavior for real overflow), but stops manufacturing UNNEEDED
 				// extra space just because a flex ancestor's max-content query
 				// left the door open.
-				if (pinnedTotal > 0) table.style.setProperty('width', `${pinnedTotal}px`);
+				// The columns' sum excludes the table's own border/padding, which a
+				// border-box table's width includes — pinning the bare sum squeezed the
+				// columns by that much on every rebuild.
+				const tcs = getComputedStyle(table);
+				const chrome = tcs.boxSizing === 'border-box'
+					? (parseFloat(tcs.borderLeftWidth) || 0) + (parseFloat(tcs.borderRightWidth) || 0)
+						+ (parseFloat(tcs.paddingLeft) || 0) + (parseFloat(tcs.paddingRight) || 0)
+					: 0;
+				if (pinnedTotal > 0) table.style.setProperty('width', `${pinnedTotal + chrome}px`);
 			}
 
 			// Column selector — cells positioned by --cl/--cw relative to the selector's
