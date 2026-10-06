@@ -31,3 +31,6 @@ export const SEL_CELL = SEL_UNIT - 4; // 18
  *    button width = SEL_CELL = 18  →  left = (tl - 9) - 9 = tl - 18
  *    18 = SEL_CELL                                                       */
 export const AUTOFIT_OFFSET = SEL_CELL; // 18
+
+/** Fixed gap between the view's top edge and its first content. Matches the 8px drag-handle zone on the opposite edge. */
+export const VIEW_EDGE_GAP = 8;

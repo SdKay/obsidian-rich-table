@@ -8,7 +8,7 @@ import { BUILTIN_THEMES } from './themes/index';
 import type { TableModelV2, AggType, CtrlColButtonId } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
-import { SEL_UNIT, SEL_CELL, AUTOFIT_OFFSET } from './selectorLayout';
+import { SEL_UNIT, SEL_CELL, AUTOFIT_OFFSET, VIEW_EDGE_GAP } from './selectorLayout';
 import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
 import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler, SnapshotKind } from './renderTypes';
 import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue, resolveMergeBounds, computeHeaderRowSpan } from './renderGridHelpers';
@@ -634,8 +634,10 @@ export async function renderTable(
 	// where the column-selector strip actually anchors (just above the
 	// table), which the strip then rendered directly over — reported as the
 	// title being covered by the strip on hover.
-	// The column-selector strip's height (only with onStructuralOp).
-	const TOP_STRIP_PAD = model.title ? 0 : (onStructuralOp ? SEL_UNIT : 0);
+	// The whole top reservation in one place: the fixed edge gap, plus the column-selector strip's height when there is no title.
+	const TOP_STRIP_PAD = VIEW_EDGE_GAP + (model.title ? 0 : (onStructuralOp ? SEL_UNIT : 0));
+	// Reserved from the very first paint and never collapsed (see restoreLayout), for every table including read-only ones.
+	root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
 
 	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
 	// its container flush-left, leaving no natural margin for the row selector +
@@ -3593,22 +3595,6 @@ export async function renderTable(
 		component?.register(onHoverUnpinned(() => {
 			if (!shell.matches(':hover')) { hideEdgeStrips(); hideSelectors(); }
 		}));
-		// Reserve the top strip padding from the very first paint, not just
-		// from the first hover onward, and never collapse it back (see
-		// restoreLayout's own comment) — TOP_STRIP_PAD itself already zeroes
-		// the column-selector's own share when onStructuralOp is absent
-		// (locked table), so this line needs no separate gate of its own —
-		// it still reserves Obsidian's edit-source-toolbar clearance, which a
-		// locked table needs exactly as much as an editable one. Sets
-		// --bt-sel-pad directly rather than calling the full prepareLayout()
-		// — that also computes --bt-sel-pad-left, which gets the same
-		// "reserve from first paint, never collapse" treatment now, just from
-		// a separate call site (tableBlock.ts's post-swap pass, alongside
-		// applyAutoColWidths) rather than here: unlike this flat constant, it
-		// needs real geometry (wrapper vs root) that a still-detached tree
-		// (this function always runs against one — see tableBlock.ts) can't
-		// provide.
-		root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
 		updateOuterFrame();
 	}
 

@@ -109,8 +109,13 @@
  * available width and visibly shifting the (centered) table sideways with
  * no change to its own size at all — reported as unacceptable regardless of
  * whether the strips themselves stay positioned correctly through it. */
-.bt-render-root.bt-has-strips {
+/* The whole top reservation (see TOP_STRIP_PAD in renderer.ts) comes from the one
+ * --bt-sel-pad value. Doubled class: a host stylesheet padding every div (e.g.
+ * `.markdown-rendered div`) must not win. Applies to every table, read-only too. */
+.bt-render-root.bt-render-root {
 	padding-top: var(--bt-sel-pad, 0px);
+}
+.bt-render-root.bt-has-strips {
 	/* --bt-sel-pad-left: JS sets it on hover ONLY when a wide/flush-left table has
 	 * no natural room to the left for the row selector + ctrl column (otherwise 0,
 	 * so centered/narrow tables don't shift). Shifts the table right just enough to
