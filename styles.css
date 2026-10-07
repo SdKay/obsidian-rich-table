@@ -1535,6 +1535,8 @@
 
 /* Style rule helpers */
 .bt-table .bt-bold   { font-weight: bold; }
+/* A host/theme link rule that sets its own font-weight must not stop a bold cell from bolding its links. */
+.bt-table.bt-table .bt-bold a { font-weight: inherit; }
 .bt-table .bt-italic { font-style: italic; }
 
 /* MarkdownRenderer wraps content in <div.markdown-rendered> inside each cell.
