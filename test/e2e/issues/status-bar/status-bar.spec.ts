@@ -80,6 +80,45 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 		}).toBe(Math.round(trackRect.x + trackRect.width));
 	});
 
+	test('the scrollbar track fills about half of the status bar height, so it is easy to grab', async ({ page, renderFull }) => {
+		await renderFull(WIDE);
+		const track = (await page.locator('.bt-status-scroll-track').boundingBox())!;
+		const thumb = (await page.locator('.bt-status-scroll-thumb').boundingBox())!;
+		const bar = (await page.locator('.bt-status-bar').boundingBox())!;
+		expect(track.height).toBeGreaterThanOrEqual(10);
+		expect(track.height).toBeLessThan(bar.height);
+		expect(thumb.height).toBeCloseTo(track.height, 0);
+	});
+
+	test('no resize handle overlaps the scrollbar track, so dragging the thumb never grabs the view edge', async ({ page, renderFull }) => {
+		await renderFull(WIDE);
+		const overlap = await page.evaluate(() => {
+			const t = document.querySelector('.bt-status-scroll-track')!.getBoundingClientRect();
+			return ['.bt-view-resize-r', '.bt-view-resize-b', '.bt-view-resize-br'].map(sel => {
+				const h = document.querySelector(sel)!.getBoundingClientRect();
+				return Math.min(t.right, h.right) - Math.max(t.left, h.left) > 0.5 && Math.min(t.bottom, h.bottom) - Math.max(t.top, h.top) > 0.5;
+			});
+		});
+		expect(overlap).toEqual([false, false, false]);
+	});
+
+	test('the scrollbar track is vertically centered with the other status bar content', async ({ page, renderFull }) => {
+		await renderFull(WIDE);
+		const mid = async (sel: string) => { const b = (await page.locator(sel).boundingBox())!; return b.y + b.height / 2; };
+		expect(Math.abs((await mid('.bt-status-scroll-track')) - (await mid('.bt-status-stats')))).toBeLessThanOrEqual(1);
+		expect(Math.abs((await mid('.bt-status-scroll-track')) - (await mid('.bt-status-zoom')))).toBeLessThanOrEqual(1);
+	});
+
+	test('pressing the empty track pages the table toward the pointer', async ({ page, renderFull }) => {
+		await renderFull(WIDE);
+		const wrapper = page.locator('.bt-table-wrapper');
+		const track = (await page.locator('.bt-status-scroll-track').boundingBox())!;
+		await page.mouse.click(track.x + track.width - 3, track.y + track.height / 2);
+		await expect.poll(() => wrapper.evaluate((el: HTMLElement) => el.scrollLeft)).toBeGreaterThan(0);
+		await page.mouse.click(track.x + 2, track.y + track.height / 2);
+		await expect.poll(() => wrapper.evaluate((el: HTMLElement) => el.scrollLeft)).toBe(0);
+	});
+
 	test('dragging the thumb sets wrapper.scrollLeft', async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const wrapper = page.locator('.bt-table-wrapper');

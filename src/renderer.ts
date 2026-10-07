@@ -1575,6 +1575,12 @@ export async function renderTable(
 
 		// Dragging the thumb sets wrapper.scrollLeft directly — this is pure local
 		// UI state (like scroll position itself), never written back to the model.
+		// A press on the empty track pages the view toward the pointer, like a native scrollbar.
+		statusScrollTrack.addEventListener('pointerdown', (e: PointerEvent) => {
+			if (e.target !== statusScrollTrack) return;
+			const dir = e.clientX < statusScrollThumb.getBoundingClientRect().left ? -1 : 1;
+			wrapper.scrollLeft += dir * wrapper.clientWidth * 0.9;
+		});
 		statusScrollThumb.addEventListener('pointerdown', (e: PointerEvent) => {
 			e.preventDefault();
 			statusScrollThumb.setPointerCapture(e.pointerId);

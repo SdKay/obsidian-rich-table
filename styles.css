@@ -2961,7 +2961,8 @@
 	flex: 0 0 var(--bt-status-scroll-w, 120px);
 	display: flex;
 	align-items: center;
-	padding: 0 var(--size-4-1);
+	/* Right padding clears the width/corner resize handles; the track stays vertically centered with the other status text. */
+	padding: 0 12px 0 var(--size-4-1);
 }
 /* No overflow to scroll — the thumb fills the whole track instead of
  * disappearing (renderer.ts's syncScrollThumb sets --bt-status-thumb-w to the
@@ -2975,9 +2976,10 @@
 .bt-status-scroll-track {
 	position: relative;
 	width: 100%;
-	height: 8px;
+	height: 11px;
 	background: var(--background-modifier-border);
-	border-radius: 4px;
+	border-radius: 5.5px;
+	cursor: pointer;
 }
 /* Width/left are JS-set (renderer.ts's syncScrollThumb), mirroring the real
  * wrapper's scrollLeft/scrollWidth/clientWidth — see the status-bar solution
@@ -2989,8 +2991,8 @@
 	height: 100%;
 	width: var(--bt-status-thumb-w, 30%);
 	background: var(--text-faint);
-	border-radius: 4px;
-	cursor: pointer;
+	border-radius: 5.5px;
+	cursor: grab;
 }
 .bt-status-scroll-thumb:hover {
 	background: var(--text-muted);
