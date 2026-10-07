@@ -23,15 +23,10 @@ await esbuild.build({
 	// Same as the plugin's own build: the insertable templates are imported as
 	// text, and the write-back layer reaches them through tableBlock.ts.
 	loader: { '.yaml': 'text' },
-	// tableBlock.ts's exportToXlsx require()s 'fs/promises' behind a
-	// Platform.isDesktop guard that's always false in this browser-only
-	// bundle (obsidian-shim.ts's Platform stub), so the call is genuinely
-	// unreachable here — but esbuild still refuses to BUNDLE a recognized
-	// Node builtin for a browser target even when unreachable at runtime
-	// (unlike 'electron', which esbuild doesn't recognize as a builtin at
-	// all and just leaves as a literal unresolved require() call). Marking
-	// it external leaves that same literal require('fs/promises') in the
-	// output instead of erroring at build time — exactly the outcome we want,
-	// since the guard means it's never actually called from a browser.
-	external: ['fs/promises'],
+	// nodeBridge.ts require()s 'fs/promises' and 'electron' for desktop-only
+	// paths behind Platform.isDesktop guards that are always false in this
+	// browser-only bundle (obsidian-shim.ts's Platform stub), so those calls
+	// are unreachable here. Marking them external leaves the literal require()
+	// in the output instead of failing the bundle, same as the plugin's own build.
+	external: ['fs/promises', 'electron'],
 });

@@ -327,7 +327,7 @@ export async function renderTable(
 	// user's own framing being obsidian-rich-view's fully-enclosed look as the
 	// bar to match. A `shell` child, not `root`'s, so it can extend down around
 	// a status bar that sits below root in normal flow.
-	const outerFrame = shell.createDiv({ cls: 'bt-outer-frame' });
+	shell.createDiv({ cls: 'bt-outer-frame' });
 
 	// Title — a child of `root`, not `container`, so it scales together with
 	// the table under zoom (the user's own framing: "标题也跟着一起缩放"). Was a

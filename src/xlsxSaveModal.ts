@@ -1,6 +1,7 @@
 import { App, FileSystemAdapter, Modal, Notice, Platform, Setting, TFile, normalizePath } from 'obsidian';
 import { t } from './i18n';
 import { FolderInputSuggest } from './folderInputSuggest';
+import { electronRemote } from './nodeBridge';
 
 /**
  * Prompts for a destination, then hands the result to `onExport`. Two
@@ -90,8 +91,7 @@ export class XlsxSaveModal extends Modal {
 	 *  error the user needs to see, just a shortcut that didn't pan out. */
 	private async browseAndExport(): Promise<void> {
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports -- same reasoning as tableBlock.ts's openXlsxFileExternally; a dynamic import() does not resolve in Obsidian's desktop runtime
-			const { remote } = require('electron') as typeof import('electron');
+			const remote = electronRemote();
 			const adapter = this.app.vault.adapter;
 			const vaultBasePath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined;
 			const defaultPath = vaultBasePath

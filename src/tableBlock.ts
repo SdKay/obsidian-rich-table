@@ -23,6 +23,7 @@ import { applyAutoColWidths, applyCodeLineHeightFix } from './renderAutofit';
 import { belongsToRoot } from './renderOwnScope';
 import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
 import { reserveSelectorLeftPad, applyOuterFrame } from './renderGeometry';
+import { electronShell, fsPromises } from './nodeBridge';
 import { openXlsxFilePicker } from './xlsxFilePicker';
 import { captureTablePng, captureTableSvg } from './tableSnapshot';
 import type { SnapshotKind } from './renderTypes';
@@ -1093,9 +1094,7 @@ export class TableBlock extends MarkdownRenderChild {
 			// which Electron's own CJS module system resolves natively — the
 			// same pattern used by every other Obsidian plugin that shells out
 			// to electron.
-			// eslint-disable-next-line @typescript-eslint/no-require-imports -- see comment above; a dynamic import() does not work here
-			const { shell } = require('electron') as typeof import('electron');
-			const err = await shell.openPath(fullPath);
+			const err = await electronShell().openPath(fullPath);
 			if (err) new Notice(`${t('openInDefaultAppFailed')}: ${err}`);
 		} catch (err) {
 			// Surface the real reason rather than a bare generic message —
@@ -1224,9 +1223,7 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  static check). */
 	private async writeXlsxExportToAbsolutePath(absolutePath: string, buffer: ArrayBuffer): Promise<void> {
 		if (!Platform.isDesktop) return;
-		// eslint-disable-next-line @typescript-eslint/no-require-imports -- same reasoning as openXlsxFileExternally's require('electron'); a dynamic import() does not resolve in Obsidian's desktop runtime. Bare 'fs/promises' (not 'node:fs/promises') — only the unprefixed form is in esbuild.config.mjs's builtinModules external list.
-		const fs = require('fs/promises') as typeof import('fs/promises');
-		await fs.writeFile(absolutePath, Buffer.from(buffer));
+		await fsPromises().writeFile(absolutePath, new Uint8Array(buffer));
 		new Notice(`${t('exportXlsxSaved')}: ${absolutePath}`);
 	}
 
