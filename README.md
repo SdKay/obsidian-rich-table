@@ -29,7 +29,6 @@
   <a href="#demo">Demo</a> ·
   <a href="#keyboard">Keyboard</a> ·
   <a href="#settings">Settings</a> ·
-  <a href="#features--roadmap">Features</a> ·
   <a href="#format">Format</a> ·
   <a href="#export-as-xlsx">Export as .xlsx</a> ·
   <a href="#external-xlsx">External .xlsx</a> ·
@@ -274,7 +273,7 @@ Notes:
 
 ## Formulas
 
-![键盘操作](docs/demo-formula.gif)
+![Formulas](docs/demo-formula.gif)
 
 Type `=` into a plain cell to start a formula — same trigger as Excel/Sheets. Supports arithmetic (`+ - * /`, parentheses) and `SUM` / `AVG` / `MIN` / `MAX` / `COUNT` over a range. While typing, click another cell to insert a reference, or drag to insert a range — no need to type a cell address by hand.
 
@@ -311,104 +310,6 @@ Open **Settings → Rich Table** to configure the plugin.
 | Left-toolbar buttons | All shown | Independently hide any of the left-toolbar (lock, auto-fit, theme, snapshot, export, …) buttons, separately for a locked table, an unlocked table, and a table backed by an external `.xlsx` file — each list only offers the buttons that actually apply to that scenario. |
 | Custom types | — | Define custom choice-column types with labels and colors. |
 | Changelog | — | Button to open the full release history at any time. It also opens automatically the first time the plugin loads after an update. |
-
----
-
-## Features & Roadmap
-
-Status: **✅** shipped · **🔜** planned. Priority reflects how well something fits the current design — **P1** fits as it stands · **P2** fits but needs a new piece inside it · **P3** needs architectural change, a heavy dependency, or more thought.
-
-<table>
-<thead>
-<tr><th align="left">Area</th><th align="left">Capability</th><th align="center">Status</th><th align="center">Priority</th></tr>
-</thead>
-<tbody>
-
-<tr>
-  <td rowspan="7"><b>Editing</b></td>
-  <td>Click any cell to edit — full Markdown, with <code>[[</code> triggering Obsidian's own file &amp; heading autocomplete</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>Keyboard navigation — arrow keys, Tab, type-to-replace (see <a href="#keyboard">Keyboard</a>)</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Cell, header and selection menus — insert / delete / hide rows &amp; columns, merge, style, column type. Alignment is layered: the column-selector strip's own menu sets a column's default (covers future rows too); a header cell or a data cell/range can override it just for itself, from the same "Align" flyout. A left-control-column "select all" button reaches the same range menu without dragging corner-to-corner by hand</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Excel / Sheets / Markdown-table clipboard — paste a range from Excel/Sheets or a pasted/typed Markdown table into a cell (or onto a header cell to convert the whole table's format), copy a selection back out (or as a Markdown table); merged cells round-trip both ways, and Ctrl+V works directly on a Selected cell/range, not just while editing</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Table title and footer notes — click to edit inline</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Insert a block without typing the fence — command palette (assign your own hotkey), ribbon icon, or editor right-click</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Convert an existing plain Markdown table to rich-table in place, from the editor right-click menu</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Cell comments</td><td align="center">🔜</td><td align="center">P2</td></tr>
-
-<tr>
-  <td rowspan="4"><b>Cell content</b></td>
-  <td>Full Obsidian Markdown — bold, italic, highlight, <code>[[wikilinks]]</code>, links, lists, multi-line</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>Math formulas — inline KaTeX, <code>$E=mc^2$</code></td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Images — <code>![](url)</code> or <code>![[local.png]]</code>, drag an edge to resize</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Another table embedded read-only in a cell</td><td align="center">🔜</td><td align="center">P3</td></tr>
-
-<tr>
-  <td rowspan="7"><b>Columns &amp; data</b></td>
-  <td>Typed columns — colored pills, click to pick; six built-in types plus your own in Settings</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>Filter rows by value — funnel icon on each column header</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Sort rows — one-time, or live with an indicator until cleared</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Summary rows — Sum / Average / Min / Max / Count over the visible rows</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Formulas — Excel-style <code>=SUM(A1:B3)</code>, arithmetic, click/drag to insert a reference</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Progress-bar column type</td><td align="center">🔜</td><td align="center">P1</td></tr>
-<tr><td>A chart of the table's own data</td><td align="center">🔜</td><td align="center">P2</td></tr>
-
-<tr>
-  <td rowspan="4"><b>Styling</b></td>
-  <td>Per-cell background, text color and font size — via panel or YAML</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>Row / column selector strips — hover to reveal, style a whole row or column at once</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Themes — <code>academic</code>, <code>grid</code>, <code>plain</code>; plus a few CSS variables for small tweaks (see <a href="#themes">Themes</a>)</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Conditional formatting — styles applied automatically from value rules</td><td align="center">🔜</td><td align="center">P2</td></tr>
-
-<tr>
-  <td rowspan="8"><b>Structure</b></td>
-  <td>Merge cells, and split a plain cell into two rows or columns — including the header row, which can split and merge downward into data rows</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>Reorder rows / columns — select a range, long-press the selected strip and drag it as a block (frozen areas stay put, and a merged cell only moves as a whole; not offered with hidden rows/columns or live sort), or Ctrl/Cmd+drag / Alt+Shift+Arrow on a single row/column; drag to resize (fixes a size) or double-click / ⊞ to clear back to auto (tracks content)</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Insert, hide and delete rows / columns; hover an edge for <b>+</b> strips</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Freeze the header plus the first N rows / columns</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Transpose in place — swap rows and columns</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Transposed starting template — row and column headers the same</td><td align="center">🔜</td><td align="center">P1</td></tr>
-<tr><td>Row grouping — collapsible groups</td><td align="center">🔜</td><td align="center">P3</td></tr>
-<tr><td>Nest a rich-table block inside a cell of another one — renders and edits fully in place</td><td align="center">✅</td><td align="center">—</td></tr>
-
-<tr>
-  <td rowspan="2"><b>Views</b></td>
-  <td>Kanban — lanes from any choice column; drag a card to change its value</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>Calendar — a month grid from any date column; drag an event to reschedule</td><td align="center">✅</td><td align="center">—</td></tr>
-
-<tr>
-  <td rowspan="2"><b>Multi-sheet</b></td>
-  <td>Workbooks — an Excel-style tab bar once a table has two or more sheets, each with its own columns, rows, styles and views</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>Tabs — click to switch, double-click to rename, drag to reorder, right-click for color / delete</td><td align="center">✅</td><td align="center">—</td></tr>
-
-<tr>
-  <td rowspan="8"><b>Whole table</b></td>
-  <td>Lock — 🔒 disables every graphical edit for that table</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>Collapse — hide the body, keeping the title and header row</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Status bar — row/column totals and, with a range selected, its size and sum/average; own scrollbar with an adjustable track; can be hidden from view settings (always shown for 2+ sheets); Shift+wheel scrolls horizontally</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Zoom — Excel-style −/slider/+ control in the status bar scales the whole table (content, images, cell sizes) 25%–400%, persisted per table</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Snapshot — export the current table as a sharp PNG (copy to clipboard, or save) or SVG, hover-only chrome excluded and the full table captured even if it's scrolled/bounded</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Export as <code>.xlsx</code> (see <a href="#export-as-xlsx">Export as .xlsx</a>) — a native (non xlsx-backed) table only; pick a destination folder/filename, every sheet if it's a workbook</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Back a table with an external <code>.xlsx</code> file (see <a href="#external-xlsx">External .xlsx</a>) — auto-refreshes on external edits, tracks the file if renamed, one click to open it in Excel/LibreOffice or convert to a plain table</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>Edit that external <code>.xlsx</code> file's cell content and merges directly from Obsidian (see <a href="#external-xlsx">External .xlsx</a>) — writes straight to the file, not the note; other edits (style, sort, rows/columns) stay view-only for now</td><td align="center">✅</td><td align="center">—</td></tr>
-
-</tbody>
-</table>
 
 ---
 
@@ -456,11 +357,9 @@ footer: "Updated weekly · click any cell to edit"
 ```
 ````
 
-The YAML front-matter is the **only data source** — everything is edited through the table UI, not by hand-editing this block.
-
 **Cell content** supports full Obsidian Markdown: `**bold**`, `*italic*`, `[[wikilinks]]`, `[links](url)`, `![images](url)`, `- lists`, `$math$`, `<br>` for line breaks.
 
-**`width`/`height` are both optional** — a column/row with no `width`/`height` field is "auto": it renders at whatever size fits its content and keeps tracking that as content changes. Setting either to a specific number (by dragging) pins it; double-clicking a resize handle or clicking **Auto-fit all** removes the field again rather than writing a computed number.
+**`width`/`height` are both optional** — a column/row with no `width`/`height` field is "auto": it renders at whatever size fits its content and keeps tracking that as content changes. Dragging a handle pins it to a specific size; double-clicking the handle or clicking **Auto-fit all** returns it to auto.
 
 **Style targets** (v2 ID-based):
 
@@ -474,8 +373,6 @@ The YAML front-matter is the **only data source** — everything is edited throu
 | `c_aaa:c_bbb` | Column range |
 | `r_aaa.c_aaa:r_bbb.c_bbb` | Rectangle range |
 | `r_xxx.c_yyy` | Single data cell |
-
-> **Upgrading from v0.x?** Tables written in the old format automatically show an upgrade banner. Click **Convert to new format** for one-click migration, or **Keep old format** to continue reading without converting.
 
 ---
 
@@ -546,7 +443,7 @@ Themes are purely visual — they never affect data or layout.
 | `--bt-cell-border` (+ `-right`/`-bottom`) | Gridlines between cells | `none` |
 | `--bt-cell-bg` | Data cell background | `transparent` |
 | `--bt-header-bg` | Header cell background | theme default |
-> A cell draws only its **right** and **bottom** edge; the table's own `--bt-border-outer` supplies the grid's top and left edge. `--bt-cell-border-top`/`-left` are still accepted but no longer contribute to gridlines — with one border per edge, drawing all four would render every internal line at double thickness. This is what lets frozen rows/columns keep their gridlines while scrolling.
+> A cell draws only its **right** and **bottom** edge; the table's own `--bt-border-outer` supplies the top and left. `--bt-cell-border-top`/`-left` have no effect on gridlines.
 
 ```css
 .bt-render-root {
@@ -557,14 +454,6 @@ Themes are purely visual — they never affect data or layout.
 ```
 
 A manually-set per-cell style (via the style panel) always wins over both themes and these variables.
-
----
-
-## Known Issues
-
-| Issue | Workaround |
-|-------|-----------|
-| **Reading mode: v2 tables remain interactive** — In Obsidian reading view, v2-format tables still show hover strips and allow editing. The `allowReadingViewEdit` setting has no effect on v2 tables. v1 tables (awaiting upgrade) are correctly read-only. | Use the 🔒 lock button to prevent accidental edits in reading mode. |
 
 ---
 

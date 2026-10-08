@@ -29,7 +29,6 @@
   <a href="#功能演示">演示</a> ·
   <a href="#键盘操作">键盘操作</a> ·
   <a href="#设置">设置</a> ·
-  <a href="#功能与计划">功能</a> ·
   <a href="#格式说明">格式</a> ·
   <a href="#导出为-xlsx">导出为 .xlsx</a> ·
   <a href="#外部-xlsx">外部 .xlsx</a> ·
@@ -277,7 +276,7 @@
 
 ## 公式
 
-![键盘操作](docs/demo-formula.gif)
+![公式](docs/demo-formula.gif)
 
 在普通单元格里输入 `=` 即可开始输入公式，与 Excel/Sheets 的习惯一致。支持四则运算（`+ - * /`，可加括号）和 `SUM`/`AVG`/`MIN`/`MAX`/`COUNT` 对一个范围求值。输入过程中点击另一个单元格即可插入引用，拖拽可插入一个范围，不需要手写单元格地址。
 
@@ -314,104 +313,6 @@ npx skills update
 | 左侧工具栏按钮 | 全部显示 | 分别为锁定表格、未锁定表格、引用外部 .xlsx 的表格独立隐藏任意左侧工具栏按钮（锁定、自动调整、主题、快照、导出……）——每个列表只会列出该场景下实际可用的按钮。 |
 | 自定义类型 | — | 自定义带标签和颜色的选择列类型。 |
 | 更新日志 | — | 随时打开完整的版本更新历史。插件更新后首次加载时也会自动弹出一次。 |
-
----
-
-## 功能与计划
-
-状态：**✅** 已发布 · **🔜** 计划中。优先级反映的是与当前设计的契合度——**P1** 用现有架构直接可做 · **P2** 契合架构，但需要在其中新增一块 · **P3** 需要改架构、引入重依赖，或还没想清楚。
-
-<table>
-<thead>
-<tr><th align="left">分类</th><th align="left">功能</th><th align="center">状态</th><th align="center">优先级</th></tr>
-</thead>
-<tbody>
-
-<tr>
-  <td rowspan="7"><b>编辑</b></td>
-  <td>点击任意单元格即可编辑，支持完整 Markdown；输入 <code>[[</code> 触发 Obsidian 原生的文件与标题补全</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>键盘操作——方向键、Tab、直接打字替换内容（详见<a href="#键盘操作">键盘操作</a>）</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>单元格 / 表头 / 选区菜单——插入、删除、隐藏行列，合并，设置样式，切换列类型。对齐分层生效：列选择器条带的菜单设置整列默认对齐（未来新增行也遵循）；表头单元格或某个数据单元格/选区可以从同一个"对齐"二级菜单单独覆盖，只影响自己。左侧控制列的"全选"按钮可以直接打开同一个选区菜单，不用手动从角到角拖拽</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>与 Excel / Sheets / Markdown 表格互通剪贴板——把一片区域或一个 Markdown 表格粘进单元格（粘到表头格可转换整表格式），也可把选区复制回去（或复制为 Markdown 表格）；合并单元格双向都能带过去，选中状态下 Ctrl+V 也能直接粘贴，不必先进入编辑态</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>表格标题与页脚注释——点击即可就地编辑</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>不用手打代码块——命令面板（可自己绑快捷键）、左侧功能栏图标，或编辑器右键菜单都能插入</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>把已有的普通 Markdown 表格原地转为 rich-table，编辑器右键菜单直接转换</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>单元格批注</td><td align="center">🔜</td><td align="center">P2</td></tr>
-
-<tr>
-  <td rowspan="4"><b>单元格内容</b></td>
-  <td>完整的 Obsidian Markdown——加粗、斜体、高亮、<code>[[双链]]</code>、外部链接、列表、多行</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>数学公式——行内 KaTeX，<code>$E=mc^2$</code></td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>图片——<code>![](url)</code> 或 <code>![[local.png]]</code>，拖动边缘缩放</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>在单元格里只读嵌入另一个表格</td><td align="center">🔜</td><td align="center">P3</td></tr>
-
-<tr>
-  <td rowspan="7"><b>列与数据</b></td>
-  <td>类型列——彩色胶囊标签，点击选值；6 种内置类型，也可在设置里自定义</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>按值筛选行——每个列标题上的漏斗图标</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>行排序——一次性排序，或实时排序并显示指示器直到取消</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>统计行——对当前可见行求 Sum / Average / Min / Max / Count</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>公式——Excel 风格的 <code>=SUM(A1:B3)</code>、四则运算、点击/拖拽插入引用</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>进度条列类型</td><td align="center">🔜</td><td align="center">P1</td></tr>
-<tr><td>把本表数据画成图表</td><td align="center">🔜</td><td align="center">P2</td></tr>
-
-<tr>
-  <td rowspan="4"><b>样式</b></td>
-  <td>单元格级的背景色、文字颜色与字号——面板设置或写在 YAML 里</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>行列选择器条带——悬停显现，一次给整行或整列设置样式</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>主题——<code>academic</code>、<code>grid</code>、<code>plain</code>；另有几个 CSS 变量用于小幅微调（详见<a href="#主题">主题</a>）</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>条件格式——按取值规则自动套用样式</td><td align="center">🔜</td><td align="center">P2</td></tr>
-
-<tr>
-  <td rowspan="8"><b>表格结构</b></td>
-  <td>合并单元格，以及把普通单元格拆成两行或两列——表头行也可以拆分，并向下与数据行合并</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>重排行列——选中范围后长按已选中的选择器并拖动，整块移动（冻结区保持不动，合并单元格只能整体移动；存在隐藏行列或实时排序时不可用）；单行/单列也可按住 Ctrl/Cmd 拖拽或按 Alt+Shift+方向键；拖拽调整宽高即固定，双击或 ⊞ 清空恢复为 auto（跟随内容）</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>插入、隐藏、删除行列；悬停边缘出现 <b>+</b> 快捷条</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>冻结表头及前 N 行 / 前 N 列</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>一键转置——交换行与列</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>转置起始模板——行、列表头内容一致</td><td align="center">🔜</td><td align="center">P1</td></tr>
-<tr><td>行分组——可折叠分组</td><td align="center">🔜</td><td align="center">P3</td></tr>
-<tr><td>在单元格中嵌套另一个 rich-table 代码块——原地完整渲染并可交互编辑</td><td align="center">✅</td><td align="center">—</td></tr>
-
-<tr>
-  <td rowspan="2"><b>视图</b></td>
-  <td>看板——按任意选择类型的列分组成泳道，拖动卡片即改变该列取值</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>日历——按任意日期列排进月视图，拖动事件即改期</td><td align="center">✅</td><td align="center">—</td></tr>
-
-<tr>
-  <td rowspan="2"><b>多表工作簿</b></td>
-  <td>工作簿——表格有两个以上 sheet 时底部出现 Excel 式标签栏，每个 sheet 各有自己的列、行、样式与视图</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>标签页——单击切换，双击重命名，拖拽重排，右键设置颜色 / 删除</td><td align="center">✅</td><td align="center">—</td></tr>
-
-<tr>
-  <td rowspan="8"><b>整表操作</b></td>
-  <td>锁定——🔒 关闭该表格的所有图形化编辑</td>
-  <td align="center">✅</td><td align="center">—</td>
-</tr>
-<tr><td>折叠——隐藏表体，保留标题与表头行</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>状态栏——显示行列总数，选中范围时显示大小和求和/平均值；自带滚动条可拖拽调整占位宽度；可在视图设置中隐藏（多 sheet 工作簿始终显示）；Shift+滚轮可横向滚动</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>缩放——状态栏里仿 Excel 的 −/滑块/+ 控件，等比例缩放整张表格（内容、图片、单元格尺寸），范围 25%–400%，随表格保存</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>生成快照——把当前表格导出成清晰的 PNG（复制到剪贴板或保存）或 SVG，不包含 hover 才显示的界面元素，即便表格被滚动/限高也会导出完整内容</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>导出为 <code>.xlsx</code>（见<a href="#导出为-xlsx">导出为 .xlsx</a>）——仅限原生（非引用外部文件）表格；可选目标文件夹/文件名，工作簿会导出全部 sheet</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>让表格对应一份外部 <code>.xlsx</code> 文件（见<a href="#外部-xlsx">外部 .xlsx</a>）——文件在外部被修改会自动刷新，改名/移动也会自动跟踪，一键用默认程序打开或转换为普通表格</td><td align="center">✅</td><td align="center">—</td></tr>
-<tr><td>直接在 Obsidian 里编辑那份外部 <code>.xlsx</code> 文件的单元格内容和合并（见<a href="#外部-xlsx">外部 .xlsx</a>）——直接写回文件本身，不经过笔记；样式/排序/行列等其它编辑暂不支持</td><td align="center">✅</td><td align="center">—</td></tr>
-
-</tbody>
-</table>
 
 ---
 
@@ -459,11 +360,9 @@ footer: "每周更新 · 点击任意单元格即可编辑"
 ```
 ````
 
-YAML 头部是**唯一的数据来源**——所有编辑都通过表格界面完成，不需要（也不应该）手动修改这段代码块。
-
 **单元格内容**支持完整 Obsidian Markdown：`**加粗**`、`*斜体*`、`[[双链]]`、`[链接](url)`、`![图片](url)`、`- 列表项`、`$数学公式$`、`<br>` 换行。
 
-**`width`/`height` 都是可选字段**——某一列/行没有 `width`/`height` 字段即为"auto"：渲染时按内容自动撑开宽高，且内容变化时持续跟随调整。手动拖拽调整为具体数值即为固定；双击调整手柄或点击"一键自适应"会删除该字段而不是写入一个计算出来的数值，使其恢复为 auto。
+**`width`/`height` 都是可选字段**——某一列/行没有 `width`/`height` 字段即为"auto"：渲染时按内容自动撑开宽高，且内容变化时持续跟随调整。拖拽调整手柄即固定为具体大小；双击手柄或点击"一键自适应"可恢复为 auto。
 
 **样式 target**（v2 ID 格式）：
 
@@ -477,8 +376,6 @@ YAML 头部是**唯一的数据来源**——所有编辑都通过表格界面�
 | `c_aaa:c_bbb` | 列范围 |
 | `r_aaa.c_aaa:r_bbb.c_bbb` | 矩形范围 |
 | `r_xxx.c_yyy` | 单个数据格 |
-
-> **从 v0.x 升级？** 旧格式表格会自动显示升级提示横幅，点击**转换到新版格式**一键迁移，或点击**继续使用旧版**保持原样只读浏览。
 
 ---
 
@@ -548,7 +445,7 @@ theme: plain      # 彩虹渐变表头 + 动态边框
 | `--bt-cell-border`（及 `-right`/`-bottom`） | 单元格之间的网格线 | `none` |
 | `--bt-cell-bg` | 数据单元格背景 | `transparent` |
 | `--bt-header-bg` | 表头单元格背景 | 随主题默认值 |
-> 每个单元格只画自己的**右边**和**下边**，网格最上和最左那条边由表格自身的 `--bt-border-outer` 提供。`--bt-cell-border-top`/`-left` 仍然接受，但不再参与网格线绘制 —— 一条边只由一个单元格画，四边都画会让每条内部线变成双倍粗。冻结行/列在滚动时能保住网格线，靠的就是这一点。
+> 每个单元格只画自己的**右边**和**下边**，网格最上和最左那条边由表格自身的 `--bt-border-outer` 提供。`--bt-cell-border-top`/`-left` 对网格线不再生效。
 
 ```css
 .bt-render-root {
@@ -559,14 +456,6 @@ theme: plain      # 彩虹渐变表头 + 动态边框
 ```
 
 通过样式面板手动设置的单元格样式，始终优先于主题和这些变量。
-
----
-
-## 已知问题
-
-| 问题 | 临时方案 |
-|------|---------|
-| **阅读模式下 v2 表格仍可交互** — 在 Obsidian 阅读视图中，v2 格式的表格仍会显示 hover 条带并允许编辑，`allowReadingViewEdit` 设置对 v2 表格无效。v1 旧格式表格（待升级状态）的阅读模式限制正常。 | 使用 🔒 锁定按钮防止在阅读模式下误编辑。 |
 
 ---
 
