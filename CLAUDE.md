@@ -47,7 +47,7 @@ A block is user content in people's notes; breaking it is data loss.
 - A change that alters how existing fields are interpreted, or that an old parser would misread, needs a `CURRENT_TABLE_VERSION` bump plus a migration in `src/migrations` (the chain runner needs only a new entry).
 - A table written with a newer version is refused with a banner rather than half-parsed; an older one renders read-only with an upgrade banner.
 - Prefer a discriminated-union extension (scalar vs object) over pre-generalizing a field.
-- **Any change to the code block's fields (add, remove, rename, or change what a field means) must update `SKILL.md` in the same commit.** It is the agent-facing format reference; a stale one makes agents write blocks the plugin misreads. Update the field's section, the examples that use it, and the style-target reference if targets changed. Pure UI changes that leave the block untouched do not need it.
+- **Any change to the code block's fields (add, remove, rename, or change what a field means) must update the skill in `skills/obsidian-rich-table/` in the same commit.** It is the agent-facing format reference; a stale one makes agents write blocks the plugin misreads. Core fields live in `SKILL.md`; the rest are in `references/` (formulas, display fields, workbook/xlsx, style targets, cell content, examples, themes). Update the field's section, the examples that use it, and the style-target reference if targets changed, and keep the index table in `SKILL.md` in step when a field moves or is added. Pure UI changes that leave the block untouched do not need it.
 
 ## Themes and styles
 
@@ -84,7 +84,7 @@ A block is user content in people's notes; breaking it is data loss.
 - **Derive edge cases fully.** When a feature has a symmetry or invertibility property, derive every case from it instead of defaulting to "drop it", and check against a concrete example from the user.
 - **Diagnose with evidence.** After two failed fixes for timing or event-order bugs, stop theorising and add temporary logging; do not stack unverified fixes on unverified fixes.
 - **Verify before claiming.** For anything that cannot be exercised in the test harness (real Obsidian behaviour), say so and ask for confirmation. Do not record a fix's outcome in docs until it is confirmed.
-- **Docs follow code.** User-visible changes update `README.md` and `README_CN.md` in the same commit, and code block changes also update `SKILL.md` (see above); new interactions may need the insertable template (`src/templates`) updated; remind about re-recording demo GIFs when an interaction changes substantially.
+- **Docs follow code.** User-visible changes update `README.md` and `README_CN.md` in the same commit, and code block changes also update the skill (see above); new interactions may need the insertable template (`src/templates`) updated; remind about re-recording demo GIFs when an interaction changes substantially.
 
 ## Commits
 

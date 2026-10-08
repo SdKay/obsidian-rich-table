@@ -287,11 +287,17 @@
 
 ## Claude Code Skill
 
-仓库中附带了 [`SKILL.md`](SKILL.md)，可与 [Claude Code](https://claude.ai/code) 配合使用。安装后，Claude agent 可以直接在 vault 中创建和修改 `rich-table` 块——添加行、设置样式、定义合并——无需记忆语法。
+仓库中附带了一个 [skill](skills/obsidian-rich-table/SKILL.md)，可与 [Claude Code](https://claude.ai/code) 等 AI 编程助手配合使用。安装后，agent 可以直接在 vault 中创建和修改 `rich-table` 块——添加行、设置样式、定义合并——无需记忆语法。
 
 ```bash
-cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
+# 安装到全局（-g），目标为 Claude Code
+npx skills add SdKay/obsidian-rich-table -g -a claude-code
+
+# 之后更新到新版本
+npx skills update
 ```
+
+不加 `-g` 则只安装到当前项目。手动安装：把 `skills/obsidian-rich-table` 文件夹复制到 `~/.claude/skills/`。
 
 之后告诉 Claude："在我的笔记里用 rich-table 创建一个项目看板"，它会自动生成对应的代码块。
 

@@ -284,11 +284,17 @@ A formula follows the row/column it references, not its position, so inserting o
 
 ## Claude Code Skill
 
-A [`SKILL.md`](SKILL.md) is included for use with [Claude Code](https://claude.ai/code). Once installed, Claude agents can create and modify `rich-table` blocks directly in your vault — adding rows, applying styles, defining merges — without you having to remember the syntax.
+A [skill](skills/obsidian-rich-table/SKILL.md) is included for AI coding agents such as [Claude Code](https://claude.ai/code). Once installed, agents can create and modify `rich-table` blocks directly in your vault — adding rows, applying styles, defining merges — without you having to remember the syntax.
 
 ```bash
-cp SKILL.md ~/.claude/skills/rich-table/SKILL.md
+# install for all your projects (-g), into Claude Code
+npx skills add SdKay/obsidian-rich-table -g -a claude-code
+
+# later, to pick up newer versions
+npx skills update
 ```
+
+Omit `-g` to install into the current project only. To install by hand, copy the `skills/obsidian-rich-table` folder into `~/.claude/skills/`.
 
 Then ask Claude: *"Create a project tracker table in my note using rich-table"*.
 
