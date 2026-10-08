@@ -9,6 +9,20 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.4.2", date: "2026-10-07", changes: [
+		"fix: links inside a bold cell were not bold",
+		"fix: make the status bar scrollbar thicker and easier to grab, and let a click on its track page the view",
+		"fix: a table narrower than the status bar is centered in its view instead of sitting off to one side",
+		"fix: keep a fixed gap above the view's first content, with or without a title",
+		"fix: untitled table no longer reserves extra blank space above the body",
+		"fix: building on a CRLF checkout appended the theme CSS twice",
+		"fix: auto-width table shrank a little on every hover when the table has a border or padding",
+		"feat: long-press a selected row/column strip to drag the whole block, with the others sliding aside",
+		"fix: pasting an image wikilink into a cell kept only the file name",
+		"fix: tables stayed editable in reading view when the setting was off",
+		"fix: auto width/height in view settings can now be unchecked to pin the current size",
+		"feat: unify left/right symmetry across toolbar, selectors, scrollbars, and outer frame",
+	] },
 	{ version: "1.4.1", date: "2026-09-26", changes: [
 		"fix: footer Shift+Enter matched cell convention, and capped footer width to the table",
 		"fix: view-width resize handle and outer frame stayed at page width in auto mode",

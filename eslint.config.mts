@@ -9,6 +9,7 @@ export default defineConfig(
 		'tmp',
 		'test',
 		'esbuild.config.mjs',
+		'changelog-gen.mjs',
 		'vitest.config.ts',
 		'playwright.config.ts',
 		'version-bump.mjs',

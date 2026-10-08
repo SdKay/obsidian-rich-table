@@ -32,6 +32,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The committed changelog must be what a build from this tag produces; if not,
+      # the released main.js differs from the source it claims to be built from.
+      - name: Verify the committed changelog matches the build
+        run: git diff --exit-code -- src/changelog/generated.ts
+
       - name: Generate changelog
         id: changelog
         run: |
