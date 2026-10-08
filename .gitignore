@@ -38,7 +38,5 @@ tmp/
 # CodeGraph index (local, machine-specific)
 /.codegraph/
 
-# local Claude config (contains personal vault paths)
-CLAUDE.md
 # Windows Alternate Data Streams
 *:*
