@@ -359,6 +359,8 @@ footer: "Updated weekly · click any cell to edit"
 
 **Cell content** supports full Obsidian Markdown: `**bold**`, `*italic*`, `[[wikilinks]]`, `[links](url)`, `![images](url)`, `- lists`, `$math$`, `<br>` for line breaks.
 
+While editing a cell, right-click for **Cut / Copy / Paste / Select all** and **Highlight** — pick a color (red, orange, yellow, green, blue, purple) or the default, and the selection is wrapped as `==text==` / `==🔴text==`. Picking the same highlight again removes it; a different color recolors it.
+
 **`width`/`height` are both optional** — a column/row with no `width`/`height` field is "auto": it renders at whatever size fits its content and keeps tracking that as content changes. Dragging a handle pins it to a specific size; double-clicking the handle or clicking **Auto-fit all** returns it to auto.
 
 **Style targets** (v2 ID-based):

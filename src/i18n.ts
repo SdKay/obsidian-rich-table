@@ -196,6 +196,19 @@ const EN = {
 	insertRichTableBlock: 'Insert rich-table block',
 	convertToRichTable: 'Convert to rich-table',
 
+	// Cell editor context menu
+	menuCut: 'Cut',
+	menuCopy: 'Copy',
+	menuPaste: 'Paste',
+	menuSelectAll: 'Select all',
+	menuHighlight: 'Highlight',
+	highlightRed: 'Red',
+	highlightOrange: 'Orange',
+	highlightYellow: 'Yellow',
+	highlightGreen: 'Green',
+	highlightBlue: 'Blue',
+	highlightPurple: 'Purple',
+
 	// Settings tab
 	settingAllowReadingViewEditName: 'Allow editing in reading view',
 	settingAllowReadingViewEditDesc:
@@ -418,6 +431,18 @@ const ZH: { [K in keyof typeof EN]: string } = {
 
 	insertRichTableBlock: '插入 Rich Table',
 	convertToRichTable: '转为 Rich Table',
+
+	menuCut: '剪切',
+	menuCopy: '复制',
+	menuPaste: '粘贴',
+	menuSelectAll: '全选',
+	menuHighlight: '高亮',
+	highlightRed: '红色',
+	highlightOrange: '橙色',
+	highlightYellow: '黄色',
+	highlightGreen: '绿色',
+	highlightBlue: '蓝色',
+	highlightPurple: '紫色',
 
 	settingAllowReadingViewEditName: '允许在阅读模式下编辑',
 	settingAllowReadingViewEditDesc:

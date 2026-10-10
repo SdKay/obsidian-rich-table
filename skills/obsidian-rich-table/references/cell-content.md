@@ -10,7 +10,7 @@ Cell values are plain strings rendered by Obsidian's `MarkdownRenderer`. Support
 |---------|---------|
 | Plain text | `Hello world` |
 | Bold / italic | `**bold** · *italic* · ***both***` |
-| Highlight | `==highlight==` |
+| Highlight | `==highlight==` · colored: `==🔴red==` (🔴 🟠 🟡 🟢 🔵 🟣 right after the opening `==`) |
 | Wikilink | `[[Note title]]` |
 | External link | `[label](https://example.com)` |
 | Image | `![](https://example.com/img.png)` |

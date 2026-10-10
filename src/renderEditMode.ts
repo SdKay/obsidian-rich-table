@@ -5,7 +5,11 @@ import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
 import type { TableModelV2 } from './model';
 import { labelFormulaToIds } from './formulaLabel';
 import { parseMarkdownPipeTable, parseHtmlTableWithMerges } from './renderClipboard';
+import { bindEditorContextMenu } from './renderEditorMenu';
 import { growColLiveForTextEdit, captureColWidthForTextEdit } from './renderAutofit';
+
+/** A leading `==` is a highlight, not a formula. */
+const isFormulaText = (s: string) => s.startsWith('=') && !s.startsWith('==');
 
 /**
  * Bundles everything formula-mode editing needs, so enterEditMode's already-
@@ -338,14 +342,16 @@ export function enterEditMode(
 	// already starts with "=", converted to friendly-label form by the
 	// caller) — start in formula mode immediately, don't wait for an input
 	// event that will never fire.
-	if ((initialText ?? rawValue).startsWith('=')) enterFormulaMode();
+	if (isFormulaText(initialText ?? rawValue)) enterFormulaMode();
 
 	// Fresh formula: the FIRST character typed becomes "=". Checking the
 	// input event (not keydown) means this also covers the seedChar path
 	// (typing while Selected) and a manual click-then-type into an empty
 	// cell — both land here as "content is now exactly '='".
 	editor.addEventListener('input', () => {
-		if (!inFormulaMode && editor.textContent === '=') enterFormulaMode();
+		const text = editor.textContent ?? '';
+		if (!inFormulaMode && text === '=') enterFormulaMode();
+		else if (inFormulaMode && text.startsWith('==')) exitFormulaMode();
 	});
 
 	const grow = () => growColLiveForTextEdit(el, editor, zoom);
@@ -388,7 +394,7 @@ export function enterEditMode(
 			if (move) onEditNavigate?.(rowIdx, colIdx, move);
 			if (inFormulaMode && formulaHooks) {
 				exitFormulaMode();
-				if (newValue.startsWith('=') && newValue !== '=') {
+				if (isFormulaText(newValue) && newValue !== '=') {
 					const idsFormula = labelFormulaToIds(formulaHooks.model, newValue);
 					void formulaHooks.onStructuralOp({
 						type: 'set-cell-formula', rowId: formulaHooks.rowId, colId: formulaHooks.colId, formula: idsFormula,
@@ -410,8 +416,11 @@ export function enterEditMode(
 		});
 	};
 
+	// The right-click menu takes focus from the editor; that blur is not a commit.
+	let menuOpen = false;
 	/** Wrapper so a FocusEvent is never passed as save()'s `move` argument. */
-	const onBlur = () => save();
+	const onBlur = () => { if (!menuOpen) save(); };
+	bindEditorContextMenu(editor, open => { menuOpen = open; });
 
 	const cancel = (toSelected = false) => {
 		if (committed) return;
