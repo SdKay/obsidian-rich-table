@@ -51,11 +51,17 @@ A block is user content in people's notes; breaking it is data loss.
 
 ## Themes and styles
 
-- A theme is `src/themes/*.css` with `@theme-label-en` and `@theme-label-zh` comments; it is auto-discovered. Never edit `src/themes/generated.ts` or `src/templates/generated.ts`; they are produced by the build.
+- A theme is `src/themes/*.css` with an `@theme-label-en` comment (plus optional `@theme-label-<lang>`); it is auto-discovered. Never edit `src/themes/generated.ts` or `src/templates/generated.ts`; they are produced by the build.
 - Theme CSS may set custom properties and non-layout visuals only; layout properties live in `styles.css`. A layout-affecting property in a theme is a bug, and a baseline test asserts the scroll container stays scrollable.
 - A user's explicit per-cell style always wins over a theme, enforced once in `applyResolvedStyle` (inline `!important`), not by themes avoiding `!important`.
 - Obsidian styles markdown tables with specificity our single-class rules can lose to (`.markdown-rendered table`, `div` padding rules). When a rule must hold, double the class and cover it with a test that injects a hostile host rule.
 - `styles.css` ends with an auto-generated themes block; add rules above its marker.
+
+## Languages
+
+- UI strings live in `src/i18n/<lang>.ts`, typed `Dict` against `en.ts` (the source of truth), so a missing key fails `tsc`. Read them with `t()`/`fmt()`; never branch on the language in feature code. Sentences with variable parts are `{placeholder}` templates in each dictionary, not code.
+- Add a language: one `src/i18n/<code>.ts` and one line in `DICTS` (`src/i18n/index.ts`). Templates (`src/templates/<id>-<lang>.yaml`) and theme labels (`@theme-label-<lang>`) are optional per language and fall back to English.
+- Any new `en.ts` key needs a value in every language file in the same commit.
 
 ## Testing
 

@@ -315,6 +315,10 @@ Open **Settings → Rich Table** to configure the plugin.
 | Custom types | — | Define custom choice-column types with labels and colors. |
 | Changelog | — | Button to open the full release history at any time. It also opens automatically the first time the plugin loads after an update. |
 
+### Languages
+
+The interface follows Obsidian's language setting: English, 简体中文, Deutsch, Français, 日本語 and 한국어. Any other language shows English. The German, French, Japanese and Korean translations are machine-made — corrections are welcome as pull requests to the matching file in `src/i18n/`. The built-in templates and theme names are available in English and Chinese; other languages show the English ones.
+
 ---
 
 ## Format

@@ -1,6 +1,6 @@
 import { App, Component, Menu, Notice, setIcon } from 'obsidian';
 import {
-	t, isZh, aggLabel,
+	t, pick, aggLabel,
 	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
 	collapsedRowsLabel, statusBarStatsLabel,
 } from './i18n';
@@ -2218,7 +2218,7 @@ export async function renderTable(
 				{ id: null, label: t('themeDefault') },
 				...BUILTIN_THEMES.map(th => ({
 					id: th.id,
-					label: isZh() ? th.labelZh : th.labelEn,
+					label: pick(th.labels),
 				})),
 			];
 			const themeBtn = ctrlCol.createDiv({

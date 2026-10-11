@@ -1,5 +1,5 @@
 import { type EventRef, FileSystemAdapter, MarkdownPostProcessorContext, MarkdownRenderChild, Notice, Platform, TFile, setIcon } from 'obsidian';
-import { isZh, t, tableVersionTooHighMsg } from './i18n';
+import { t, fmt, pick, tableVersionTooHighMsg } from './i18n';
 import { CURRENT_TABLE_VERSION, MIN_STABLE_VERSION, getTableVersion, migrateSource } from './tableVersion';
 import type BetterTablePlugin from './main';
 import type { CtrlColButtonId, SheetDefV2, TableModelV2, WorkbookV3 } from './model';
@@ -102,7 +102,7 @@ function injectLiveSnapshot(container: HTMLElement, cached: HTMLElement | undefi
  *  e.g. a stale id from before a template was renamed/removed). */
 function getTemplateContent(templateId: string): string {
 	const tpl = BUILTIN_TEMPLATES.find(t => t.id === templateId) ?? BUILTIN_TEMPLATES[0];
-	return isZh() ? (tpl?.zh ?? '') : (tpl?.en ?? '');
+	return tpl ? pick(tpl.content) : '';
 }
 
 /** The default template — used for the isEmpty/version-detection plumbing that
@@ -275,7 +275,7 @@ export class TableBlock extends MarkdownRenderChild {
 				msg.createSpan({ text: tableVersionTooHighMsg(tableV, CURRENT_TABLE_VERSION) });
 				const btn = msg.createEl('button', {
 					cls: 'bt-version-banner-btn',
-					text: isZh() ? '前往社区商店升级' : 'Open in Community Store',
+					text: t('openCommunityStore'),
 				});
 				btn.addEventListener('click', () => {
 					window.open('obsidian://show-plugin?id=rich-table');
@@ -295,19 +295,17 @@ export class TableBlock extends MarkdownRenderChild {
 				setIcon(iconEl, 'sparkles');
 				const msg = banner.createDiv({ cls: 'bt-upgrade-banner-body' });
 				msg.createSpan({
-					text: isZh()
-						? '该表格使用旧版格式，新版格式支持更多功能。转换时将自动修改表格代码块，可用 Ctrl+Z 撤回。'
-						: 'This table uses an older format. The new format supports more features. Converting will update the code block — you can undo with Ctrl+Z.',
+					text: t('upgradeBannerText'),
 				});
 				const btnRow = msg.createDiv({ cls: 'bt-upgrade-banner-btns' });
 				const upgradeBtn = btnRow.createEl('button', {
 					cls: 'bt-upgrade-banner-btn',
-					text: isZh() ? '转换到新版格式' : 'Convert to new format',
+					text: t('upgradeBannerConvert'),
 				});
 				upgradeBtn.addEventListener('click', () => void this.applyMigration(tableV));
 				const ignoreBtn = btnRow.createEl('button', {
 					cls: 'bt-upgrade-banner-btn bt-upgrade-banner-btn-muted',
-					text: isZh() ? '继续使用旧版' : 'Keep old format',
+					text: t('upgradeBannerKeep'),
 				});
 				ignoreBtn.addEventListener('click', () => void this.suppressUpgradeBanner());
 				// Also render the table below the banner so it remains usable.
@@ -370,7 +368,7 @@ export class TableBlock extends MarkdownRenderChild {
 			if (xlsxRef && !isEmpty) {
 				this.xlsxShell = this.model;
 				const dest = this.plugin.app.metadataCache.getFirstLinkpathDest(xlsxRef.path, this.sourcePath);
-				if (!dest) throw new Error(isZh() ? `未找到 xlsx 文件：${xlsxRef.path}` : `xlsx file not found: ${xlsxRef.path}`);
+				if (!dest) throw new Error(fmt('xlsxNotFound', { path: xlsxRef.path }));
 				const bytes = await this.plugin.app.vault.readBinary(dest);
 				const loaded = await readXlsxAsModel(bytes, xlsxRef.sheet);
 				if (loaded.version === 3) {
@@ -721,7 +719,7 @@ export class TableBlock extends MarkdownRenderChild {
 			previewEls.set(key, el);
 			pending.push(renderTable(model, () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this));
 		};
-		for (const tpl of BUILTIN_TEMPLATES) addPreview(tpl.id, parseTable(isZh() ? tpl.zh : tpl.en));
+		for (const tpl of BUILTIN_TEMPLATES) addPreview(tpl.id, parseTable(pick(tpl.content)));
 		addPreview(BLANK_KEY, buildBlankTable(BLANK_PREVIEW_SIZE, BLANK_PREVIEW_SIZE));
 		if (onXlsxImport) {
 			// No table content exists to preview before a file is even chosen —
@@ -809,7 +807,7 @@ export class TableBlock extends MarkdownRenderChild {
 		for (const tpl of BUILTIN_TEMPLATES) {
 			const btn = btns.createEl('button', {
 				cls: 'bt-template-btn',
-				text: isZh() ? tpl.labelZh : tpl.labelEn,
+				text: pick(tpl.labels),
 			});
 			btn.dataset.previewKey = tpl.id;
 			btn.addEventListener('click', () => lockAndInsert(() => onTemplate(tpl.id)));

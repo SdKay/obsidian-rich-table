@@ -27,4 +27,7 @@ export class Modal {
 export class PluginSettingTab {}
 export function setIcon() {}
 export function MarkdownRenderer() {}
-export function getLanguage(): string { return 'en'; }
+let language = 'en';
+export function getLanguage(): string { return language; }
+/** Test hook: the Obsidian UI language the code under test sees. */
+export function __setLanguage(code: string): void { language = code; }

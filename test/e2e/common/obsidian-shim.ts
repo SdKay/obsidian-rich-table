@@ -35,8 +35,10 @@ export function stringifyYaml(obj: unknown): string {
 	return yaml.dump(obj, { lineWidth: -1, quotingType: '"', forceQuotes: false });
 }
 
+/** A page reload resets module state, so a test sets the language BEFORE loading
+ *  via `page.addInitScript(() => { window.__btLang = 'ja' })`. */
 export function getLanguage(): string {
-	return 'en';
+	return (globalThis as { __btLang?: string }).__btLang ?? 'en';
 }
 
 /** Faithful re-implementation of the real utility's own documented behaviour
