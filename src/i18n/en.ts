@@ -218,6 +218,27 @@ export const en = {
 	settingDefaultThemeName: 'Default theme for new tables',
 	settingDefaultThemeDesc:
 		'Theme given to a blank table you insert and to a Markdown table you convert. Built-in templates keep their own look, and you can still change any table\'s theme from its left toolbar.',
+	fillMenu: 'Auto-fill…',
+	fillTitle: 'Auto-fill',
+	fillType: 'Fill type',
+	fillKindNumber: 'Number (1, 2, 3)',
+	fillKindCircled: 'Circled number (①, ②, ③)',
+	fillKindRoman: 'Roman numeral (I, II, III)',
+	fillKindDate: 'Date',
+	fillStart: 'Start value',
+	fillStartDate: 'Start date',
+	fillStep: 'Step',
+	fillUnit: 'Step unit',
+	fillUnitDay: 'Days',
+	fillUnitWeek: 'Weeks',
+	fillUnitMonth: 'Months',
+	fillUnitYear: 'Years',
+	fillSubmit: 'Fill',
+	fillErrorStart: 'Enter a number as the start value',
+	fillErrorStep: 'Enter a whole number as the step (any number for numbers, whole for dates)',
+	fillErrorDate: 'Enter the start date as YYYY-MM-DD',
+	fillFellBack: '{n} value(s) are beyond what this form can show and were written as plain digits',
+
 	settingCtrlColHeading: 'Left-toolbar buttons',
 	settingCtrlColDesc:
 		'Choose which left-toolbar buttons show, separately for a locked table, an unlocked ' +

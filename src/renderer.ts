@@ -1,4 +1,6 @@
 import { App, Component, Menu, Notice, setIcon } from 'obsidian';
+import { FillSequenceModal } from './fillSequenceModal';
+import { fillRuns } from './sequenceFill';
 import {
 	t, pick, aggLabel,
 	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
@@ -833,6 +835,19 @@ export async function renderTable(
 	};
 
 	let selectionPanel: HTMLElement | null = null;
+	/** Auto-fill for a row/column selection: each selected column (or row) is its own run. */
+	const autoFillOp = (axis: 'row' | 'col', lo: number, hi: number): CellOpEntry | undefined => {
+		if (!onStructuralOp) return undefined;
+		const runs = fillRuns(axis, model.rows.map(r => r.id), model.columns.map(c => c.id), lo, hi);
+		const length = runs[0]?.cells.length ?? 0;
+		if (length === 0) return undefined;
+		return { icon: 'list-ordered', label: t('fillMenu'), action: () => {
+			new FillSequenceModal(app, length, values => {
+				for (const run of runs) void onStructuralOp({ type: 'fill-cells', cells: run.cells, values });
+			}).open();
+		} };
+	};
+
 	const removeSelectionPanel = () => { selectionPanel?.remove(); selectionPanel = null; };
 
 	const showSelectionPanel = () => {
@@ -3216,6 +3231,9 @@ export async function renderTable(
 					action: () => void onStructuralOp({ type: 'set-freeze-rows', count: null }) } as CellOpEntry] : []),
 			];
 
+			const fill = autoFillOp(axis, lo, hi);
+			const fillOps: CellOpEntry[] = fill ? [{ divider: true }, fill] : [];
+
 			const cellOps: CellOpEntry[] = axis === 'col' ? [
 				{ icon: 'arrow-left',  label: t('insertColBefore'),
 					action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterLeft }) },
@@ -3237,6 +3255,7 @@ export async function renderTable(
 						if (id) void onStructuralOp({ type: 'set-col-align', colId: id, align });
 					}
 				}),
+				...fillOps,
 				...(sortOps.length > 0 ? [{ divider: true } as CellOpEntry, ...sortOps] : []),
 				...(aggOps.length > 0 ? [{ divider: true } as CellOpEntry, ...aggOps] : []),
 				{ divider: true },
@@ -3253,6 +3272,7 @@ export async function renderTable(
 					action: () => { for (let ri = lo; ri <= hi; ri++) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
 				{ icon: 'trash',   label: deleteRowsLabel(lo, hi), danger: true,
 					action: () => { for (let ri = hi; ri >= lo; ri--) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
+				...fillOps,
 				{ divider: true },
 				...freezeRowOps,
 				{ divider: true },

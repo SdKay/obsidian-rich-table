@@ -191,6 +191,27 @@ export const fr: Dict = {
 	settingDefaultThemeName: 'Thème par défaut des nouveaux tableaux',
 	settingDefaultThemeDesc:
 		'Thème appliqué à un tableau vide que vous insérez et à un tableau Markdown que vous convertissez. Les modèles intégrés gardent leur propre apparence, et vous pouvez toujours changer le thème de chaque tableau depuis sa barre latérale gauche.',
+	fillMenu: 'Remplissage automatique…',
+	fillTitle: 'Remplissage automatique',
+	fillType: 'Type de remplissage',
+	fillKindNumber: 'Nombre (1, 2, 3)',
+	fillKindCircled: 'Nombre encerclé (①, ②, ③)',
+	fillKindRoman: 'Chiffre romain (I, II, III)',
+	fillKindDate: 'Date',
+	fillStart: 'Valeur de départ',
+	fillStartDate: 'Date de départ',
+	fillStep: 'Pas',
+	fillUnit: 'Unité du pas',
+	fillUnitDay: 'Jours',
+	fillUnitWeek: 'Semaines',
+	fillUnitMonth: 'Mois',
+	fillUnitYear: 'Années',
+	fillSubmit: 'Remplir',
+	fillErrorStart: 'Saisissez un nombre comme valeur de départ',
+	fillErrorStep: 'Saisissez un nombre comme pas (un entier pour les dates)',
+	fillErrorDate: 'Saisissez la date de départ au format AAAA-MM-JJ',
+	fillFellBack: '{n} valeur(s) dépassent ce que cette forme peut représenter et ont été écrites en chiffres simples',
+
 	settingCtrlColHeading: 'Boutons de la barre latérale gauche',
 	settingCtrlColDesc:
 		'Choisissez quels boutons de la barre latérale gauche s\'affichent, séparément pour un tableau verrouillé, ' +

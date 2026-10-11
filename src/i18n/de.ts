@@ -191,6 +191,27 @@ export const de: Dict = {
 	settingDefaultThemeName: 'Standarddesign für neue Tabellen',
 	settingDefaultThemeDesc:
 		'Design, das eine eingefügte leere Tabelle und eine umgewandelte Markdown-Tabelle erhält. Eingebaute Vorlagen behalten ihr eigenes Aussehen, und das Design jeder Tabelle lässt sich weiterhin in der linken Leiste ändern.',
+	fillMenu: 'Automatisch füllen…',
+	fillTitle: 'Automatisch füllen',
+	fillType: 'Fülltyp',
+	fillKindNumber: 'Zahl (1, 2, 3)',
+	fillKindCircled: 'Eingekreiste Zahl (①, ②, ③)',
+	fillKindRoman: 'Römische Zahl (I, II, III)',
+	fillKindDate: 'Datum',
+	fillStart: 'Startwert',
+	fillStartDate: 'Startdatum',
+	fillStep: 'Schrittweite',
+	fillUnit: 'Einheit der Schrittweite',
+	fillUnitDay: 'Tage',
+	fillUnitWeek: 'Wochen',
+	fillUnitMonth: 'Monate',
+	fillUnitYear: 'Jahre',
+	fillSubmit: 'Füllen',
+	fillErrorStart: 'Geben Sie als Startwert eine Zahl ein',
+	fillErrorStep: 'Geben Sie als Schrittweite eine Zahl ein (bei Datumsangaben eine ganze Zahl)',
+	fillErrorDate: 'Geben Sie das Startdatum als JJJJ-MM-TT ein',
+	fillFellBack: '{n} Wert(e) liegen außerhalb dessen, was diese Form darstellen kann, und wurden als normale Ziffern geschrieben',
+
 	settingCtrlColHeading: 'Schaltflächen der linken Leiste',
 	settingCtrlColDesc:
 		'Legen Sie fest, welche Schaltflächen der linken Leiste erscheinen – getrennt für gesperrte Tabellen, ' +

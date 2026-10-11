@@ -190,6 +190,27 @@ export const ko: Dict = {
 	settingDefaultThemeName: '새 표의 기본 테마',
 	settingDefaultThemeDesc:
 		'삽입한 빈 표와 Markdown 표에서 변환한 표에 적용되는 테마입니다. 기본 제공 템플릿은 자체 모양을 유지하며, 각 표의 테마는 왼쪽 도구 모음에서 언제든 바꿀 수 있습니다.',
+	fillMenu: '자동 채우기…',
+	fillTitle: '자동 채우기',
+	fillType: '채우기 유형',
+	fillKindNumber: '숫자(1, 2, 3)',
+	fillKindCircled: '원 숫자(①, ②, ③)',
+	fillKindRoman: '로마 숫자(I, II, III)',
+	fillKindDate: '날짜',
+	fillStart: '시작 값',
+	fillStartDate: '시작 날짜',
+	fillStep: '증분',
+	fillUnit: '증분 단위',
+	fillUnitDay: '일',
+	fillUnitWeek: '주',
+	fillUnitMonth: '개월',
+	fillUnitYear: '년',
+	fillSubmit: '채우기',
+	fillErrorStart: '시작 값에 숫자를 입력하세요',
+	fillErrorStep: '증분에 숫자를 입력하세요(날짜는 정수)',
+	fillErrorDate: '시작 날짜를 YYYY-MM-DD 형식으로 입력하세요',
+	fillFellBack: '{n}개의 값이 이 형식으로 표현할 수 있는 범위를 넘어 일반 숫자로 입력했습니다',
+
 	settingCtrlColHeading: '왼쪽 도구 모음 버튼',
 	settingCtrlColDesc:
 		'잠긴 표, 잠기지 않은 표, 외부 .xlsx 파일을 참조하는 표에 대해 각각 왼쪽 도구 모음에 표시할 버튼을 고릅니다. ' +

@@ -238,6 +238,10 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![状态栏](docs/demo-external-xlsx.gif)
 
+**22 · Auto-fill** — select a whole row or column and choose **Auto-fill…**: pick a type (number, circled number ①②③, Roman numeral, or date), a start value and a step (dates step by days, weeks, months or years), and every cell in it is written with the next value. The result is ordinary cell text, exactly as if you had typed it — nothing marks the row or column, so it never updates by itself. Hidden and filtered-out rows count, existing content is overwritten, and circled numbers past ㊿ and Roman numerals past 3999 are written as plain digits with a notice.
+
+> 🎬 *Demo GIF coming soon*
+
 ---
 
 ## Keyboard

@@ -190,6 +190,27 @@ export const ja: Dict = {
 	settingDefaultThemeName: '新しい表のデフォルトテーマ',
 	settingDefaultThemeDesc:
 		'挿入した空の表と、Markdown の表から変換した表に適用されるテーマです。組み込みテンプレートは独自の見た目のままで、各表のテーマは左ツールバーからいつでも変更できます。',
+	fillMenu: '連続データを入力…',
+	fillTitle: '連続データの入力',
+	fillType: '種類',
+	fillKindNumber: '数値（1, 2, 3）',
+	fillKindCircled: '丸数字（①, ②, ③）',
+	fillKindRoman: 'ローマ数字（I, II, III）',
+	fillKindDate: '日付',
+	fillStart: '開始値',
+	fillStartDate: '開始日',
+	fillStep: '増分',
+	fillUnit: '増分の単位',
+	fillUnitDay: '日',
+	fillUnitWeek: '週',
+	fillUnitMonth: 'か月',
+	fillUnitYear: '年',
+	fillSubmit: '入力',
+	fillErrorStart: '開始値には数値を入力してください',
+	fillErrorStep: '増分には数値を入力してください（日付の場合は整数）',
+	fillErrorDate: '開始日は YYYY-MM-DD の形式で入力してください',
+	fillFellBack: '{n} 個の値はこの形式で表せる範囲を超えているため、通常の数字で入力しました',
+
 	settingCtrlColHeading: '左ツールバーのボタン',
 	settingCtrlColDesc:
 		'ロック中の表、ロックしていない表、外部の .xlsx ファイルを参照する表のそれぞれについて、' +

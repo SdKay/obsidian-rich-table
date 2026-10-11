@@ -34,6 +34,11 @@ export type StructuralOpV2 =
 	 *  merge for every OTHER row at `colId`. */
 	| { type: 'split-cell-col';  rowId: string; colId: string }
 	| { type: 'set-cell-content'; rowId: string; colId: string; value: string }
+	/** Writes `values[i]` into `cells[i]` as plain cell content — the result of an
+	 *  auto-fill, indistinguishable from typing. A cell's formula is dropped (or the
+	 *  recompute would put the old result back), and a cell covered by a merge but not
+	 *  its anchor is skipped: its value is never rendered. */
+	| { type: 'fill-cells'; cells: { rowId: string; colId: string }[]; values: string[] }
 	/** Sets or clears (formula: null) a cell's formula source. The cached
 	 *  computed value in `cells[colId]` is filled in by recomputeFormulas,
 	 *  called at the end of this same reducer — never set directly here. */
@@ -280,6 +285,22 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			if (!row) break;
 			if (op.value === '') delete row.cells[op.colId];
 			else row.cells[op.colId] = op.value;
+			break;
+		}
+		case 'fill-cells': {
+			op.cells.forEach(({ rowId, colId }, i) => {
+				const row = model.rows.find(r => r.id === rowId);
+				const value = op.values[i];
+				if (!row || value === undefined) return;
+				const merge = findMergeCoveringCell(model, rowId, colId);
+				if (merge && merge.anchor !== `${rowId}.${colId}`) return;
+				if (row.formulas) {
+					delete row.formulas[colId];
+					if (Object.keys(row.formulas).length === 0) delete row.formulas;
+				}
+				if (value === '') delete row.cells[colId];
+				else row.cells[colId] = value;
+			});
 			break;
 		}
 		case 'set-cell-formula': {
