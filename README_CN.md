@@ -46,6 +46,12 @@
 
 为 Obsidian 打造的富交互表格插件——支持单元格合并、内联编辑、双链自动补全、类型列、数学公式、列表、图片、拖拽排序等功能。
 
+<div align="center">
+<p>
+  <img src="docs/overview-zh.png" width="800"/>
+</p>
+</div>
+
 ---
 
 ## 为什么选择 Rich Table？
@@ -111,8 +117,6 @@
 <tr><td rowspan="3"><b>其他特性</b></td><td><b>多 Sheet 工作簿</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
 <tr><td>看板（Kanban）/ 日历视图</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
 <tr><td>表格快照导出（PNG/SVG）</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
-
-<tr><td rowspan="1"><b>项目健康度</b></td><td>统计于2026.09.16</td><td>持续维护</td><td>—</td><td>2026-05</td><td>2022-01</td><td>2026-06</td><td>2024-03</td><td>2026-05</td><td>2026-07</td><td>2026-08</td></tr>
 
 </tbody>
 </table>

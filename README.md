@@ -46,6 +46,12 @@
 
 Rich, interactive tables for Obsidian — with cell merges, inline editing, wikilink autocomplete, typed columns, drag-to-reorder, math formulas, lists, images, and more.
 
+<div align="center">
+<p>
+  <img src="docs/overview.png" width="800"/>
+</p>
+</div>
+
 ---
 
 ## Why Rich Table?
@@ -111,8 +117,6 @@ Legend: 🟢 fully supported　🔴 not supported　🟡 partial support / limit
 <tr><td rowspan="3"><b>Other Features</b></td><td><b>Multi-sheet workbook</b></td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
 <tr><td>Kanban / calendar view</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
 <tr><td>Table snapshot export (PNG/SVG)</td><td>🟢</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td><td>🔴</td></tr>
-
-<tr><td rowspan="1"><b>Project Health</b></td><td>As of 2026-09-16</td><td>actively maintained</td><td>—</td><td>2026-05</td><td>2022-01</td><td>2026-06</td><td>2024-03</td><td>2026-05</td><td>2026-07</td><td>2026-08</td></tr>
 
 </tbody>
 </table>
