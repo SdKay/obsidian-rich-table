@@ -188,6 +188,9 @@ export const fr: Dict = {
 		'et le panneau de style s\'ouvre avec Ctrl/Cmd+clic au lieu du double-clic. Accélère ' +
 		'les modifications successives rapides. Désactivé (par défaut), un clic lance l\'édition après un court ' +
 		'délai et un double-clic ouvre le panneau de style.',
+	settingDefaultThemeName: 'Thème par défaut des nouveaux tableaux',
+	settingDefaultThemeDesc:
+		'Thème appliqué à un tableau vide que vous insérez et à un tableau Markdown que vous convertissez. Les modèles intégrés gardent leur propre apparence, et vous pouvez toujours changer le thème de chaque tableau depuis sa barre latérale gauche.',
 	settingCtrlColHeading: 'Boutons de la barre latérale gauche',
 	settingCtrlColDesc:
 		'Choisissez quels boutons de la barre latérale gauche s\'affichent, séparément pour un tableau verrouillé, ' +

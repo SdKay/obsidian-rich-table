@@ -5,7 +5,7 @@ import { genId } from './idGen';
  *  the "start from scratch" counterpart to the full-featured demo template
  *  (see getEmptyTemplate in tableBlock.ts). Kept in its own module (no
  *  renderer/DOM dependencies) so it stays trivially unit-testable. */
-export function buildBlankTable(rows: number, cols: number): TableModelV2 {
+export function buildBlankTable(rows: number, cols: number, theme?: string): TableModelV2 {
 	const colIds = new Set<string>();
 	const rowIds = new Set<string>();
 	const columns = Array.from({ length: cols }, () => ({ id: genId('c', colIds), name: '' }));
@@ -14,5 +14,5 @@ export function buildBlankTable(rows: number, cols: number): TableModelV2 {
 		for (const col of columns) cells[col.id] = '';
 		return { id: genId('r', rowIds), cells };
 	});
-	return { version: 2, columns, rows: dataRows, merges: [], styles: [] };
+	return { version: 2, columns, rows: dataRows, merges: [], styles: [], ...(theme ? { theme } : {}) };
 }

@@ -311,6 +311,7 @@ Open **Settings → Rich Table** to configure the plugin.
 |---------|---------|-------------|
 | Allow editing in reading view | Off | When off, all interactive behaviour (hover strips, click-to-edit, panels, dropdowns) is disabled in Obsidian's reading view. Live preview / source mode is always interactive. |
 | Single-click to edit | Off | When on, a single click on a cell enters edit mode immediately (no delay), and the style panel opens with Ctrl/Cmd+click instead of double-click. When off (default), single click enters edit after a short delay and double click opens the style panel. |
+| Default theme for new tables | Grid | Theme given to a blank table you insert and to a Markdown table you convert. Choose *Default* for no theme. Built-in templates keep their own look, and any table's theme can still be changed from its left toolbar. |
 | Left-toolbar buttons | All shown | Independently hide any of the left-toolbar (lock, auto-fit, theme, snapshot, export, …) buttons, separately for a locked table, an unlocked table, and a table backed by an external `.xlsx` file — each list only offers the buttons that actually apply to that scenario. |
 | Custom types | — | Define custom choice-column types with labels and colors. |
 | Changelog | — | Button to open the full release history at any time. It also opens automatically the first time the plugin loads after an update. |

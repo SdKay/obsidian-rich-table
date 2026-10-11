@@ -1,13 +1,15 @@
 import { App, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import type BetterTablePlugin from './main';
 import { CTRL_COL_BUTTONS_BY_SCENARIO, ctrlColButtonIcon, type BetterTableSettings, type ChoiceType, type CtrlColButtonId } from './model';
-import { t, ctrlColButtonLabel, ctrlColScenarioLabel } from './i18n';
+import { t, pick, ctrlColButtonLabel, ctrlColScenarioLabel } from './i18n';
 import { ChangelogModal } from './changelogModal';
+import { BUILTIN_THEMES } from './themes';
 
 export const DEFAULT_SETTINGS: BetterTableSettings = {
 	customChoices: [],
 	allowReadingViewEdit: false,
 	singleClickEdit: false,
+	defaultTheme: 'grid',
 	ctrlColHiddenButtons: { locked: [], unlocked: [], xlsxRef: [] },
 };
 
@@ -53,6 +55,20 @@ export class BetterTableSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		new Setting(containerEl)
+			.setName(t('settingDefaultThemeName'))
+			.setDesc(t('settingDefaultThemeDesc'))
+			.addDropdown(dropdown => {
+				dropdown.addOption('', t('themeDefault'));
+				for (const theme of BUILTIN_THEMES) dropdown.addOption(theme.id, pick(theme.labels));
+				dropdown
+					.setValue(this.plugin.settings.defaultTheme)
+					.onChange(async (value) => {
+						this.plugin.settings.defaultTheme = value;
+						await this.plugin.saveSettings();
+					});
+			});
 
 		// ── Left-toolbar button visibility, per scenario ─────────────────────
 		// A dense chip grid (icon + label + checkbox per button, several per row)

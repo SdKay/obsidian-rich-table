@@ -56,7 +56,7 @@ export function findMarkdownTableAtCursor(
  *  left empty. A data row shorter than the header fills the missing cells
  *  with '' (`row[i] ?? ''`); a data row longer than the header drops the
  *  extra cells — the header's width is what defines the table's column count. */
-export function buildTableFromGrid(values: string[][]): TableModelV2 {
+export function buildTableFromGrid(values: string[][], theme?: string): TableModelV2 {
 	const colIds = new Set<string>();
 	const rowIds = new Set<string>();
 	const header = values[0] ?? [];
@@ -66,7 +66,7 @@ export function buildTableFromGrid(values: string[][]): TableModelV2 {
 		columns.forEach((col, i) => { cells[col.id] = row[i] ?? ''; });
 		return { id: genId('r', rowIds), cells };
 	});
-	return { version: 2, columns, rows, merges: [], styles: [] };
+	return { version: 2, columns, rows, merges: [], styles: [], ...(theme ? { theme } : {}) };
 }
 
 export interface MarkdownTableConversionPlan {
@@ -81,10 +81,11 @@ export interface MarkdownTableConversionPlan {
 export function planMarkdownTableConversion(
 	lines: string[],
 	cursorLine: number,
+	theme?: string,
 ): MarkdownTableConversionPlan | null {
 	const found = findMarkdownTableAtCursor(lines, cursorLine);
 	if (!found) return null;
-	const model = buildTableFromGrid(found.values);
+	const model = buildTableFromGrid(found.values, theme);
 	const blockText = ['```rich-table', serializeTable(model).trimEnd(), '```'].join('\n');
 	return { startLine: found.startLine, endLine: found.endLine, blockText };
 }

@@ -7,6 +7,7 @@ import { planRichTableBlockInsertion } from './insertRichTableBlock';
 import { planMarkdownTableConversion, type MarkdownTableConversionPlan } from './convertMarkdownTable';
 import { ChangelogModal, shouldShowChangelog } from './changelogModal';
 import { t } from './i18n';
+import { resolveDefaultTheme } from './themes';
 import { computeCacheKey } from './blockCacheKey';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
@@ -100,7 +101,7 @@ export default class BetterTablePlugin extends Plugin {
 	private planMarkdownTableConversionAt(editor: Editor): MarkdownTableConversionPlan | null {
 		const cursor = editor.getCursor();
 		const lines = Array.from({ length: editor.lineCount() }, (_, i) => editor.getLine(i));
-		return planMarkdownTableConversion(lines, cursor.line);
+		return planMarkdownTableConversion(lines, cursor.line, resolveDefaultTheme(this.settings.defaultTheme));
 	}
 
 	private applyMarkdownTableConversion(editor: Editor, plan: MarkdownTableConversionPlan): void {

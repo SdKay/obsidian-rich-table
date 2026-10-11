@@ -188,6 +188,9 @@ export const de: Dict = {
 		'und das Stil-Panel öffnet sich mit Strg/Cmd+Klick statt per Doppelklick. Das beschleunigt ' +
 		'schnelles, aufeinanderfolgendes Bearbeiten. Wenn aus (Standard), startet ein Klick das Bearbeiten nach einer ' +
 		'kurzen Verzögerung, und ein Doppelklick öffnet das Stil-Panel.',
+	settingDefaultThemeName: 'Standarddesign für neue Tabellen',
+	settingDefaultThemeDesc:
+		'Design, das eine eingefügte leere Tabelle und eine umgewandelte Markdown-Tabelle erhält. Eingebaute Vorlagen behalten ihr eigenes Aussehen, und das Design jeder Tabelle lässt sich weiterhin in der linken Leiste ändern.',
 	settingCtrlColHeading: 'Schaltflächen der linken Leiste',
 	settingCtrlColDesc:
 		'Legen Sie fest, welche Schaltflächen der linken Leiste erscheinen – getrennt für gesperrte Tabellen, ' +

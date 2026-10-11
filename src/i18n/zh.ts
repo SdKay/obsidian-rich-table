@@ -184,6 +184,9 @@ export const zh: Dict = {
 	settingSingleClickEditName: '单击即可编辑',
 	settingSingleClickEditDesc:
 		'开启后，单击单元格会立即进入编辑(无需区分双击，响应更快)，样式面板通过 Ctrl/Cmd+点击 打开。关闭时（默认），单击进入编辑（稍有迟缓），双击打开样式面板。',
+	settingDefaultThemeName: '新建表格的默认主题',
+	settingDefaultThemeDesc:
+		'新插入的空白表格，以及由 Markdown 表格转换而来的表格所使用的主题。内置模板保持自己的外观，任何表格仍可通过左侧工具栏单独切换主题。',
 	settingCtrlColHeading: '左侧工具栏按钮',
 	settingCtrlColDesc:
 		'分别为锁定表格、未锁定表格、引用外部 .xlsx 的表格选择要显示哪些左侧工具栏按钮——每种场景只会列出该场景下实际可用的按钮。',

@@ -18,6 +18,7 @@ import { clearAllLiveEdits } from './renderEditHandoff';
 import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
+import { resolveDefaultTheme } from './themes';
 import { readXlsxAsModel, writeXlsxOps, isXlsxWritableOp, type XlsxWritableOp } from './xlsxSource';
 import { applyAutoColWidths, applyCodeLineHeightFix } from './renderAutofit';
 import { belongsToRoot } from './renderOwnScope';
@@ -720,7 +721,7 @@ export class TableBlock extends MarkdownRenderChild {
 			pending.push(renderTable(model, () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this));
 		};
 		for (const tpl of BUILTIN_TEMPLATES) addPreview(tpl.id, parseTable(pick(tpl.content)));
-		addPreview(BLANK_KEY, buildBlankTable(BLANK_PREVIEW_SIZE, BLANK_PREVIEW_SIZE));
+		addPreview(BLANK_KEY, buildBlankTable(BLANK_PREVIEW_SIZE, BLANK_PREVIEW_SIZE, this.defaultTheme()));
 		if (onXlsxImport) {
 			// No table content exists to preview before a file is even chosen —
 			// a plain text hint in the same preview slot every other button uses,
@@ -786,7 +787,7 @@ export class TableBlock extends MarkdownRenderChild {
 			const el = previewEls.get(BLANK_KEY);
 			if (!el) return;
 			el.empty();
-			void renderTable(buildBlankTable(rows, cols), () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this);
+			void renderTable(buildBlankTable(rows, cols, this.defaultTheme()), () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this);
 		};
 
 		// Leftmost — "import from an external file" reads as a more fundamental
@@ -1472,8 +1473,12 @@ export class TableBlock extends MarkdownRenderChild {
 		await this.insertBlock(serializeTable(parseTable(getTemplateContent(templateId))));
 	}
 
+	private defaultTheme(): string | undefined {
+		return resolveDefaultTheme(this.plugin.settings.defaultTheme);
+	}
+
 	private async insertBlank(rows: number, cols: number): Promise<void> {
-		await this.insertBlock(serializeTable(buildBlankTable(rows, cols)));
+		await this.insertBlock(serializeTable(buildBlankTable(rows, cols, this.defaultTheme())));
 	}
 
 	/** Inserts a minimal v2 block that just points at an external .xlsx file
@@ -1524,7 +1529,7 @@ export class TableBlock extends MarkdownRenderChild {
 	private async insertBlankIntoActiveSheet(rows: number, cols: number): Promise<void> {
 		const sheet = this.activeModel;
 		if (!sheet || !this.workbook) return;
-		const content: Omit<TableModelV2, 'version'> = buildBlankTable(rows, cols);
+		const content: Omit<TableModelV2, 'version'> = buildBlankTable(rows, cols, this.defaultTheme());
 		await this.handleWorkbookOp({ type: 'set-sheet-content', sheetId: (sheet as SheetDefV2).id, content });
 	}
 }

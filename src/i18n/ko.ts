@@ -187,6 +187,9 @@ export const ko: Dict = {
 		'켜면 셀을 한 번 클릭하는 즉시(약 200ms 지연 없이) 편집 모드로 들어가고, ' +
 		'스타일 패널은 더블클릭 대신 Ctrl/Cmd+클릭으로 엽니다. 연속해서 빠르게 편집할 때 편리합니다. ' +
 		'끄면(기본값) 클릭 후 잠시 뒤에 편집 모드로 들어가고, 더블클릭으로 스타일 패널을 엽니다.',
+	settingDefaultThemeName: '새 표의 기본 테마',
+	settingDefaultThemeDesc:
+		'삽입한 빈 표와 Markdown 표에서 변환한 표에 적용되는 테마입니다. 기본 제공 템플릿은 자체 모양을 유지하며, 각 표의 테마는 왼쪽 도구 모음에서 언제든 바꿀 수 있습니다.',
 	settingCtrlColHeading: '왼쪽 도구 모음 버튼',
 	settingCtrlColDesc:
 		'잠긴 표, 잠기지 않은 표, 외부 .xlsx 파일을 참조하는 표에 대해 각각 왼쪽 도구 모음에 표시할 버튼을 고릅니다. ' +

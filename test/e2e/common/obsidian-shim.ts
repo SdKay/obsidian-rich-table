@@ -288,6 +288,25 @@ export class ToggleComponent {
 	onChange(cb: (value: boolean) => void): this { this.onChangeCb = cb; return this; }
 }
 
+/** Real <select>, so a test can pick an option the way a user would. */
+export class DropdownComponent {
+	selectEl = document.createElement('select');
+	private onChangeCb: ((value: string) => void) | null = null;
+	constructor() {
+		this.selectEl.addEventListener('change', () => this.onChangeCb?.(this.selectEl.value));
+	}
+	addOption(value: string, display: string): this {
+		const option = document.createElement('option');
+		option.value = value;
+		option.textContent = display;
+		this.selectEl.appendChild(option);
+		return this;
+	}
+	setValue(value: string): this { this.selectEl.value = value; return this; }
+	getValue(): string { return this.selectEl.value; }
+	onChange(cb: (value: string) => void): this { this.onChangeCb = cb; return this; }
+}
+
 export class Setting {
 	settingEl = document.createElement('div');
 	nameEl = document.createElement('div');
@@ -321,6 +340,12 @@ export class Setting {
 		const c = new ToggleComponent();
 		cb(c);
 		this.controlEl.appendChild(c.toggleEl);
+		return this;
+	}
+	addDropdown(cb: (c: DropdownComponent) => void): this {
+		const c = new DropdownComponent();
+		cb(c);
+		this.controlEl.appendChild(c.selectEl);
 		return this;
 	}
 }

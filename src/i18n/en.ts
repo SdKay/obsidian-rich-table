@@ -215,6 +215,9 @@ export const en = {
 		'and the style panel opens with Ctrl/Cmd+click instead of double-click. Speeds up ' +
 		'rapid consecutive editing. When off (default), single click enters edit after a short ' +
 		'delay and double click opens the style panel.',
+	settingDefaultThemeName: 'Default theme for new tables',
+	settingDefaultThemeDesc:
+		'Theme given to a blank table you insert and to a Markdown table you convert. Built-in templates keep their own look, and you can still change any table\'s theme from its left toolbar.',
 	settingCtrlColHeading: 'Left-toolbar buttons',
 	settingCtrlColDesc:
 		'Choose which left-toolbar buttons show, separately for a locked table, an unlocked ' +

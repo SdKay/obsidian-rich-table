@@ -383,6 +383,9 @@ export interface BetterTableSettings {
 	 * after a 200ms delay, double click opens the style panel.
 	 */
 	singleClickEdit: boolean;
+	/** Theme id given to tables created from a blank grid or converted from a
+	 *  Markdown table; '' means no theme. Built-in templates keep their own look. */
+	defaultTheme: string;
 	/** Per-scenario left-toolbar button visibility (see CtrlColButtonId/
 	 *  CTRL_COL_BUTTONS_BY_SCENARIO above) — each array lists the ids HIDDEN
 	 *  in that scenario; absent/empty means every button for that scenario
