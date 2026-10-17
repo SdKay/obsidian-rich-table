@@ -9026,7 +9026,9 @@ function parseRows(raw) {
     if (typeof r.formulas === "object" && r.formulas !== null) {
       const formulas = {};
       for (const [k, v] of Object.entries(r.formulas)) {
-        if (typeof v === "string" && v !== "") formulas[k] = v;
+        if (typeof v !== "string" || v === "") continue;
+        if (v.startsWith("==")) cells[k] = v;
+        else formulas[k] = v;
       }
       if (Object.keys(formulas).length > 0) row.formulas = formulas;
     }

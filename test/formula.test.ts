@@ -362,3 +362,47 @@ describe('set-cell-formula', () => {
 		expect(model.rows[0]!.formulas).toBeUndefined();
 	});
 });
+
+describe('a leading == is text, never a formula', () => {
+	const stored = `---
+version: 2
+columns:
+  - id: c_3
+    name: 功能
+rows:
+  - id: r_8
+    cells:
+      c_3: "#VALUE!"
+    formulas:
+      c_3: ==头结构==后面
+---
+`;
+
+	it('restores a highlight that an older build saved as a formula', () => {
+		const row = parseTable(stored).rows[0];
+		expect(row?.cells['c_3']).toBe('==头结构==后面');
+		expect(row?.formulas).toBeUndefined();
+	});
+
+	it('writes it back as plain cell text', () => {
+		const out = serializeTable(parseTable(stored));
+		expect(out).not.toContain('formulas');
+		expect(out).toContain('==头结构==后面');
+	});
+
+	it('leaves genuine formulas alone', () => {
+		const model = parseTable(`---
+version: 2
+columns:
+  - id: c_a
+    name: A
+rows:
+  - id: r_a
+    cells: { c_a: "2" }
+    formulas: { c_a: "=1+1" }
+---
+`);
+		expect(model.rows[0]?.formulas).toEqual({ c_a: '=1+1' });
+		expect(model.rows[0]?.cells['c_a']).toBe('2');
+	});
+});

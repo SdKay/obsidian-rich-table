@@ -9,7 +9,8 @@ value** as a plain string — the plugin overwrites it on every load/edit, but
 write a correct one when authoring so the value is right even before the
 plugin's own render pass runs.
 
-Grammar (leading `=` required): `=expr`, where `expr` supports `+ - * /` with
+Grammar (leading `=` required, but never `==`: text starting with `==` is a highlight, so
+it belongs in `cells`, and an entry like that in `formulas` is loaded as plain cell text): `=expr`, where `expr` supports `+ - * /` with
 standard precedence and parentheses, numeric literals, cell references
 (`r_xxx.c_yyy`), and one function call over a range
 (`FUNC(r_aaa.c_bbb:r_ccc.c_ddd)`).
