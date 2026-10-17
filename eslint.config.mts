@@ -10,6 +10,9 @@ export default defineConfig(
 		'test',
 		'esbuild.config.mjs',
 		'changelog-gen.mjs',
+		// Node command-line tool for agents, not plugin code: it prints to the terminal by design.
+		'src/cli.ts',
+		'skills',
 		'vitest.config.ts',
 		'playwright.config.ts',
 		'version-bump.mjs',

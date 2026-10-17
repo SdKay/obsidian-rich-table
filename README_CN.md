@@ -308,6 +308,16 @@ npx skills update
 
 之后告诉 Claude："在我的笔记里用 rich-table 创建一个项目看板"，它会自动生成对应的代码块。
 
+技能里还附带一个命令行编辑工具 `scripts/rich-table.cjs`（只需 Node 18+，不依赖 Obsidian），任何工具或 agent 都可以用它修改表格，不必手写 YAML。它执行的就是插件内部的同一套操作——id 保持唯一、删除行列时连带清理合并和样式、公式自动重算——并且只改写笔记里选定的那一个代码块：
+
+```bash
+node scripts/rich-table.cjs list  note.md
+node scripts/rich-table.cjs show  note.md --block 0
+node scripts/rich-table.cjs apply note.md --block 0 --op '{"type":"insert-row","afterRowId":null}'
+```
+
+未知的操作，或表格里不存在的行/列 id，会被拒绝，且不会写入任何内容。
+
 ---
 
 ## 设置

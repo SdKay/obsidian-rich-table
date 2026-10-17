@@ -6,7 +6,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "node esbuild.config.mjs generate && tsc -noEmit -skipLibCheck && eslint . && node esbuild.config.mjs production",
+		"build": "node esbuild.config.mjs generate && tsc -noEmit -skipLibCheck && eslint . && node esbuild.config.mjs production && node esbuild.config.mjs cli",
 		"test": "vitest run",
 		"test:e2e": "playwright test",
 		"version": "node version-bump.mjs && node esbuild.config.mjs generate && git add manifest.json versions.json src/changelog/generated.ts",
@@ -29,7 +29,8 @@
 		"obsidian": "latest",
 		"typescript": "^5.8.3",
 		"typescript-eslint": "^8.59.1",
-		"vitest": "^4.1.10"
+		"vitest": "^4.1.10",
+		"yaml": "^2.9.0"
 	},
 	"dependencies": {
 		"@office-kit/xlsx": "^0.11.1",

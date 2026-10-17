@@ -1,4 +1,5 @@
-import { Editor, MarkdownView, Plugin } from 'obsidian';
+import { Editor, MarkdownView, Plugin, parseYaml, stringifyYaml } from 'obsidian';
+import { setYamlAdapter } from './yamlAdapter';
 import { BetterTableSettingTab, DEFAULT_SETTINGS } from './settings';
 import { ChoiceRegistry } from './choiceRegistry';
 import { TableBlock, refreshAllTableBlocks } from './tableBlock';
@@ -14,6 +15,7 @@ export default class BetterTablePlugin extends Plugin {
 	choiceRegistry!: ChoiceRegistry;
 
 	async onload(): Promise<void> {
+		setYamlAdapter({ parse: parseYaml, stringify: stringifyYaml });
 		await this.loadSettings();
 		await this.maybeShowChangelog();
 		this.choiceRegistry = new ChoiceRegistry(this.settings.customChoices);

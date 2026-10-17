@@ -141,6 +141,67 @@ export const ZOOM_MIN = 25;
 export const ZOOM_MAX = 400;
 export const ZOOM_DEFAULT = 100;
 
+/** Every operation type, keyed so that adding a variant to StructuralOpV2 without listing it here is a compile error. */
+const STRUCTURAL_OP_TYPE_MAP: { [K in StructuralOpV2['type']]: true } = {
+	'insert-row': true,
+	'delete-row': true,
+	'move-row': true,
+	'move-rows': true,
+	'hide-row': true,
+	'show-row-group': true,
+	'insert-col': true,
+	'delete-col': true,
+	'move-col': true,
+	'move-cols': true,
+	'hide-col': true,
+	'show-col-group': true,
+	'merge-cells': true,
+	'unmerge-cells': true,
+	'split-cell-row': true,
+	'split-cell-col': true,
+	'set-cell-content': true,
+	'fill-cells': true,
+	'set-cell-formula': true,
+	'set-col-name': true,
+	'set-col-type': true,
+	'set-col-width': true,
+	'set-col-align': true,
+	'set-row-height': true,
+	'set-cell-style': true,
+	'set-range-style': true,
+	'split-range-style': true,
+	'set-align': true,
+	'set-title': true,
+	'set-footer': true,
+	'set-filter': true,
+	'toggle-aggregate': true,
+	'clear-aggregate': true,
+	'reorder-aggregate': true,
+	'set-theme': true,
+	'toggle-lock': true,
+	'toggle-collapse': true,
+	'set-freeze-rows': true,
+	'set-freeze-cols': true,
+	'set-view-width': true,
+	'set-view-height': true,
+	'set-status-bar-mode': true,
+	'set-status-bar-scroll-width': true,
+	'set-zoom': true,
+	'paste-values': true,
+	'paste-values-with-header': true,
+	'set-sort': true,
+	'reorder-rows': true,
+	'create-view': true,
+	'delete-view': true,
+	'rename-view': true,
+	'set-view-group': true,
+	'set-view-date-col': true,
+	'set-active-view': true,
+	'transpose': true,
+};
+export const STRUCTURAL_OP_TYPES: ReadonlySet<string> = new Set(Object.keys(STRUCTURAL_OP_TYPE_MAP));
+
+
 export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): void {
 	switch (op.type) {
 

@@ -9,7 +9,7 @@
  * keeps parsing exactly as before — the next write-back simply drops it).
  */
 
-import { stringifyYaml } from 'obsidian';
+import { stringifyYaml } from './yamlAdapter';
 import type { SheetDefV2, TableModelV2, WorkbookV3 } from './model';
 
 export function serializeTable(model: TableModelV2): string {

@@ -6,7 +6,7 @@
  * next write-back drops it since the serializer no longer regenerates it.
  */
 
-import { parseYaml } from 'obsidian';
+import { parseYaml } from './yamlAdapter';
 import type {
 	AggType,
 	ColumnDefV2,

@@ -209,6 +209,33 @@ These fields are all optional and documented in separate files. When the user's 
 
 ## Modifying an existing table
 
+**Prefer the bundled tool.** It applies the same operations the plugin itself uses, so ids stay unique, a deleted row or column takes its merges and styles with it, formulas are recomputed and a merge never overlaps another. Hand-editing the YAML bypasses all of that. Read the table (this document is enough), but write through the tool; it needs only Node 18+.
+
+```bash
+node scripts/rich-table.cjs list  note.md                  # which blocks the note has
+node scripts/rich-table.cjs show  note.md --block 0        # the parsed table as JSON, with every row and column id
+node scripts/rich-table.cjs apply note.md --block 0 --op '<json>' [--dry-run]
+```
+
+`--op` is one operation or a JSON array applied in order. Take ids from `show`; never invent them. Only the chosen block is rewritten, the rest of the note is left byte-for-byte. Common operations:
+
+```json
+{"type":"insert-row","afterRowId":null}
+{"type":"delete-row","rowId":"r_000001"}
+{"type":"insert-col","afterColId":"c_000000"}
+{"type":"set-cell-content","rowId":"r_000000","colId":"c_000001","value":"done"}
+{"type":"set-col-name","colId":"c_000001","name":"Status"}
+{"type":"set-col-type","colId":"c_000001","colType":"task-status"}
+{"type":"merge-cells","anchorRowId":"r_000000","anchorColId":"c_000000","endRowId":"r_000001","endColId":"c_000000"}
+{"type":"fill-cells","cells":[{"rowId":"r_000000","colId":"c_000000"},{"rowId":"r_000001","colId":"c_000000"}],"values":["1","2"]}
+```
+
+For a multi-sheet table add `"sheetId"` to target a sheet other than the active one. The full list of operation types is the `StructuralOpV2` union in the plugin source (`src/operations.ts`); an unknown or malformed operation is reported as an error and nothing is written. Use `--dry-run` first when unsure: it prints the whole note instead of saving it.
+
+### Editing by hand
+
+Only when the tool cannot run, or to create a brand-new block:
+
 1. Read the file and locate the ` ```rich-table ` block
 2. Edit the YAML front-matter (ignore any trailing content below the closing `---` — an old note may still have a legacy pipe-table mirror there; the parser never reads it, and it's fine to leave it as-is)
 3. Write back with `Edit`

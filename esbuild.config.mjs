@@ -13,6 +13,7 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === 'production';
 const gen  = process.argv[2] === 'generate';
+const cli  = process.argv[2] === 'cli';
 
 /** Parse `@theme-label-<lang>` comment headers (one per language; `en` is required)
  *  from CSS files and write src/themes/generated.ts so the renderer discovers
@@ -157,6 +158,21 @@ function generateChangelogMeta() {
 	}
 	fs.writeFileSync(outPath, renderGenerated(entries));
 	console.log(`[changelog] generated.ts updated (${entries.length} versions, latest ${entries[0]?.version ?? 'n/a'})`);
+}
+
+/** The standalone editing tool shipped inside the agent skill: no Obsidian, runs on plain Node. */
+if (cli) {
+	await esbuild.build({
+		entryPoints: ['src/cli.ts'],
+		bundle: true,
+		platform: 'node',
+		format: 'cjs',
+		target: 'node18',
+		banner: { js: '#!/usr/bin/env node' },
+		outfile: 'skills/obsidian-rich-table/scripts/rich-table.cjs',
+		logLevel: 'info',
+	});
+	process.exit(0);
 }
 
 const context = await esbuild.context({

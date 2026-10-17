@@ -1,4 +1,4 @@
-import { parseYaml } from 'obsidian';
+import { parseYaml } from '../../yamlAdapter';
 import type { ColumnDef, MergeRange, StyleRule, TableModel } from '../../model';
 import { parseCellCoord } from '../../utils';
 

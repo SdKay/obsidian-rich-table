@@ -305,6 +305,16 @@ Omit `-g` to install into the current project only. To install by hand, copy the
 
 Then ask Claude: *"Create a project tracker table in my note using rich-table"*.
 
+The skill also bundles a small command-line editor, `scripts/rich-table.cjs` (plain Node 18+, no Obsidian needed), so any tool or agent can change a table without hand-writing YAML. It runs the same operations as the plugin — ids stay unique, deleting a row or column takes its merges and styles with it, formulas are recomputed — and only the chosen block of a note is rewritten:
+
+```bash
+node scripts/rich-table.cjs list  note.md
+node scripts/rich-table.cjs show  note.md --block 0
+node scripts/rich-table.cjs apply note.md --block 0 --op '{"type":"insert-row","afterRowId":null}'
+```
+
+An unknown operation or an id that is not in the table is refused and nothing is written.
+
 ---
 
 ## Settings

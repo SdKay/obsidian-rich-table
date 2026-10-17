@@ -3,6 +3,11 @@
 // Bundled by build-bundle.mjs into real-bundle.generated.js (gitignored,
 // rebuilt fresh before every e2e run — see playwright.config.ts's
 // globalSetup) and exposed on window as `RichTableReal`.
+import { parseYaml, stringifyYaml } from './obsidian-shim';
+import { setYamlAdapter } from '../../../src/yamlAdapter';
+
+setYamlAdapter({ parse: parseYaml, stringify: stringifyYaml });
+
 export { parseTable, parseWorkbook, parseSource } from '../../../src/parser';
 export { applyFreeze } from '../../../src/renderFreeze';
 export { scrollContentOffset } from '../../../src/renderGeometry';

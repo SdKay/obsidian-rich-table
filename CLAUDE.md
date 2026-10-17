@@ -29,6 +29,13 @@ UI interaction → StructuralOpV2 (operations.ts) → TableBlock.handleStructura
 - v1 (Excel-style coordinates) is migration-only (`src/history/v1`, `src/migrations`).
 - Every write-back rebuilds the table in a fresh container. State that must survive a rebuild (hover, in-progress edit, selection) goes through a `cacheKey`-keyed handoff module (`render*Handoff.ts`), and `injectLiveSnapshot` keeps the old look in place while the new render completes. You cannot reach the previous instance's DOM from the new one.
 
+## Core and command-line tool
+
+- `src/core.ts` is the Obsidian-free surface (`parse`, `serialize`, `applyOp`, `editBlock`, `findBlocks`) shared by the plugin's own modules and by the bundled CLI (`src/cli.ts` → `skills/obsidian-rich-table/scripts/rich-table.cjs`, rebuilt by `npm run build`). Keep everything it imports free of `import … from 'obsidian'`.
+- YAML goes through `src/yamlAdapter.ts`. The plugin installs Obsidian's own `parseYaml`/`stringifyYaml` in `onload`; the CLI installs the `yaml` package with the `core` schema, because a default YAML parser turns `2026-07-17` into a timestamp and rewrites every date cell. Parsing or serializing before an adapter is installed throws.
+- A new `StructuralOpV2` variant must also be listed in `STRUCTURAL_OP_TYPE_MAP` (`operations.ts`); `tsc` fails otherwise. A new field that names a row or column id must be added to `ROW_FIELDS`/`COL_FIELDS` in `opCheck.ts`, or the CLI will not check it.
+- The committed `rich-table.cjs` is a build output that agents run directly; commit it with the source change that alters it.
+
 ## Layout and interaction invariants
 
 - **One width constant.** `SEL_UNIT` (`selectorLayout.ts`, mirrored as `--bt-sel-unit`) sizes the toolbar, row/col selectors, row/col adders and the vertical scrollbar. Left and right are designed as mirrors; change them together.

@@ -17,6 +17,7 @@ export default defineConfig({
 	],
 	test: {
 		globals: true,
+		setupFiles: ['./test/setup-yaml.ts'],
 		environment: 'node',
 		// test/e2e/*.spec.ts is a separate Playwright suite (playwright.config.ts,
 		// run via `npm run test:e2e`), not a vitest one — vitest's default
