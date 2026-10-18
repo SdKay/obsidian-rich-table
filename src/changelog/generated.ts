@@ -9,6 +9,22 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.5.0", date: "2026-10-18", changes: [
+		"fix: pasting and the right-click menu in a cell editor now behave like Obsidian's",
+		"feat: optionally edit plain text cells in Obsidian's own editor",
+		"fix: a highlight saved as a formula by an earlier build is restored as text",
+		"feat: edit rich-table blocks from outside Obsidian with a bundled command-line tool",
+		"feat: auto-fill a row or column with a number, circled number, Roman numeral or date sequence",
+		"feat: choose the default theme for new tables",
+		"feat: add German, French, Japanese and Korean interface languages",
+		"docs: add an overview image to the READMEs and drop the project-health row",
+		"fix: right-click a cell being edited for highlight, and keep a leading == out of formulas",
+		"docs: drop the roadmap table and implementation talk from the READMEs",
+		"docs: ship the agent skill as its own installable folder, split into an index and per-topic references",
+		"docs: track CLAUDE.md as a concise, path-free project guide",
+		"build: generate the changelog at release time so the committed file matches a rebuild",
+		"refactor: type the desktop-only Node/Electron calls and drop an unused variable",
+	] },
 	{ version: "1.4.2", date: "2026-10-07", changes: [
 		"fix: links inside a bold cell were not bold",
 		"fix: make the status bar scrollbar thicker and easier to grab, and let a click on its track page the view",
