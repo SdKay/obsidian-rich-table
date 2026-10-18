@@ -212,6 +212,9 @@ export const fr: Dict = {
 	fillErrorDate: 'Saisissez la date de départ au format AAAA-MM-JJ',
 	fillFellBack: '{n} valeur(s) dépassent ce que cette forme peut représenter et ont été écrites en chiffres simples',
 
+	settingNativeEditorName: 'Utiliser l\'éditeur de notes dans les cellules (expérimental)',
+	settingNativeEditorDesc:
+		'Modifie les cellules de texte simple dans l\'éditeur propre à Obsidian, de sorte que les liens [[, les couleurs de surlignage ==, les #tags et les commandes / se complètent exactement comme dans une note. S\'appuie sur des API internes d\'Obsidian et peut cesser de fonctionner après une mise à jour d\'Obsidian ; l\'éditeur intégré prend automatiquement le relais s\'il est indisponible. Les cellules de formule et la saisie par-dessus une cellule sélectionnée utilisent toujours l\'éditeur intégré.',
 	settingCtrlColHeading: 'Boutons de la barre latérale gauche',
 	settingCtrlColDesc:
 		'Choisissez quels boutons de la barre latérale gauche s\'affichent, séparément pour un tableau verrouillé, ' +

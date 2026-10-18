@@ -386,6 +386,10 @@ export interface BetterTableSettings {
 	/** Theme id given to tables created from a blank grid or converted from a
 	 *  Markdown table; '' means no theme. Built-in templates keep their own look. */
 	defaultTheme: string;
+	/** Experimental: edit plain text cells in Obsidian's own Markdown editor, so
+	 *  `[[`, `==`, `#` and `/` completions are the real ones. Relies on internal,
+	 *  non-public Obsidian APIs; falls back to the built-in editor if unavailable. */
+	nativeCellEditor: boolean;
 	/** Per-scenario left-toolbar button visibility (see CtrlColButtonId/
 	 *  CTRL_COL_BUTTONS_BY_SCENARIO above) — each array lists the ids HIDDEN
 	 *  in that scenario; absent/empty means every button for that scenario

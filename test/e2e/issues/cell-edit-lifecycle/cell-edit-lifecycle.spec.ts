@@ -89,4 +89,16 @@ test.describe('cell-edit-lifecycle', () => {
 		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 		await expect.poll(async () => JSON.stringify(await ops(page))).toContain('click away');
 	});
+	// The note editor can't be built in the harness (no embedRegistry), which is
+	// exactly the "Obsidian changed its internals" case: the built-in editor must
+	// take over, with the column width untouched by the failed attempt.
+	test('with the note editor enabled but unavailable, the built-in editor takes over', async ({ page, renderFull }) => {
+		await renderFull(SOURCE);
+		const before = await page.evaluate(() => document.querySelector<HTMLElement>('col[data-col="0"]')?.style.width);
+		await page.evaluate(() => window.RichTableReal.setNativeEditorEnabled(true));
+		await startEditing(page);
+		expect(await page.locator(`${CELL} .bt-cell-editor[contenteditable="true"]`).count()).toBe(1);
+		expect(await page.locator(`${CELL} .bt-native-editor`).count()).toBe(0);
+		expect(await page.evaluate(() => document.querySelector<HTMLElement>('col[data-col="0"]')?.style.width)).toBe(before);
+	});
 });

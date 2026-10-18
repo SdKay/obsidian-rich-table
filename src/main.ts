@@ -10,6 +10,7 @@ import { ChangelogModal, shouldShowChangelog } from './changelogModal';
 import { t } from './i18n';
 import { resolveDefaultTheme } from './themes';
 import { computeCacheKey } from './blockCacheKey';
+import { setNativeEditorEnabled } from './nativeCellEditor';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
 	choiceRegistry!: ChoiceRegistry;
@@ -134,10 +135,12 @@ export default class BetterTablePlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			(await this.loadData()) as Partial<BetterTableSettings>,
 		);
+		setNativeEditorEnabled(this.settings.nativeCellEditor);
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+		setNativeEditorEnabled(this.settings.nativeCellEditor);
 		this.choiceRegistry = new ChoiceRegistry(this.settings.customChoices);
 		// Re-render all open reading views so allowReadingViewEdit takes effect
 		// immediately without requiring the user to close and reopen the note.

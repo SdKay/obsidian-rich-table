@@ -1,4 +1,4 @@
-import type { App } from 'obsidian';
+import type { App, Component } from 'obsidian';
 import { WikilinkInputSuggest } from './wikilinkInputSuggest';
 import type { CellChangeHandler, EditNavigateHandler, EditNavigateMove, StructuralOpHandler } from './renderTypes';
 import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
@@ -6,6 +6,7 @@ import type { TableModelV2 } from './model';
 import { labelFormulaToIds } from './formulaLabel';
 import { parseMarkdownPipeTable, parseHtmlTableWithMerges } from './renderClipboard';
 import { bindEditorContextMenu } from './renderEditorMenu';
+import { mountNativeCellEditor, nativeEditorEnabled } from './nativeCellEditor';
 import { growColLiveForTextEdit, captureColWidthForTextEdit } from './renderAutofit';
 
 /** A leading `==` is a highlight, not a formula. */
@@ -243,6 +244,82 @@ function pastePlainText(evt: ClipboardEvent): void {
 	if (!text || evt.defaultPrevented) return;
 	evt.preventDefault();
 	activeDocument.execCommand('insertText', false, text);
+}
+
+/**
+ * Prototype: edits a plain text cell in Obsidian's own Markdown editor, so
+ * completions (`[[`, `==`, `#`, `/`) are the real ones. Covers commit, cancel and
+ * Tab/Enter navigation only; formulas, live column growth and rebuild-resume are
+ * not wired. Returns false when the native editor can't be built, so the caller
+ * falls back to enterEditMode.
+ */
+export function enterNativeEditMode(
+	el: HTMLElement,
+	rawValue: string,
+	rowIdx: number,
+	colIdx: number,
+	app: App,
+	sourcePath: string,
+	component: Component,
+	onCellChange: CellChangeHandler,
+	onEditNavigate?: EditNavigateHandler,
+	zoom = 1,
+	cacheKey?: string,
+	initialText?: string,
+): boolean {
+	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
+	const restoreColWidth = captureColWidthForTextEdit(el);
+	el.empty();
+	el.addClass('bt-editing');
+	el.style.removeProperty('box-shadow');
+	const host = el.createDiv({ cls: 'bt-cell-editor bt-native-editor' });
+
+	// Cached on every change: once a rebuild destroys the editor its state is gone,
+	// but the resumed edit still needs the draft.
+	let draft = initialText ?? rawValue;
+	if (cacheKey) registerLiveEdit(cacheKey, rowIdx, colIdx, () => draft);
+
+	let done = false;
+	const finish = (commit: boolean, move?: EditNavigateMove) => {
+		if (done) return;
+		done = true;
+		if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
+		const value = (editor?.getValue() ?? rawValue).trim();
+		editor?.destroy();
+		el.removeClass('bt-editing');
+		if (move) onEditNavigate?.(rowIdx, colIdx, move);
+		if (commit && value !== rawValue) { void onCellChange(rowIdx, colIdx, value); return; }
+		el.empty();
+		for (const n of savedNodes) el.appendChild(n);
+		restoreColWidth();
+	};
+	const grow = () => { draft = editor?.getValue() ?? draft; const content = host.querySelector<HTMLElement>('.cm-content'); if (content) growColLiveForTextEdit(el, content, zoom); };
+	const editor = mountNativeCellEditor({
+		app, host, owner: component, sourcePath, value: initialText ?? rawValue,
+		onChange: grow,
+		onKey: key => {
+			if (key === 'Escape') finish(false, 'stay');
+			else if (key === 'Enter') finish(true, 'stay');
+			else finish(true, key === 'Tab' ? 'next' : 'prev');
+		},
+	});
+	if (!editor) {
+		if (cacheKey) clearLiveEdit(cacheKey, rowIdx, colIdx);
+		el.removeClass('bt-editing');
+		el.empty();
+		for (const n of savedNodes) el.appendChild(n);
+		restoreColWidth();
+		return false;
+	}
+	grow();
+	editor.view.dom.addEventListener('focusout', () => {
+		window.setTimeout(() => { if (!editor.view.dom.contains(activeDocument.activeElement)) finish(true); }, 0);
+	});
+	editor.focus();
+	// Like the built-in editor: opening on the stored value selects it, so one keystroke replaces it;
+	// a resumed draft keeps the caret at the end so the next keystroke doesn't wipe it.
+	editor.select(initialText === undefined);
+	return true;
 }
 
 /**

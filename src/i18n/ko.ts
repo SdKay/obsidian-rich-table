@@ -211,6 +211,9 @@ export const ko: Dict = {
 	fillErrorDate: '시작 날짜를 YYYY-MM-DD 형식으로 입력하세요',
 	fillFellBack: '{n}개의 값이 이 형식으로 표현할 수 있는 범위를 넘어 일반 숫자로 입력했습니다',
 
+	settingNativeEditorName: '셀에서 노트 편집기 사용(실험적)',
+	settingNativeEditorDesc:
+		'일반 텍스트 셀을 Obsidian 자체 편집기로 편집하므로 [[ 링크, == 강조 색상, #태그, / 명령의 자동 완성이 노트 본문과 똑같이 동작합니다. Obsidian의 내부 API에 의존하므로 Obsidian 업데이트 후 동작하지 않을 수 있으며, 사용할 수 없으면 기본 제공 편집기가 자동으로 대신합니다. 수식 셀과 선택한 셀 위에 바로 입력하는 경우에는 계속 기본 제공 편집기를 사용합니다.',
 	settingCtrlColHeading: '왼쪽 도구 모음 버튼',
 	settingCtrlColDesc:
 		'잠긴 표, 잠기지 않은 표, 외부 .xlsx 파일을 참조하는 표에 대해 각각 왼쪽 도구 모음에 표시할 버튼을 고릅니다. ' +

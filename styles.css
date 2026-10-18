@@ -1647,6 +1647,29 @@
 	cursor: text;
 }
 
+/* Prototype: Obsidian's own editor inside a cell */
+.bt-cell-editor.bt-native-editor {
+	padding: 0;
+	white-space: normal;
+}
+.bt-native-editor .cm-editor {
+	background: transparent;
+}
+.bt-native-editor .cm-scroller {
+	padding: var(--size-4-2) var(--size-4-3);
+	line-height: inherit;
+}
+.bt-native-editor .cm-content {
+	padding: 0;
+	min-height: 0;
+	white-space: pre;
+	width: max-content;
+	min-width: 100%;
+}
+.bt-native-editor .cm-line {
+	white-space: pre;
+}
+
 /* Date cell */
 .bt-date-empty {
 	color: var(--text-faint);

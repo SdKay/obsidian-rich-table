@@ -211,6 +211,9 @@ export const ja: Dict = {
 	fillErrorDate: '開始日は YYYY-MM-DD の形式で入力してください',
 	fillFellBack: '{n} 個の値はこの形式で表せる範囲を超えているため、通常の数字で入力しました',
 
+	settingNativeEditorName: 'セルでノートのエディターを使う（試験的）',
+	settingNativeEditorDesc:
+		'通常のテキストセルを Obsidian 自身のエディターで編集します。[[ リンク、== のハイライト色、#タグ、/ コマンドの補完がノート本文とまったく同じになります。Obsidian の内部 API に依存するため、Obsidian の更新後に動かなくなる場合があります。利用できないときは自動的に組み込みエディターを使います。数式セル、および選択したセルへそのまま入力する場合は、引き続き組み込みエディターを使います。',
 	settingCtrlColHeading: '左ツールバーのボタン',
 	settingCtrlColDesc:
 		'ロック中の表、ロックしていない表、外部の .xlsx ファイルを参照する表のそれぞれについて、' +

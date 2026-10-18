@@ -10,7 +10,8 @@ import {
 	applyColStyle, applyStyleRulesV2,
 } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
-import { enterDateEditMode, enterEditMode, type FormulaEditHooks } from './renderEditMode';
+import { enterDateEditMode, enterEditMode, enterNativeEditMode, type FormulaEditHooks } from './renderEditMode';
+import { nativeEditorEnabled } from './nativeCellEditor';
 import { idFormulaToLabel } from './formulaLabel';
 import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel, buildAlignCellOp } from './renderPanel';
 import { showMenuPinned } from './renderHoverPin';
@@ -736,6 +737,11 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	// caret at the end instead of selecting it all, unlike every other cell type).
 	const formulaDisplayValue = existingFormula ? idFormulaToLabel(model, existingFormula) : value;
 
+	/** Plain text cells only: a formula cell keeps the built-in editor, which owns formula mode. */
+	const tryNativeEdit = (draft?: string, seedChar?: string): boolean =>
+		nativeEditorEnabled() && !seedChar && !existingFormula && !!onCellChange
+		&& enterNativeEditMode(el, value, rowIdx, colIdx, app, sourcePath, component, onCellChange, onEditNavigate, measureZoomFactor(el), cacheKey, draft);
+
 	const openDataPanel = () => {
 		if (el.hasClass('bt-editing') || (!onStructuralOp && !onMergeOp)) return;
 		const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp, onMergeOp);
@@ -778,6 +784,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 				(evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined,
 			primaryAction: (_evt, seedChar) => {
 				if (!el.isConnected) return;
+				if (tryNativeEdit(undefined, seedChar)) return;
 				enterEditMode(el, formulaDisplayValue, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, seedChar, onEditNavigate, formulaHooks, measureZoomFactor(el));
 			},
 			panelAction: () => openDataPanel(),
@@ -790,7 +797,10 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	// instead of silently reverting to the cell's actual stored value.
 	if (onCellChange && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
-		if (resume) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, resume.getDraftText(), onEditNavigate, formulaHooks, measureZoomFactor(el));
+		if (resume) {
+			const draft = resume.getDraftText();
+			if (!tryNativeEdit(draft)) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, draft, onEditNavigate, formulaHooks, measureZoomFactor(el));
+		}
 	}
 
 }

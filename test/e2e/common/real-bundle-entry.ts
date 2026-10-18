@@ -43,3 +43,4 @@ export { cellEffectiveStyle, applyColStyle, applyStyleRulesV2, applyResolvedStyl
 export { TableBlock, refreshAllTableBlocks } from '../../../src/tableBlock';
 export { BetterTableSettingTab, DEFAULT_SETTINGS } from '../../../src/settings';
 export { FakeVault, FakeMetadataCache, FakeFileManager, Notice } from './obsidian-shim';
+export { setNativeEditorEnabled } from '../../../src/nativeCellEditor';

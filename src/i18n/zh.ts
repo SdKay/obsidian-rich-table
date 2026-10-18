@@ -208,6 +208,9 @@ export const zh: Dict = {
 	fillErrorDate: '起始日期请按 YYYY-MM-DD 输入',
 	fillFellBack: '有 {n} 个值超出该形式能表示的范围，已改用阿拉伯数字写入',
 
+	settingNativeEditorName: '单元格使用笔记编辑器（实验性）',
+	settingNativeEditorDesc:
+		'普通文本单元格改用 Obsidian 自带的编辑器，[[ 双链、== 高亮颜色、#标签和 / 命令的补全与笔记正文完全一致。依赖 Obsidian 的内部接口，Obsidian 更新后可能失效；不可用时会自动回退到内置编辑器。公式单元格，以及选中单元格后直接打字，仍使用内置编辑器。',
 	settingCtrlColHeading: '左侧工具栏按钮',
 	settingCtrlColDesc:
 		'分别为锁定表格、未锁定表格、引用外部 .xlsx 的表格选择要显示哪些左侧工具栏按钮——每种场景只会列出该场景下实际可用的按钮。',

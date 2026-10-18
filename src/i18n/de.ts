@@ -212,6 +212,9 @@ export const de: Dict = {
 	fillErrorDate: 'Geben Sie das Startdatum als JJJJ-MM-TT ein',
 	fillFellBack: '{n} Wert(e) liegen außerhalb dessen, was diese Form darstellen kann, und wurden als normale Ziffern geschrieben',
 
+	settingNativeEditorName: 'Notizeditor in Zellen verwenden (experimentell)',
+	settingNativeEditorDesc:
+		'Bearbeitet einfache Textzellen im Editor von Obsidian selbst, sodass [[-Links, ==-Hervorhebungsfarben, #Tags und /-Befehle genau wie in einer Notiz vervollständigt werden. Nutzt interne Obsidian-Schnittstellen und kann nach einem Obsidian-Update nicht mehr funktionieren; ist er nicht verfügbar, wird automatisch der eingebaute Editor verwendet. Formelzellen und das Überschreiben einer ausgewählten Zelle durch Tippen nutzen weiterhin den eingebauten Editor.',
 	settingCtrlColHeading: 'Schaltflächen der linken Leiste',
 	settingCtrlColDesc:
 		'Legen Sie fest, welche Schaltflächen der linken Leiste erscheinen – getrennt für gesperrte Tabellen, ' +

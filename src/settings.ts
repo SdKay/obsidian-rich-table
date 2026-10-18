@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS: BetterTableSettings = {
 	allowReadingViewEdit: false,
 	singleClickEdit: false,
 	defaultTheme: 'grid',
+	nativeCellEditor: false,
 	ctrlColHiddenButtons: { locked: [], unlocked: [], xlsxRef: [] },
 };
 
@@ -69,6 +70,18 @@ export class BetterTableSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
+
+		new Setting(containerEl)
+			.setName(t('settingNativeEditorName'))
+			.setDesc(t('settingNativeEditorDesc'))
+			.addToggle(toggle =>
+				toggle
+					.setValue(this.plugin.settings.nativeCellEditor)
+					.onChange(async (value) => {
+						this.plugin.settings.nativeCellEditor = value;
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		// ── Left-toolbar button visibility, per scenario ─────────────────────
 		// A dense chip grid (icon + label + checkbox per button, several per row)

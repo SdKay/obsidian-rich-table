@@ -239,6 +239,9 @@ export const en = {
 	fillErrorDate: 'Enter the start date as YYYY-MM-DD',
 	fillFellBack: '{n} value(s) are beyond what this form can show and were written as plain digits',
 
+	settingNativeEditorName: 'Use the note editor in cells (experimental)',
+	settingNativeEditorDesc:
+		'Edit plain text cells in Obsidian\'s own editor, so [[ links, == highlight colors, #tags and / commands complete exactly as in a note. Relies on internal Obsidian APIs and may stop working after an Obsidian update; the built-in editor is used automatically if it is unavailable. Formula cells and typing over a selected cell still use the built-in editor.',
 	settingCtrlColHeading: 'Left-toolbar buttons',
 	settingCtrlColDesc:
 		'Choose which left-toolbar buttons show, separately for a locked table, an unlocked ' +
