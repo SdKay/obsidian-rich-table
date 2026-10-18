@@ -67,14 +67,17 @@ export function onHoverUnpinned(fn: () => void): () => void {
  * value-picker menu (see getActiveCellMenu), so keyboard navigation can tell the
  * cell is mid-interaction and close the menu before moving on.
  */
-export function showMenuPinned(menu: Menu, evt: MouseEvent, cell?: { row: number; col: number }): void {
+export function showMenuPinned(menu: Menu, evt: MouseEvent, cell?: { row: number; col: number }, onHide?: () => void): void {
 	const unpin = pinHover();
 	if (cell) activeCellMenu = { menu, row: cell.row, col: cell.col };
+	// A Menu keeps ONE hide callback: a second menu.onHide() replaces the first, so anything the
+	// caller needs on hide goes through here to be merged into the single callback.
 	menu.onHide(() => {
 		unpin();
 		// Guarded: by the time this menu hides, a different cell's menu may already
 		// have taken the slot, and clearing it would strand that one as untracked.
 		if (activeCellMenu?.menu === menu) activeCellMenu = null;
+		onHide?.();
 	});
 	menu.showAtMouseEvent(evt);
 }

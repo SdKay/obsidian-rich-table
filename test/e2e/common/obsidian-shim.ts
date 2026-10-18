@@ -134,10 +134,14 @@ export class MenuItem {
 	setIcon(icon: string | null): this { this.icon = icon ?? ''; return this; }
 	setChecked(checked: boolean): this { this.checked = checked; return this; }
 	setDisabled(disabled: boolean): this { this.disabled = disabled; return this; }
-	setSection(): this { return this; }
+	section = '';
+	dom = document.createElement('div');
+	iconEl = document.createElement('div');
+	setSection(section: string): this { this.section = section; return this; }
 	setIsLabel(): this { return this; }
 	onClick(cb: (evt: MouseEvent) => unknown): this { this.callback = cb; return this; }
-	setSubmenu(): Menu { return new Menu(); }
+	submenu: Menu | null = null;
+	setSubmenu(): Menu { this.submenu = new Menu(); return this.submenu; }
 }
 
 /**
@@ -149,7 +153,8 @@ export class MenuItem {
 export class Menu {
 	static opened: Menu[] = [];
 	items: MenuItem[] = [];
-	private hideCbs: (() => void)[] = [];
+	/** Like the real Menu: ONE hide callback, so a later onHide() replaces an earlier one. */
+	private hideCb: (() => void) | null = null;
 	addItem(cb: (item: MenuItem) => void): this {
 		const item = new MenuItem();
 		cb(item);
@@ -158,18 +163,28 @@ export class Menu {
 	}
 	addSeparator(): this { return this; }
 	setNoIcon(): this { return this; }
-	onHide(cb: () => void): this { this.hideCbs.push(cb); return this; }
+	onHide(cb: () => void): this { this.hideCb = cb; return this; }
 	showAtMouseEvent(): this { Menu.opened.push(this); return this; }
 	showAtPosition(): this { Menu.opened.push(this); return this; }
 	hide(): this {
 		const i = Menu.opened.indexOf(this);
 		if (i >= 0) Menu.opened.splice(i, 1);
-		for (const cb of this.hideCbs.splice(0)) cb();
+		const cb = this.hideCb;
+		this.hideCb = null;
+		cb?.();
 		return this;
 	}
 	/** Test helper: invoke the entry with this exact title. */
 	clickItem(title: string): boolean {
-		const item = this.items.find(i => i.title === title);
+		const find = (m: Menu): MenuItem | undefined => {
+			for (const i of m.items) {
+				if (i.title === title) return i;
+				const inner = i.submenu && find(i.submenu);
+				if (inner) return inner;
+			}
+			return undefined;
+		};
+		const item = find(this);
 		if (!item?.callback) return false;
 		item.callback(new MouseEvent('click'));
 		return true;

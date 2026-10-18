@@ -4,9 +4,9 @@ import type { CellChangeHandler, EditNavigateHandler, EditNavigateMove, Structur
 import { registerLiveEdit, clearLiveEdit } from './renderEditHandoff';
 import type { TableModelV2 } from './model';
 import { labelFormulaToIds } from './formulaLabel';
-import { parseMarkdownPipeTable, parseHtmlTableWithMerges } from './renderClipboard';
-import { bindEditorContextMenu } from './renderEditorMenu';
-import { mountNativeCellEditor, nativeEditorEnabled } from './nativeCellEditor';
+import { decidePaste, insertPlainText, payloadOf, takePlainPaste, type ClipboardPayload } from './editorPaste';
+import { trackCellContextMenu } from './renderEditorMenu';
+import { mountNativeCellEditor } from './nativeCellEditor';
 import { growColLiveForTextEdit, captureColWidthForTextEdit } from './renderAutofit';
 
 /** A leading `==` is a highlight, not a formula. */
@@ -235,15 +235,6 @@ export function enterLineEdit(
 		activeWindow.getSelection()?.removeAllRanges();
 		activeWindow.getSelection()?.addRange(range);
 	}
-}
-
-/** Pastes the clipboard as plain text: a native paste inserts the clipboard's
- *  HTML, which turns `![[a.png]]` copied from a note into just "a.png". */
-function pastePlainText(evt: ClipboardEvent): void {
-	const text = evt.clipboardData?.getData('text/plain');
-	if (!text || evt.defaultPrevented) return;
-	evt.preventDefault();
-	activeDocument.execCommand('insertText', false, text);
 }
 
 /**
@@ -493,11 +484,10 @@ export function enterEditMode(
 		});
 	};
 
-	// The right-click menu takes focus from the editor; that blur is not a commit.
-	let menuOpen = false;
 	/** Wrapper so a FocusEvent is never passed as save()'s `move` argument. */
+	let menuOpen = false;
+	trackCellContextMenu(editor, open => { menuOpen = open; });
 	const onBlur = () => { if (!menuOpen) save(); };
-	bindEditorContextMenu(editor, open => { menuOpen = open; });
 
 	const cancel = (toSelected = false) => {
 		if (committed) return;
@@ -514,33 +504,23 @@ export function enterEditMode(
 	};
 
 	editor.addEventListener('blur', onBlur);
-	if (onPasteGrid) {
-		// Two ways clipboard content signals "this is a grid, not plain text":
-		// an HTML <table> (Excel/Sheets, or Obsidian's own "copy a rendered
-		// table") takes priority when present — parsed directly from its DOM
-		// structure rather than assuming the accompanying text/plain is
-		// tab-separated, which isn't true for every <table>-emitting source
-		// (Obsidian's own copy puts the ORIGINAL MARKDOWN SOURCE, pipes and
-		// all, in text/plain — splitting that on '\t' left every line as one
-		// unsplit cell). Otherwise fall back to recognizing a Markdown/GFM
-		// pipe table in the plain text itself (typed by hand, copied from
-		// another note, an LLM reply, GitHub, etc. — none of which emit an
-		// HTML table at all) — see parseMarkdownPipeTable's own comment for
-		// why that detection doesn't false-positive on ordinary prose. Neither
-		// matching leaves the paste as native single-cell text.
-		editor.addEventListener('paste', (evt: ClipboardEvent) => {
-			const html = evt.clipboardData?.getData('text/html') ?? '';
-			const parsed = /<table[\s>]/i.test(html)
-				? parseHtmlTableWithMerges(html)
-				: null;
-			const values = parsed?.values ?? parseMarkdownPipeTable(evt.clipboardData?.getData('text/plain') ?? '');
-			if (!values) return;
-			evt.preventDefault();
+
+	// A copied table spreads over cells unless pasted as plain text; anything else is inserted as text.
+	const applyPaste = (payload: ClipboardPayload, plain: boolean) => {
+		const decision = decidePaste(payload, { canSpread: !!onPasteGrid, plain });
+		if (!decision) return;
+		if (decision.kind === 'grid') {
 			cancel();
-			onPasteGrid(values, parsed?.merges);
-		});
-	}
-	editor.addEventListener('paste', (evt: ClipboardEvent) => pastePlainText(evt));
+			onPasteGrid?.(decision.values, decision.merges);
+			return;
+		}
+		insertPlainText(editor, decision.text);
+	};
+	editor.addEventListener('paste', (evt: ClipboardEvent) => {
+		if (evt.defaultPrevented) return;
+		evt.preventDefault();
+		applyPaste(payloadOf(evt.clipboardData), takePlainPaste());
+	});
 	/**
 	 * Where the caret sits within the cell's text, or null when there's a
 	 * selection rather than a caret (or the caret isn't in this editor at all).

@@ -5,6 +5,11 @@ export const COLOR_MARK: Record<HighlightColor, string> = {
 	red: '🔴', orange: '🟠', yellow: '🟡', green: '🟢', blue: '🔵', purple: '🟣',
 };
 const MARKS = Object.values(COLOR_MARK);
+// Obsidian reads the square dots as the same colors.
+const SQUARE_MARK: Record<HighlightColor, string> = {
+	red: '🟥', orange: '🟧', yellow: '🟨', green: '🟩', blue: '🟦', purple: '🟪',
+};
+const ALL_MARKS: [string, HighlightColor][] = HIGHLIGHT_COLORS.flatMap(c => [[COLOR_MARK[c], c], [SQUARE_MARK[c], c]] as [string, HighlightColor][]);
 
 export const COLOR_LABEL_KEY = {
 	red: 'highlightRed', orange: 'highlightOrange', yellow: 'highlightYellow',
@@ -56,4 +61,31 @@ export function toggleHighlight(text: string, from: number, to: number, color?: 
 		return mark === wanted ? unwrap(open, to + 2, body) : wrap(open, to + 2, body, wanted);
 	}
 	return wrap(from, to, text.slice(from, to), wanted);
+}
+
+/**
+ * The highlight the selection is in: '' for an uncolored one, the color name, or null when it
+ * is not highlighted. The selection may be the whole `==…==`, its body, or part of the body.
+ */
+export function highlightAt(text: string, from: number, to: number): HighlightColor | '' | null {
+	if (from >= to) return null;
+	const colorOf = (inner: string): HighlightColor | '' => ALL_MARKS.find(([m]) => inner.startsWith(m))?.[1] ?? '';
+	const whole = text.slice(from, to);
+	if (whole.length >= 4 && whole.startsWith('==') && whole.endsWith('==')) return colorOf(whole.slice(2));
+	// The `==` marks of a line alternate open, close, …; the highlight around the selection is the pair that holds it.
+	const lineStart = text.lastIndexOf('\n', from - 1) + 1;
+	const nl = text.indexOf('\n', to);
+	const lineEnd = nl < 0 ? text.length : nl;
+	const marks: number[] = [];
+	for (let at = text.indexOf('==', lineStart); at >= 0 && at + 2 <= lineEnd; at = text.indexOf('==', at + 2)) marks.push(at);
+	for (let i = 0; i + 1 < marks.length; i += 2) {
+		const open = marks[i]!;
+		const close = marks[i + 1]!;
+		const inner = text.slice(open + 2, close);
+		const dot = ALL_MARKS.find(([m]) => inner.startsWith(m));
+		const bodyStart = open + 2 + (dot ? dot[0].length : 0);
+		if (bodyStart <= from && to <= close) return dot ? dot[1] : '';
+		// The selection starts inside the dot or on the `==`: not inside this highlight's body.
+	}
+	return null;
 }

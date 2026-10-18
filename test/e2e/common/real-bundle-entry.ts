@@ -31,6 +31,8 @@ export { isHoverPinned, getActiveCellMenu } from '../../../src/renderHoverPin';
 // keystroke before it reaches a document-level listener. That question is settled
 // by hand in the app.
 export { Menu as ShimMenu } from './obsidian-shim';
+export { addCellHighlightItems, clearCellPickOutside } from '../../../src/renderEditorMenu';
+export { insertPlainText } from '../../../src/editorPaste';
 export { buildOccupied, getMergeOrigin } from '../../../src/renderGridHelpers';
 export { canFreezeRows, canFreezeCols } from '../../../src/operations';
 export { cellEffectiveStyle, applyColStyle, applyStyleRulesV2, applyResolvedStyle } from '../../../src/renderCellStyle';

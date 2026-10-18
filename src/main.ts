@@ -11,6 +11,7 @@ import { t } from './i18n';
 import { resolveDefaultTheme } from './themes';
 import { computeCacheKey } from './blockCacheKey';
 import { setNativeEditorEnabled } from './nativeCellEditor';
+import { addCellHighlightItems, clearCellPickOutside } from './renderEditorMenu';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
 	choiceRegistry!: ChoiceRegistry;
@@ -63,7 +64,9 @@ export default class BetterTablePlugin extends Plugin {
 				return true;
 			},
 		});
+		this.registerDomEvent(activeDocument, 'contextmenu', clearCellPickOutside, true);
 		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor) => {
+			addCellHighlightItems(menu);
 			menu.addItem(item => item
 				.setTitle(t('insertRichTableBlock'))
 				.setIcon('table')
