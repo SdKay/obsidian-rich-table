@@ -234,6 +234,11 @@ export const fr: Dict = {
 	settingNativeEditorName: 'Utiliser l\'éditeur de notes dans les cellules (expérimental)',
 	settingNativeEditorDesc:
 		'Modifie les cellules de texte simple dans l\'éditeur propre à Obsidian, de sorte que les liens [[, les couleurs de surlignage ==, les #tags et les commandes / se complètent exactement comme dans une note. S\'appuie sur des API internes d\'Obsidian et peut cesser de fonctionner après une mise à jour d\'Obsidian ; l\'éditeur intégré prend automatiquement le relais s\'il est indisponible. Les cellules de formule et la saisie par-dessus une cellule sélectionnée utilisent toujours l\'éditeur intégré.',
+	settingOwnXlsxName: 'Ouvrir les fichiers .xlsx avec Rich Table',
+	settingOwnXlsxDesc:
+		'L’ouverture d’un fichier .xlsx du coffre l’affiche comme un tableau en lecture seule, pour le parcourir et le rechercher. Désactivez-le si un autre plugin doit ouvrir les .xlsx.',
+	settingOwnXlsxNeedsReload: 'Obsidian n’a pas pu libérer les fichiers .xlsx sans rechargement. Rechargez le plugin pour terminer la désactivation.',
+	settingOwnXlsxRefused: 'Un autre plugin ouvre déjà les fichiers .xlsx, donc Rich Table ne le fait pas. Désactivez l’autre plugin ou ce réglage, puis rechargez.',
 	settingCtrlColHeading: 'Boutons de la barre latérale gauche',
 	settingCtrlColDesc:
 		'Choisissez quels boutons de la barre latérale gauche s\'affichent, séparément pour un tableau verrouillé, ' +
@@ -298,6 +303,7 @@ export const fr: Dict = {
 	calendarMore:        '+{n} de plus',
 	sheetFallback:       'Feuille {n}',
 	xlsxNotFound:        'Fichier xlsx introuvable : {path}',
+	xlsxEmptyWorkbook:        'Ce classeur n’a aucune feuille visible ou aucune donnée',
 	upgradeBannerText:   'Ce tableau utilise un ancien format. Le nouveau format prend en charge davantage de fonctionnalités. La conversion modifie le bloc de code — vous pouvez l\'annuler avec Ctrl+Z.',
 	upgradeBannerConvert: 'Convertir au nouveau format',
 	upgradeBannerKeep:   'Conserver l\'ancien format',

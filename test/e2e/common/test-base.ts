@@ -92,6 +92,43 @@ export interface RenderBlockResult {
 	changeSettingsAndRefresh: (patch: Record<string, unknown>) => Promise<void>;
 }
 
+export interface LinkOpening {
+	kind: 'internal' | 'external';
+	href: string;
+	sourcePath?: string;
+	where?: string | boolean;
+}
+
+/** panel: a full Rich Search; legacy: one that predates currentQuery; throws: matchLine fails; future: an apiVersion this plugin does not know; none: not installed. */
+export type FakeSearchHost = 'none' | 'panel' | 'legacy' | 'throws' | 'future';
+
+export interface RenderXlsxFileResult {
+	/** Hands the viewer a search hit, the way setEphemeralState does. */
+	reveal: (request: unknown) => Promise<void>;
+	/** Types a query into the fake search panel (null = panel closed or query empty) and notifies the view. */
+	setQuery: (query: { query: string; caseSensitive?: boolean; wholeWord?: boolean } | null) => Promise<void>;
+	/** How many listeners the fake panel currently has. */
+	panelListeners: () => Promise<number>;
+	/** Inserts a link into the first cell the way MarkdownRenderer would, and returns its selector. */
+	addLink: (kind: 'internal' | 'external', href: string | null, text?: string) => Promise<string>;
+	/** Every link opened so far through workspace.openLinkText or window.open, in order. */
+	linkOpenings: () => Promise<LinkOpening[]>;
+	/** Text of every currently highlighted fragment, in document order. */
+	hits: () => Promise<string[]>;
+	/** Simulate an external tool overwriting the open file and firing 'modify'. */
+	modify: (bytes: number[]) => Promise<void>;
+	rename: (newPath: string) => Promise<void>;
+	remove: () => Promise<void>;
+	/** Show a different file in the same view, the way a tab navigates. */
+	openOther: (path: string) => Promise<void>;
+	/** Closes the view the way Obsidian does when its tab goes away. */
+	closeView: () => Promise<void>;
+	/** Unloads the view component without closing the file first. */
+	unloadView: () => Promise<void>;
+	/** Number of vault listeners still registered (for leak checks). */
+	listenerCount: () => Promise<number>;
+}
+
 export const test = base.extend<{
 	renderReal: (source: string, opts?: { sheetId?: string; scrollLeft?: number; scrollTop?: number }) => Promise<RenderRealResult>;
 	renderFull: (source: string, opts?: RenderFullOpts) => Promise<RenderRealResult>;
@@ -99,6 +136,8 @@ export const test = base.extend<{
 	 *  → plain byte array) BEFORE the block's first render, for a block whose
 	 *  YAML references an `xlsxSource` — see writeBinaryAndNotify above for
 	 *  why a byte array, not ArrayBuffer/Uint8Array. */
+	/** Mounts the real XlsxFileViewer on an in-memory vault holding `files` (path → bytes) and opens `open`. */
+	renderXlsxFile: (files: Record<string, number[]>, open: string, opts?: { searchHost?: FakeSearchHost; pendingReveal?: unknown; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderXlsxFileResult>;
 	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown> }) => Promise<RenderBlockResult>;
 }>({
 	renderReal: async ({ page }, use) => {
@@ -244,6 +283,131 @@ export const test = base.extend<{
 	 * it was reachable by a test before: it needs the code-block processor to run
 	 * twice over the same table, which is what `reprocess` does.
 	 */
+	renderXlsxFile: async ({ page }, use) => {
+		await page.addInitScript({ path: POLYFILL });
+
+		const helper = async (files: Record<string, number[]>, open: string, opts?: { searchHost?: FakeSearchHost; pendingReveal?: unknown; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }): Promise<RenderXlsxFileResult> => {
+			await page.goto(`file://${SHELL}`);
+			await page.addScriptTag({ path: BUNDLE });
+			await page.evaluate(async ({ files, open, searchHost, pendingReveal, initialQuery }) => {
+				const R = window.RichTableReal;
+				const vault = new R.FakeVault();
+				for (const [path, bytes] of Object.entries(files)) vault.binaryFiles.set(path, new Uint8Array(bytes).buffer);
+				const w = window as unknown as Record<string, unknown>;
+				w.__btVault = vault;
+				// A fake Rich Search. It is the host's job, not the view's, to apply whole word and case.
+				const matchLine = (text: string, o: { query: string; caseSensitive?: boolean; wholeWord?: boolean }) => {
+					const out: { start: number; end: number }[] = [];
+					if (o.query === '') return out;
+					const hay = o.caseSensitive ? text : text.toLowerCase();
+					const needle = o.caseSensitive ? o.query : o.query.toLowerCase();
+					for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + needle.length)) {
+						const before = at === 0 ? '' : hay[at - 1]!;
+						const after = hay[at + needle.length] ?? '';
+						if (o.wholeWord && (/\w/.test(before) || /\w/.test(after))) continue;
+						out.push({ start: at, end: at + needle.length });
+					}
+					return out;
+				};
+				const panel = { query: null as { query: string } | null, listeners: new Set<(q: unknown) => void>() };
+				w.__btPanel = panel;
+				const apis: Record<string, any> = {
+					none: undefined,
+					panel: {
+						apiVersion: 1, matchLine,
+						currentQuery: () => panel.query,
+						onQueryChange: (fn: (q: unknown) => void) => { panel.listeners.add(fn); return () => { panel.listeners.delete(fn); }; },
+					},
+					legacy: { apiVersion: 1, matchLine },
+					throws: { apiVersion: 1, matchLine: () => { throw new Error('host failed'); } },
+					future: {
+						apiVersion: 2, matchLine,
+						currentQuery: () => panel.query,
+						onQueryChange: (fn: (q: unknown) => void) => { panel.listeners.add(fn); return () => { panel.listeners.delete(fn); }; },
+					},
+				};
+				const opened: unknown[] = [];
+				w.__btOpened = opened;
+				window.open = ((href: string) => { opened.push({ kind: 'external', href }); return null; }) as typeof window.open;
+				const workspace = { openLinkText: (href: string, sourcePath: string, where: unknown) => { opened.push({ kind: 'internal', href, sourcePath, where }); return Promise.resolve(); } };
+				if (initialQuery) panel.query = initialQuery;
+				const host = { app: { vault, workspace }, choiceRegistry: new R.ChoiceRegistry([]), searchHost: () => apis[searchHost ?? 'none'] };
+				const container = document.getElementById('root').createDiv();
+				const viewer = new R.XlsxFileViewer(host, container);
+				viewer.load();
+				w.__btViewer = viewer;
+				if (pendingReveal) viewer.reveal(pendingReveal);
+				await viewer.open(vault.getAbstractFileByPath(open));
+			}, { files, open, searchHost: opts?.searchHost, pendingReveal: opts?.pendingReveal, initialQuery: opts?.initialQuery });
+			await Promise.race([
+				page.locator('.bt-table').first().waitFor(),
+				page.locator('.bt-error').first().waitFor(),
+				page.locator('.bt-empty-workbook').first().waitFor(),
+			]);
+
+			type W = { __btVault: any; __btViewer: any; __btOpenPath: string };
+			return {
+				reveal: (request) => page.evaluate(async (request) => {
+					const w = window as unknown as W;
+					w.__btViewer.reveal(request);
+					await new Promise(r => setTimeout(r, 0));
+				}, request),
+				addLink: (kind, href, text) => page.evaluate(({ kind, href, text }) => {
+					const cell = document.querySelector('.bt-td') as HTMLElement;
+					const a = document.createElement('a');
+					a.className = kind === 'internal' ? 'internal-link' : 'external-link';
+					if (href !== null) a.setAttribute('data-href', href);
+					a.textContent = text ?? 'a link';
+					a.id = 'probe-link';
+					cell.appendChild(a);
+					return '#probe-link';
+				}, { kind, href, text }),
+				linkOpenings: () => page.evaluate(() => (window as unknown as { __btOpened: LinkOpening[] }).__btOpened),
+				setQuery: (query) => page.evaluate((query) => {
+					const w = window as unknown as { __btPanel: { query: unknown; listeners: Set<(q: unknown) => void> } };
+					w.__btPanel.query = query;
+					for (const fn of [...w.__btPanel.listeners]) fn(query);
+				}, query),
+				panelListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { listeners: Set<unknown> } }).__btPanel.listeners.size),
+				hits: () => page.evaluate(() => Array.from(document.querySelectorAll('mark.bt-search-hit')).map(m => m.textContent ?? '')),
+				modify: (bytes) => page.evaluate(({ bytes }) => {
+					const w = window as unknown as W;
+					const path = w.__btViewer.file.path;
+					w.__btVault.writeBinaryAndNotify(path, new Uint8Array(bytes).buffer);
+				}, { bytes }),
+				rename: (newPath) => page.evaluate(({ newPath }) => {
+					const w = window as unknown as W;
+					w.__btVault.renameBinaryAndNotify(w.__btViewer.file.path, newPath);
+				}, { newPath }),
+				remove: () => page.evaluate(() => {
+					const w = window as unknown as W;
+					w.__btVault.deleteBinaryAndNotify(w.__btViewer.file.path);
+				}),
+				openOther: (path) => page.evaluate(async ({ path }) => {
+					const w = window as unknown as W;
+					await w.__btViewer.open(w.__btVault.getAbstractFileByPath(path));
+				}, { path }),
+				closeView: () => page.evaluate(() => {
+					const w = window as unknown as W;
+					w.__btViewer.close();
+					w.__btViewer.unload();
+				}),
+				unloadView: () => page.evaluate(() => {
+					const w = window as unknown as W;
+					w.__btViewer.unload();
+				}),
+				listenerCount: () => page.evaluate(() => {
+					const w = window as unknown as W;
+					let n = 0;
+					for (const set of w.__btVault.listeners.values()) n += set.size;
+					return n;
+				}),
+			};
+		};
+
+		await use(helper);
+	},
+
 	renderBlock: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
 

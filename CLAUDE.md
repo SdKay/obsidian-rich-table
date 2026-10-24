@@ -46,6 +46,17 @@ UI interaction → StructuralOpV2 (operations.ts) → TableBlock.handleStructura
 - **Positions are logical px.** `zoom` is CSS `zoom` on the table subtree; divide measured visual rects by it. The status bar and frame live outside the zoomed subtree.
 - Frozen rows/columns, block reorder and similar features read live geometry; unit-test their pure planning, e2e-test the DOM.
 
+## `.xlsx` file view and Rich Search
+
+- **The `.xlsx` tab is read-only, by decision.** Its value is browsing and search; write-back is out of scope until it is wanted. It does not go through `TableBlock`; the two share only `xlsxFileWatch.ts` and `settleRenderedTables`, so a new post-attach fix goes into the latter, not into one caller.
+- **Extension ownership uses Obsidian internals** (`viewRegistry.unregisterExtensions`/`unregisterView`), read from the source and not measured. If they are missing the setting falls back to "reload to finish".
+- **`richSearchApi.ts` is a verbatim copy of the Rich Search contract.** Change the contract first, then every copy. Changing what `xlsxExtract.ts` or `blockExtract.ts` returns means bumping the matching version constant. Both readers stay free of `obsidian` imports (a test enforces it).
+- **Search marks are transient and never written** to the file or the note. Their lifetime, colour and which one is "opened" (brighter) are decided by the Rich Search panel; every view that marks follows it through the one `SearchPanelFollower`. Mark text as it is shown, not from the raw value.
+- **Opening a hit never moves the cursor into a block** (Live Preview would show it as source). Revealing a hit in a block may switch sheets in memory only, never in the note.
+- **A note can hold several live copies of one block** (Reading view rebuilds sections). Look a block up through `findBlockAt`, which takes the one that is on screen.
+- Scrolling to a cell must clear the frozen rows and columns, so it does not use `scrollIntoView`.
+- The e2e shim stands in for Obsidian: keep `Setting.descEl`, `HTMLElement.toggle` and `isShown` faithful, and run all of `test/e2e` before committing shared-code changes (settings tab, `render()`). Its `MarkdownRenderer` emits plain text only.
+
 ## Backward compatibility of the code block
 
 A block is user content in people's notes; breaking it is data loss.

@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: BetterTableSettings = {
 	singleClickEdit: false,
 	defaultTheme: 'grid',
 	nativeCellEditor: false,
+	ownXlsxFiles: true,
 	ctrlColHiddenButtons: { locked: [], unlocked: [], xlsxRef: [] },
 };
 
@@ -82,6 +83,28 @@ export class BetterTableSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		const ownXlsx = new Setting(containerEl)
+			.setName(t('settingOwnXlsxName'))
+			.setDesc(t('settingOwnXlsxDesc'));
+		const ownXlsxNote = ownXlsx.descEl.createDiv({ cls: 'mod-warning' });
+		const showOwnXlsxNote = (): void => {
+			const p = this.plugin;
+			const text = p.settings.ownXlsxFiles && p.xlsxViewRefused ? t('settingOwnXlsxRefused')
+				: !p.settings.ownXlsxFiles && p.xlsxViewNeedsReload ? t('settingOwnXlsxNeedsReload') : '';
+			ownXlsxNote.setText(text);
+			ownXlsxNote.toggle(text !== '');
+		};
+		ownXlsx.addToggle(toggle =>
+			toggle
+				.setValue(this.plugin.settings.ownXlsxFiles)
+				.onChange(async (value) => {
+					this.plugin.settings.ownXlsxFiles = value;
+					await this.plugin.saveSettings();
+					showOwnXlsxNote();
+				}),
+		);
+		showOwnXlsxNote();
 
 		// ── Left-toolbar button visibility, per scenario ─────────────────────
 		// A dense chip grid (icon + label + checkbox per button, several per row)

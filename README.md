@@ -327,6 +327,7 @@ Open **Settings → Rich Table** to configure the plugin.
 | Single-click to edit | Off | When on, a single click on a cell enters edit mode immediately (no delay), and the style panel opens with Ctrl/Cmd+click instead of double-click. When off (default), single click enters edit after a short delay and double click opens the style panel. |
 | Default theme for new tables | Grid | Theme given to a blank table you insert and to a Markdown table you convert. Choose *Default* for no theme. Built-in templates keep their own look, and any table's theme can still be changed from its left toolbar. |
 | Use the note editor in cells (experimental) | Off | Edits plain text cells in Obsidian's own editor, so `[[` links, `==` highlight colors, `#tags` and `/` commands complete exactly as in a note. Uses internal Obsidian APIs, so it may stop working after an Obsidian update — the built-in editor takes over automatically when it is unavailable. Formula cells, and typing over a selected cell, still use the built-in editor. |
+| Open .xlsx files in Rich Table | On | Opening an `.xlsx` file in the vault shows it as a read-only table in its own tab. Turn it off if another plugin should open `.xlsx` files; the change applies immediately. If another plugin already owns `.xlsx`, Rich Table steps aside and says so here. |
 | Left-toolbar buttons | All shown | Independently hide any of the left-toolbar (lock, auto-fit, theme, snapshot, export, …) buttons, separately for a locked table, an unlocked table, and a table backed by an external `.xlsx` file — each list only offers the buttons that actually apply to that scenario. |
 | Custom types | — | Define custom choice-column types with labels and colors. |
 | Changelog | — | Button to open the full release history at any time. It also opens automatically the first time the plugin loads after an update. |
@@ -438,6 +439,16 @@ The easiest way to create one: insert an empty `rich-table` block, then click **
 - **Theme** — defaults to `grid` (no interactive picker, since theme switching isn't part of what this table can edit yet); add `theme: <id>` to the block's own YAML alongside `xlsxSource` to use a different built-in theme instead.
 
 Known gaps: no concurrency control (last write wins, same as the file itself); theme-relative/indexed colors, cell borders and number formats aren't carried over on read; formula cells show only their last-saved value (no formula engine); rich-text runs are flattened to plain text; the style panel hides background/text-color/size/bold/italic for an xlsx-backed cell (readable, not yet writable).
+
+### Opening an .xlsx file directly
+
+Clicking an `.xlsx` file in the file explorer opens it in a tab as a read-only table, with no note involved. The table takes the size of its content and scrolls inside its own frame; a workbook with several sheets shows sheet tabs. The view follows the file: a save from Excel refreshes it within about half a second, and renaming the file keeps it up to date. Nothing in this view can edit the file; to edit cells, reference the file from a block as described above. Links written in a cell, such as `[[Note]]`, open as they do in a note, but hovering one does not preview it.
+
+Turn this off in **Settings → Rich Table → Open .xlsx files in Rich Table** if another plugin should open `.xlsx` files.
+
+### Search
+
+When the Rich Search plugin is installed, opening a hit in an `.xlsx` file goes to its sheet and cell and marks every match on that sheet. Search reads the cell values as stored: a date is its serial number, a formula is its last saved value, and a workbook of more than 200,000 cells is not searched. A match is marked in the text as shown, so a cell whose value contains Markdown syntax can be found without being marked.
 
 ---
 

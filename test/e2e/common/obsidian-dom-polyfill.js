@@ -152,6 +152,10 @@
 	};
 
 	// Document-level factories the plugin may use for detached trees.
+	// Obsidian's HTMLElement.toggle(show): show or hide the element.
+	HTMLElement.prototype.toggle = function (show) { this.style.display = show ? '' : 'none'; };
+	// Obsidian's HTMLElement.isShown: attached to the document and not hidden by any ancestor.
+	HTMLElement.prototype.isShown = function () { return this.isConnected && this.getClientRects().length > 0; };
 	Document.prototype.createDiv = function (o, callback) { return createEl.call(this.body, 'div', o, callback); };
 	DocumentFragment.prototype.createEl = createEl;
 	DocumentFragment.prototype.createDiv = function (o, callback) { return createEl.call(this, 'div', o, callback); };

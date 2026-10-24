@@ -233,6 +233,11 @@ export const ko: Dict = {
 	settingNativeEditorName: '셀에서 노트 편집기 사용(실험적)',
 	settingNativeEditorDesc:
 		'일반 텍스트 셀을 Obsidian 자체 편집기로 편집하므로 [[ 링크, == 강조 색상, #태그, / 명령의 자동 완성이 노트 본문과 똑같이 동작합니다. Obsidian의 내부 API에 의존하므로 Obsidian 업데이트 후 동작하지 않을 수 있으며, 사용할 수 없으면 기본 제공 편집기가 자동으로 대신합니다. 수식 셀과 선택한 셀 위에 바로 입력하는 경우에는 계속 기본 제공 편집기를 사용합니다.',
+	settingOwnXlsxName: 'Rich Table로 .xlsx 파일 열기',
+	settingOwnXlsxDesc:
+		'보관함의 .xlsx 파일을 열면 읽기 전용 표로 표시하여 탐색하고 검색할 수 있습니다. 다른 플러그인이 .xlsx를 열게 하려면 끄세요.',
+	settingOwnXlsxNeedsReload: '이 Obsidian에서는 다시 불러오지 않고 .xlsx를 해제할 수 없었습니다. 끄기를 마치려면 플러그인을 다시 불러오세요.',
+	settingOwnXlsxRefused: '다른 플러그인이 이미 .xlsx 파일을 열고 있어 Rich Table은 열지 않습니다. 그 플러그인이나 이 설정을 끄고 다시 불러오세요.',
 	settingCtrlColHeading: '왼쪽 도구 모음 버튼',
 	settingCtrlColDesc:
 		'잠긴 표, 잠기지 않은 표, 외부 .xlsx 파일을 참조하는 표에 대해 각각 왼쪽 도구 모음에 표시할 버튼을 고릅니다. ' +
@@ -296,6 +301,7 @@ export const ko: Dict = {
 	calendarMore:        '+{n}개 더',
 	sheetFallback:       '시트 {n}',
 	xlsxNotFound:        'xlsx 파일을 찾을 수 없습니다: {path}',
+	xlsxEmptyWorkbook:        '이 통합 문서에는 표시할 시트나 데이터가 없습니다',
 	upgradeBannerText:   '이 표는 이전 형식을 사용합니다. 새 형식은 더 많은 기능을 지원합니다. 변환하면 코드 블록이 수정되며, Ctrl+Z로 되돌릴 수 있습니다.',
 	upgradeBannerConvert: '새 형식으로 변환',
 	upgradeBannerKeep:   '이전 형식 유지',

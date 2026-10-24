@@ -230,6 +230,11 @@ export const zh: Dict = {
 	settingNativeEditorName: '单元格使用笔记编辑器（实验性）',
 	settingNativeEditorDesc:
 		'普通文本单元格改用 Obsidian 自带的编辑器，[[ 双链、== 高亮颜色、#标签和 / 命令的补全与笔记正文完全一致。依赖 Obsidian 的内部接口，Obsidian 更新后可能失效；不可用时会自动回退到内置编辑器。公式单元格，以及选中单元格后直接打字，仍使用内置编辑器。',
+	settingOwnXlsxName: '用 Rich Table 打开 .xlsx 文件',
+	settingOwnXlsxDesc:
+		'在库中打开 .xlsx 文件时，以只读表格显示，便于浏览和搜索。如果希望由其他插件打开 .xlsx，请关闭此项。',
+	settingOwnXlsxNeedsReload: '当前 Obsidian 版本无法在运行时释放 .xlsx，请重新加载插件以完成关闭。',
+	settingOwnXlsxRefused: '已有其他插件在打开 .xlsx 文件，因此 Rich Table 没有接管。请关闭那个插件，或关闭本设置，然后重新加载。',
 	settingCtrlColHeading: '左侧工具栏按钮',
 	settingCtrlColDesc:
 		'分别为锁定表格、未锁定表格、引用外部 .xlsx 的表格选择要显示哪些左侧工具栏按钮——每种场景只会列出该场景下实际可用的按钮。',
@@ -293,6 +298,7 @@ export const zh: Dict = {
 	calendarMore:        '还有 {n} 条',
 	sheetFallback:       '表 {n}',
 	xlsxNotFound:        '未找到 xlsx 文件：{path}',
+	xlsxEmptyWorkbook:        '此工作簿没有可见的工作表，或没有数据',
 	upgradeBannerText:   '该表格使用旧版格式，新版格式支持更多功能。转换时将自动修改表格代码块，可用 Ctrl+Z 撤回。',
 	upgradeBannerConvert: '转换到新版格式',
 	upgradeBannerKeep:   '继续使用旧版',

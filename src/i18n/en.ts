@@ -261,6 +261,11 @@ export const en = {
 	settingNativeEditorName: 'Use the note editor in cells (experimental)',
 	settingNativeEditorDesc:
 		'Edit plain text cells in Obsidian\'s own editor, so [[ links, == highlight colors, #tags and / commands complete exactly as in a note. Relies on internal Obsidian APIs and may stop working after an Obsidian update; the built-in editor is used automatically if it is unavailable. Formula cells and typing over a selected cell still use the built-in editor.',
+	settingOwnXlsxName: 'Open .xlsx files in Rich Table',
+	settingOwnXlsxDesc:
+		'Opening an .xlsx file in the vault shows it as a read-only table, so it can be browsed and searched. Turn this off if another plugin should open .xlsx files.',
+	settingOwnXlsxNeedsReload: 'Obsidian could not release .xlsx files without a reload. Reload the plugin to finish turning this off.',
+	settingOwnXlsxRefused: 'Another plugin already opens .xlsx files, so Rich Table does not. Turn the other one off, or this setting off, then reload.',
 	settingCtrlColHeading: 'Left-toolbar buttons',
 	settingCtrlColDesc:
 		'Choose which left-toolbar buttons show, separately for a locked table, an unlocked ' +
@@ -327,6 +332,7 @@ export const en = {
 	calendarMore:        '+{n} more',
 	sheetFallback:       'Sheet {n}',
 	xlsxNotFound:        'xlsx file not found: {path}',
+	xlsxEmptyWorkbook:        'This workbook has no visible sheets or no data',
 	upgradeBannerText:   'This table uses an older format. The new format supports more features. Converting will update the code block — you can undo with Ctrl+Z.',
 	upgradeBannerConvert: 'Convert to new format',
 	upgradeBannerKeep:   'Keep old format',

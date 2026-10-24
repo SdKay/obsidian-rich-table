@@ -254,6 +254,16 @@ export class TFile {
 		this.extension = /\.([^./]+)$/.exec(path)?.[1] ?? 'md';
 	}
 }
+/** Obsidian's Keymap.isModEvent: a middle click or Mod opens a tab, Mod+Alt a split, Mod+Alt+Shift a window. */
+export class Keymap {
+	static isModEvent(evt?: MouseEvent | null): string | boolean {
+		if (!evt) return false;
+		if (evt.button === 1) return 'tab';
+		if (!(evt.ctrlKey || evt.metaKey)) return false;
+		if (evt.altKey) return evt.shiftKey ? 'window' : 'split';
+		return 'tab';
+	}
+}
 export class MarkdownView { }
 export class Plugin extends Component { }
 export class PluginSettingTab { }
@@ -326,16 +336,17 @@ export class Setting {
 	settingEl = document.createElement('div');
 	nameEl = document.createElement('div');
 	controlEl = document.createElement('div');
+	/** Obsidian's description element: setDesc writes its text, and a caller may add children to it. */
+	descEl = document.createElement('div');
 	constructor(containerEl?: HTMLElement) {
 		this.settingEl.className = 'setting-item';
-		this.settingEl.append(this.nameEl, this.controlEl);
+		this.descEl.className = 'setting-item-description';
+		this.settingEl.append(this.nameEl, this.controlEl, this.descEl);
 		containerEl?.appendChild(this.settingEl);
 	}
 	setName(name: string): this { this.nameEl.textContent = name; return this; }
 	setDesc(desc: string): this {
-		const el = document.createElement('div');
-		el.textContent = desc;
-		this.settingEl.appendChild(el);
+		this.descEl.textContent = desc;
 		return this;
 	}
 	setHeading(): this { this.settingEl.classList.add('setting-item-heading'); return this; }

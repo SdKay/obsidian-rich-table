@@ -52,6 +52,16 @@ export interface RichSearchHostApi {
 	apiVersion: 1;
 	/** All matches of `opts` in one text unit, in order. The only implementation of the matching rules. */
 	matchLine(text: string, opts: MatchOptions): Span[];
+	/**
+	 * The search that is currently on screen, or null when the search panel is closed or its query is empty.
+	 * Optional: absent in a rich-search that predates it, which a view treats as "no live highlight".
+	 */
+	currentQuery?(): MatchOptions | null;
+	/**
+	 * Calls `listener` whenever `currentQuery()` would return something different. Returns a function that
+	 * stops the calls; a view must call it when it closes. Optional, together with `currentQuery`.
+	 */
+	onQueryChange?(listener: (query: MatchOptions | null) => void): () => void;
 }
 export interface MatchOptions { query: string; caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean }
 export interface Span { start: number; end: number } // half-open, in UTF-16 code units of `text`

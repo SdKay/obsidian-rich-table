@@ -3237,6 +3237,17 @@
 .bt-col-selector.bt-reorder-armed, .bt-row-selector.bt-reorder-armed { cursor: grabbing; }
 
 
+/* A search hit shown in the .xlsx file view. Not Obsidian's own mark colour, so it never reads as the
+ * reader's `==highlight==`. Specificity (0,3,1) beats host rules on a bare mark, down to
+ * `.markdown-preview-view.markdown-rendered mark` (0,2,1) that themes and snippets use. */
+mark.bt-search-hit.bt-search-hit.bt-search-hit {
+	background-color: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	color: inherit;
+	border-radius: 2px;
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+	padding: 0;
+}
+
 /* ── Built-in themes (auto-generated — do not edit below) ──── */
 /* @theme-label-en: Academic 📐 */
 /* @theme-label-zh: 学术 📐 */

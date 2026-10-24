@@ -46,3 +46,8 @@ export { TableBlock, refreshAllTableBlocks } from '../../../src/tableBlock';
 export { BetterTableSettingTab, DEFAULT_SETTINGS } from '../../../src/settings';
 export { FakeVault, FakeMetadataCache, FakeFileManager, Notice } from './obsidian-shim';
 export { setNativeEditorEnabled } from '../../../src/nativeCellEditor';
+export { XlsxFileViewer } from '../../../src/xlsxFileViewer';
+export { TFile as ShimTFile } from './obsidian-shim';
+export { revealCell, findAnchorCell } from '../../../src/searchReveal';
+export { markSpans, SEARCH_HIT_CLASS } from '../../../src/searchHighlight';
+export { linkAt } from '../../../src/cellLinks';

@@ -1,4 +1,4 @@
-import { type EventRef, FileSystemAdapter, MarkdownPostProcessorContext, MarkdownRenderChild, Notice, Platform, TFile, setIcon } from 'obsidian';
+import { FileSystemAdapter, MarkdownPostProcessorContext, MarkdownRenderChild, Notice, Platform, TFile, setIcon } from 'obsidian';
 import { t, fmt, pick, tableVersionTooHighMsg } from './i18n';
 import { CURRENT_TABLE_VERSION, MIN_STABLE_VERSION, getTableVersion, migrateSource } from './tableVersion';
 import type BetterTablePlugin from './main';
@@ -20,11 +20,11 @@ import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
 import { resolveDefaultTheme } from './themes';
 import { readXlsxAsModel, writeXlsxOps, isXlsxWritableOp, type XlsxWritableOp } from './xlsxSource';
-import { applyAutoColWidths, applyCodeLineHeightFix } from './renderAutofit';
+import { settleRenderedTables } from './renderAutofit';
 import { belongsToRoot } from './renderOwnScope';
 import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
-import { reserveSelectorLeftPad, applyOuterFrame } from './renderGeometry';
 import { electronShell, fsPromises } from './nodeBridge';
+import { watchXlsxFile, type XlsxFileWatch } from './xlsxFileWatch';
 import { openXlsxFilePicker } from './xlsxFilePicker';
 import { captureTablePng, captureTableSvg } from './tableSnapshot';
 import type { SnapshotKind } from './renderTypes';
@@ -181,14 +181,9 @@ export class TableBlock extends MarkdownRenderChild {
 	// via writeXlsxOps/modifyBinary instead of vault.process() on this note.
 	private xlsxPendingOps: XlsxWritableOp[] = [];
 	private xlsxWriteScheduled = false;
-	// The vault 'modify'/'rename'/'delete' listeners currently watching
-	// xlsxFile for external changes (see refreshXlsxWatch) — re-established
-	// on every render() since xlsxFile itself can change (e.g. xlsxSource.path
-	// edited by hand), and explicitly swapped out rather than left to
-	// accumulate, since leaving the OLD listeners registered too would
-	// double-fire a refresh.
-	private xlsxWatchRefs: EventRef[] = [];
-	private xlsxRefreshTimer: number | null = null;
+	// The watcher on xlsxFile for external changes (see refreshXlsxWatch), replaced
+	// whenever the bound path changes (e.g. xlsxSource.path edited by hand).
+	private xlsxWatch: { path: string; watch: XlsxFileWatch } | null = null;
 
 	constructor(
 		container: HTMLElement,
@@ -206,12 +201,8 @@ export class TableBlock extends MarkdownRenderChild {
 		// per-instance registration below.
 		liveInstances.add(this);
 		this.register(() => { liveInstances.delete(this); });
-		// Registered once here, not per-render(): both callbacks read the
-		// CURRENT field value at unload time regardless of when they were
-		// registered, so there's nothing to gain from re-registering them on
-		// every render() the way xlsxWatchRefs itself is swapped above.
-		this.register(() => { for (const ref of this.xlsxWatchRefs) this.plugin.app.vault.offref(ref); });
-		this.register(() => { if (this.xlsxRefreshTimer !== null) window.clearTimeout(this.xlsxRefreshTimer); });
+		// Registered once here: reads the CURRENT watcher at unload time.
+		this.register(() => { this.xlsxWatch?.watch.stop(); });
 		// A nested table's cacheKey (main.ts) is unique per mount — nothing will
 		// ever look it up again after THIS instance is done with it, unlike a
 		// top-level table's stable sourcePath:lineStart key, which the NEXT
@@ -576,35 +567,9 @@ export class TableBlock extends MarkdownRenderChild {
 		void this.containerEl.getBoundingClientRect();
 		this.isRendering = false;
 
-		// Pin any column the renderer left unmeasured (col[data-auto] — a column
-		// with no width of its own alongside a sibling that has one) to its real
-		// content width. Must happen here, not inside renderTable() itself: that
-		// runs against the detached `tmp` tree above, where every measurement
-		// would read 0 — this is the first point the table is guaranteed attached
-		// and reflowed. Runs for every sheet's table this reprocess just rendered
-		// (a kanban/calendar active view has no <table> at all, so the query
-		// simply finds nothing there).
-		this.containerEl.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyAutoColWidths);
-
-		// Same "needs live layout, must run post-swap" reasoning, for the inline-
-		// code line-height fix (see its own doc comment) — every table this
-		// reprocess just rendered, found the same blanket way as above.
-		this.containerEl.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyCodeLineHeightFix);
-
-		// Same "needs live layout, must run post-swap" reasoning, for the
-		// selector strips' left-padding reservation (see reserveSelectorLeftPad's
-		// doc comment) — every `.bt-render-root` this reprocess just rendered,
-		// found the same blanket way applyAutoColWidths finds every table above
-		// (a nested table's own root included, with no special-casing to single
-		// it out — it gets here via the exact same query as its own top-level
-		// container, and reserveSelectorLeftPad treats every root identically).
-		this.containerEl.querySelectorAll<HTMLElement>('.bt-render-root').forEach(reserveSelectorLeftPad);
-
-		// Same "needs live layout, must run post-swap" reasoning, for the outer
-		// frame's own initial sizing (see applyOuterFrame's own doc comment) —
-		// same blanket query/every-root treatment as reserveSelectorLeftPad
-		// just above.
-		this.containerEl.querySelectorAll<HTMLElement>('.bt-render-root').forEach(applyOuterFrame);
+		// These read live layout, so they run here, after the swap, not inside renderTable()
+		// (which renders into the detached `tmp` tree where every measurement is 0).
+		settleRenderedTables(this.containerEl);
 
 		// A resumed edit (renderEditHandoff.ts) builds its editor DURING the render
 		// pass above, while the cell is still part of the off-screen `tmp` tree — a
@@ -947,7 +912,7 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  (never a cached in-memory Workbook — matches how this.model/this.workbook
 	 *  are already re-derived from disk on every render()), applies the whole
 	 *  batch, and writes once. The vault 'modify' event a SUCCESSFUL write fires
-	 *  is picked up by the SAME watcher (refreshXlsxWatch/scheduleXlsxRefresh)
+	 *  is picked up by the SAME watcher (refreshXlsxWatch)
 	 *  that already handles an external editor changing the file — no separate
 	 *  "refresh after my own write" path needed for the success case.
 	 *
@@ -961,7 +926,7 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  on-screen "success" was never real in the first place — the cell editor's
 	 *  own save() (renderEditMode.ts) intentionally leaves its edited text in the
 	 *  DOM after a value change, on the assumption that the vault 'modify' event
-	 *  from a successful write will trigger scheduleXlsxRefresh's re-render
+	 *  from a successful write will trigger the watcher's re-render
 	 *  shortly after, which replaces that DOM with the real (freshly re-read)
 	 *  content. That assumption holds for a successful write; a FAILED one never
 	 *  fires 'modify' at all, so nothing ever corrects the optimistic-looking but
@@ -1002,51 +967,23 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  xlsx-backed at all, both need the old watcher (if any) torn down rather
 	 *  than left running against a file this table no longer represents. */
 	private refreshXlsxWatch(): void {
-		for (const ref of this.xlsxWatchRefs) this.plugin.app.vault.offref(ref);
-		this.xlsxWatchRefs = [];
-		if (!this.isXlsxBacked || !this.xlsxFile) return;
-		const path = this.xlsxFile.path;
-		const refs = [
-			this.plugin.app.vault.on('modify', (file) => {
-				if (file.path === path) this.scheduleXlsxRefresh();
-			}),
-			// Obsidian doesn't auto-update xlsxSource.path on rename the way it
-			// does a real [[wikilink]] in note prose — it's a plain string field
-			// inside a code block's YAML, invisible to that link-rewriting
-			// feature. Without this, renaming the file breaks the reference
-			// outright (next resolution throws "file not found"). Rewrite the
-			// path immediately rather than waiting for the debounced refresh —
-			// a rename is a single, deliberate action, not a burst of
-			// intermediate autosave writes the way 'modify' can be.
-			this.plugin.app.vault.on('rename', (file, oldPath) => {
-				if (oldPath === path && file instanceof TFile) void this.handleXlsxRenamed(file);
-			}),
-			// No fix is possible here (unlike rename) — just refresh so the
-			// normal "file not found" error path (render()'s own throw) shows
-			// promptly instead of leaving stale content on screen indefinitely.
-			this.plugin.app.vault.on('delete', (file) => {
-				if (file.path === path) this.scheduleXlsxRefresh();
-			}),
-		];
-		for (const ref of refs) this.registerEvent(ref);
-		this.xlsxWatchRefs = refs;
-	}
-
-	/** Debounced re-render triggered by the 'modify'/'delete' watchers above —
-	 *  an external editor (Excel, LibreOffice, …) can fire several rapid saves
-	 *  for one logical edit (temp-file swaps, autosave, …), and Obsidian's own
-	 *  file watcher can likewise coalesce or repeat 'modify' events for a
-	 *  single real save; collapsing a burst into one refresh avoids re-reading
-	 *  and re-rendering the whole file once per intermediate event. This
-	 *  re-renders in place — same as switchXlsxSheet — since there's nothing
-	 *  to write back and thus nothing that would otherwise trigger Obsidian to
-	 *  reprocess the block. */
-	private scheduleXlsxRefresh(): void {
-		if (this.xlsxRefreshTimer !== null) window.clearTimeout(this.xlsxRefreshTimer);
-		this.xlsxRefreshTimer = window.setTimeout(() => {
-			this.xlsxRefreshTimer = null;
-			void this.render();
-		}, 400);
+		const path = this.isXlsxBacked ? this.xlsxFile?.path : undefined;
+		// Kept while the path is unchanged, so a change that arrived while this render was
+		// still parsing keeps its pending refresh.
+		if (this.xlsxWatch && this.xlsxWatch.path === path) return;
+		this.xlsxWatch?.watch.stop();
+		this.xlsxWatch = null;
+		if (!path) return;
+		// Obsidian doesn't auto-update xlsxSource.path on rename the way it does a
+		// real [[wikilink]]: it's a plain string inside the block's YAML. Rewrite it
+		// right away; a rename is one deliberate action, not a burst of autosaves.
+		// A refresh re-renders in place: there is nothing to write back that would
+		// make Obsidian reprocess the block.
+		const watch = watchXlsxFile(this.plugin.app.vault, path, {
+			onRefresh: () => { void this.render(); },
+			onRenamed: (file) => { if (file instanceof TFile) void this.handleXlsxRenamed(file); },
+		});
+		this.xlsxWatch = { path, watch };
 	}
 
 	/** The 'rename' watcher's fix: rewrite xlsxSource.path to the file's new

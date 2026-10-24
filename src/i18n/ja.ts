@@ -233,6 +233,11 @@ export const ja: Dict = {
 	settingNativeEditorName: 'セルでノートのエディターを使う（試験的）',
 	settingNativeEditorDesc:
 		'通常のテキストセルを Obsidian 自身のエディターで編集します。[[ リンク、== のハイライト色、#タグ、/ コマンドの補完がノート本文とまったく同じになります。Obsidian の内部 API に依存するため、Obsidian の更新後に動かなくなる場合があります。利用できないときは自動的に組み込みエディターを使います。数式セル、および選択したセルへそのまま入力する場合は、引き続き組み込みエディターを使います。',
+	settingOwnXlsxName: 'Rich Table で .xlsx ファイルを開く',
+	settingOwnXlsxDesc:
+		'保管庫内の .xlsx ファイルを開くと、閲覧・検索できる読み取り専用の表として表示します。別のプラグインで .xlsx を開きたい場合はオフにしてください。',
+	settingOwnXlsxNeedsReload: 'この Obsidian では再読み込みなしに .xlsx を解放できませんでした。オフにするにはプラグインを再読み込みしてください。',
+	settingOwnXlsxRefused: '別のプラグインがすでに .xlsx ファイルを開くため、Rich Table は開きません。そのプラグインかこの設定をオフにして再読み込みしてください。',
 	settingCtrlColHeading: '左ツールバーのボタン',
 	settingCtrlColDesc:
 		'ロック中の表、ロックしていない表、外部の .xlsx ファイルを参照する表のそれぞれについて、' +
@@ -296,6 +301,7 @@ export const ja: Dict = {
 	calendarMore:        '他 {n} 件',
 	sheetFallback:       'シート {n}',
 	xlsxNotFound:        'xlsx ファイルが見つかりません：{path}',
+	xlsxEmptyWorkbook:        'このブックには表示できるシートまたはデータがありません',
 	upgradeBannerText:   'この表は古いフォーマットを使用しています。新しいフォーマットではより多くの機能を使えます。変換するとコードブロックが書き換えられます — Ctrl+Z で元に戻せます。',
 	upgradeBannerConvert: '新しいフォーマットに変換',
 	upgradeBannerKeep:   '古いフォーマットのまま使う',

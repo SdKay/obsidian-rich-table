@@ -234,6 +234,11 @@ export const de: Dict = {
 	settingNativeEditorName: 'Notizeditor in Zellen verwenden (experimentell)',
 	settingNativeEditorDesc:
 		'Bearbeitet einfache Textzellen im Editor von Obsidian selbst, sodass [[-Links, ==-Hervorhebungsfarben, #Tags und /-Befehle genau wie in einer Notiz vervollständigt werden. Nutzt interne Obsidian-Schnittstellen und kann nach einem Obsidian-Update nicht mehr funktionieren; ist er nicht verfügbar, wird automatisch der eingebaute Editor verwendet. Formelzellen und das Überschreiben einer ausgewählten Zelle durch Tippen nutzen weiterhin den eingebauten Editor.',
+	settingOwnXlsxName: 'Rich Table öffnet .xlsx-Dateien',
+	settingOwnXlsxDesc:
+		'Beim Öffnen einer .xlsx-Datei im Tresor wird sie als schreibgeschützte Tabelle angezeigt, damit sie durchsucht werden kann. Ausschalten, wenn ein anderes Plugin .xlsx-Dateien öffnen soll.',
+	settingOwnXlsxNeedsReload: 'Obsidian konnte .xlsx-Dateien nicht ohne Neuladen freigeben. Das Plugin neu laden, um das Ausschalten abzuschließen.',
+	settingOwnXlsxRefused: 'Ein anderes Plugin öffnet bereits .xlsx-Dateien, daher übernimmt Rich Table sie nicht. Das andere Plugin oder diese Einstellung ausschalten und neu laden.',
 	settingCtrlColHeading: 'Schaltflächen der linken Leiste',
 	settingCtrlColDesc:
 		'Legen Sie fest, welche Schaltflächen der linken Leiste erscheinen – getrennt für gesperrte Tabellen, ' +
@@ -298,6 +303,7 @@ export const de: Dict = {
 	calendarMore:        '+{n} weitere',
 	sheetFallback:       'Blatt {n}',
 	xlsxNotFound:        'xlsx-Datei nicht gefunden: {path}',
+	xlsxEmptyWorkbook:        'Diese Arbeitsmappe hat keine sichtbaren Blätter oder keine Daten',
 	upgradeBannerText:   'Diese Tabelle verwendet ein älteres Format. Das neue Format unterstützt mehr Funktionen. Beim Umwandeln wird der Codeblock geändert – mit Strg+Z lässt sich das rückgängig machen.',
 	upgradeBannerConvert: 'In neues Format umwandeln',
 	upgradeBannerKeep:   'Altes Format beibehalten',

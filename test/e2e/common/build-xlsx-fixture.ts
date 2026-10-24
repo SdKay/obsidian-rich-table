@@ -13,7 +13,7 @@ import { saveWorkbook, toArrayBuffer } from '@office-kit/xlsx/io';
 
 export interface XlsxFixtureSpec {
 	/** One sheet per entry; each entry is a grid of cell strings, row-major, 1 header row + N data rows. */
-	sheets: { name: string; grid: string[][]; /** A1-notation ranges, e.g. 'B2:B3'. */ merges?: string[] }[];
+	sheets: { name: string; grid: string[][]; /** A1-notation ranges, e.g. 'B2:B3'. */ merges?: string[]; /** Excel character-unit widths by 1-based column; columns not listed have none. */ colWidths?: Record<number, number> }[];
 }
 
 export async function buildXlsxFixtureBytes(spec: XlsxFixtureSpec): Promise<number[]> {
@@ -26,6 +26,7 @@ export async function buildXlsxFixtureBytes(spec: XlsxFixtureSpec): Promise<numb
 			});
 		});
 		for (const ref of sheet.merges ?? []) mergeCells(ws, ref);
+		for (const [col, width] of Object.entries(sheet.colWidths ?? {})) ws.columnDimensions.set(Number(col), { min: Number(col), max: Number(col), width });
 	}
 	const sink = toArrayBuffer();
 	await saveWorkbook(wb, sink);

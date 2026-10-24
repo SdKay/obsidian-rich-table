@@ -390,6 +390,8 @@ export interface BetterTableSettings {
 	 *  `[[`, `==`, `#` and `/` completions are the real ones. Relies on internal,
 	 *  non-public Obsidian APIs; falls back to the built-in editor if unavailable. */
 	nativeCellEditor: boolean;
+	/** Register Rich Table's read-only view for `.xlsx` files. Read once at load. */
+	ownXlsxFiles: boolean;
 	/** Per-scenario left-toolbar button visibility (see CtrlColButtonId/
 	 *  CTRL_COL_BUTTONS_BY_SCENARIO above) — each array lists the ids HIDDEN
 	 *  in that scenario; absent/empty means every button for that scenario

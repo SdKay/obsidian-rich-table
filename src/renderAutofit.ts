@@ -1,6 +1,6 @@
 import type { StructuralOpHandler } from './renderTypes';
 import { ownCells, ownCols } from './renderOwnScope';
-import { measureZoomFactor } from './renderGeometry';
+import { measureZoomFactor, reserveSelectorLeftPad, applyOuterFrame } from './renderGeometry';
 
 /**
  * Extra headroom added on top of a choice pill's measured `offsetWidth`. The
@@ -401,4 +401,16 @@ export function colRightX(tbl: HTMLElement, colIdx: number): number {
 		if (c.dataset.col !== undefined && parseInt(c.dataset.col) === colIdx) break;
 	}
 	return x;
+}
+
+/**
+ * The layout fixes a freshly rendered table needs once it is attached to the live DOM
+ * (they read real geometry, which a detached tree reports as 0). Order matters.
+ * Covers every table and root under `container`, nested ones included.
+ */
+export function settleRenderedTables(container: HTMLElement): void {
+	container.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyAutoColWidths);
+	container.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyCodeLineHeightFix);
+	container.querySelectorAll<HTMLElement>('.bt-render-root').forEach(reserveSelectorLeftPad);
+	container.querySelectorAll<HTMLElement>('.bt-render-root').forEach(applyOuterFrame);
 }

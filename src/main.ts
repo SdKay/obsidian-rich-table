@@ -1,4 +1,6 @@
 import { Editor, MarkdownView, Plugin, parseYaml, stringifyYaml } from 'obsidian';
+import { XlsxFileView, XLSX_VIEW_TYPE } from './xlsxFileView';
+import { enableXlsxView, disableXlsxView, type ViewRegistryLike } from './xlsxViewRegistration';
 import { setYamlAdapter } from './yamlAdapter';
 import { BetterTableSettingTab, DEFAULT_SETTINGS } from './settings';
 import { ChoiceRegistry } from './choiceRegistry';
@@ -13,14 +15,23 @@ import { computeCacheKey } from './blockCacheKey';
 import { setNativeEditorEnabled } from './nativeCellEditor';
 import { addCellHighlightItems, clearCellPickOutside } from './renderEditorMenu';
 import { createRichSearchProvider } from './richSearchProvider';
-import type { RichSearchProvider } from './richSearchApi';
+import type { RichSearchHostApi, RichSearchProvider } from './richSearchApi';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
 	choiceRegistry!: ChoiceRegistry;
+	/** The Rich Search plugin's matching API, when it is installed and enabled. Looked up on every call. */
+	searchHost = (): RichSearchHostApi | undefined => {
+		const plugins = (this.app as unknown as { plugins?: { plugins?: Record<string, { api?: RichSearchHostApi } | undefined> } }).plugins;
+		return plugins?.plugins?.['rich-search']?.api;
+	};
 	/** Read by the Rich Search plugin (`app.plugins.plugins['rich-table'].richSearch`) to search workbook text. */
 	richSearch!: RichSearchProvider;
 	/** Whether this plugin's own `.xlsx` file view is registered. False until that view exists. */
 	private xlsxViewRegistered = false;
+	/** True when the user wants the view but Obsidian refused the extension (another plugin owns it). */
+	xlsxViewRefused = false;
+	/** True when turning the view off needs a reload because Obsidian's internals are not as expected. */
+	xlsxViewNeedsReload = false;
 
 	async onload(): Promise<void> {
 		setYamlAdapter({ parse: parseYaml, stringify: stringifyYaml });
@@ -35,6 +46,8 @@ export default class BetterTablePlugin extends Plugin {
 			const block = new TableBlock(el, source, this, ctx.sourcePath, ctx, cacheKey);
 			ctx.addChild(block);
 		});
+
+		this.syncXlsxView();
 
 		this.addSettingTab(new BetterTableSettingTab(this.app, this));
 
@@ -139,6 +152,34 @@ export default class BetterTablePlugin extends Plugin {
 		}
 	}
 
+	/** Brings the registration in line with the setting, at load and whenever the setting changes. */
+	syncXlsxView(): void {
+		const registry = (this.app as unknown as { viewRegistry?: ViewRegistryLike }).viewRegistry;
+		const want = this.settings.ownXlsxFiles;
+		if (want && !this.xlsxViewRegistered) {
+			// Obsidian throws, before changing anything, when another plugin owns the extension.
+			// Claiming it first means a refusal leaves no orphan view type behind.
+			const state = enableXlsxView({
+				register: () => {
+					this.registerExtensions(['xlsx'], XLSX_VIEW_TYPE);
+					this.registerView(XLSX_VIEW_TYPE, (leaf) => new XlsxFileView(leaf, this));
+				},
+				registry, extension: 'xlsx', viewType: XLSX_VIEW_TYPE,
+			});
+			this.xlsxViewRegistered = state.kind === 'owned';
+			this.xlsxViewRefused = state.kind === 'refused';
+			if (state.kind === 'refused') console.warn('Rich Table: could not register the .xlsx view', state.error);
+		} else if (!want && this.xlsxViewRegistered) {
+			const change = disableXlsxView({ registry, extension: 'xlsx', viewType: XLSX_VIEW_TYPE });
+			this.xlsxViewRegistered = change.kind === 'needs-reload';
+			this.xlsxViewNeedsReload = change.kind === 'needs-reload';
+		} else if (want) {
+			this.xlsxViewNeedsReload = false;
+		} else {
+			this.xlsxViewRefused = false;
+		}
+	}
+
 	async loadSettings(): Promise<void> {
 		this.settings = Object.assign(
 			{},
@@ -151,6 +192,7 @@ export default class BetterTablePlugin extends Plugin {
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 		setNativeEditorEnabled(this.settings.nativeCellEditor);
+		this.syncXlsxView();
 		this.choiceRegistry = new ChoiceRegistry(this.settings.customChoices);
 		// Re-render all open reading views so allowReadingViewEdit takes effect
 		// immediately without requiring the user to close and reopen the note.
