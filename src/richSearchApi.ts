@@ -62,6 +62,22 @@ export interface RichSearchHostApi {
 	 * stops the calls; a view must call it when it closes. Optional, together with `currentQuery`.
 	 */
 	onQueryChange?(listener: (query: MatchOptions | null) => void): () => void;
+	/**
+	 * The match the user opened from the results (5.10), or null when none is opened, the search changed, or the panel
+	 * closed. Optional, together with `onHitChange`.
+	 */
+	currentHit?(): OpenedHit | null;
+	onHitChange?(listener: (hit: OpenedHit | null) => void): () => void;
+}
+export interface OpenedHit {
+	path: string;
+	/** 0-based line of the note, and which match on that line (0-based). For a match in a block: the block's opening fence, and index 0. */
+	line: number;
+	index: number;
+	/** Set for a match in a file a provider shows: exactly the anchor that provider gave for the line. */
+	anchor?: unknown;
+	/** Set only for a match inside a block a provider draws. `anchor` is exactly what that provider gave for the line. */
+	block?: { fromLine: number; anchor: unknown };
 }
 export interface MatchOptions { query: string; caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean }
 export interface Span { start: number; end: number } // half-open, in UTF-16 code units of `text`

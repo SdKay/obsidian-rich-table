@@ -4,7 +4,7 @@ import { enableXlsxView, disableXlsxView, type ViewRegistryLike } from './xlsxVi
 import { setYamlAdapter } from './yamlAdapter';
 import { BetterTableSettingTab, DEFAULT_SETTINGS } from './settings';
 import { ChoiceRegistry } from './choiceRegistry';
-import { TableBlock, refreshAllTableBlocks } from './tableBlock';
+import { TableBlock, refreshAllTableBlocks, waitForBlockAt } from './tableBlock';
 import type { BetterTableSettings } from './model';
 import { planRichTableBlockInsertion } from './insertRichTableBlock';
 import { planMarkdownTableConversion, type MarkdownTableConversionPlan } from './convertMarkdownTable';
@@ -16,14 +16,17 @@ import { setNativeEditorEnabled } from './nativeCellEditor';
 import { addCellHighlightItems, clearCellPickOutside } from './renderEditorMenu';
 import { createRichSearchProvider } from './richSearchProvider';
 import type { RichSearchHostApi, RichSearchProvider } from './richSearchApi';
+import { SearchPanelFollower } from './searchPanel';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
 	choiceRegistry!: ChoiceRegistry;
 	/** The Rich Search plugin's matching API, when it is installed and enabled. Looked up on every call. */
-	searchHost = (): RichSearchHostApi | undefined => {
+	private searchHost = (): RichSearchHostApi | undefined => {
 		const plugins = (this.app as unknown as { plugins?: { plugins?: Record<string, { api?: RichSearchHostApi } | undefined> } }).plugins;
 		return plugins?.plugins?.['rich-search']?.api;
 	};
+	/** Follows the search panel for everything that marks matches. */
+	readonly searchPanel = new SearchPanelFollower(() => this.searchHost());
 	/** Read by the Rich Search plugin (`app.plugins.plugins['rich-table'].richSearch`) to search workbook text. */
 	richSearch!: RichSearchProvider;
 	/** Whether this plugin's own `.xlsx` file view is registered. False until that view exists. */
@@ -38,7 +41,18 @@ export default class BetterTablePlugin extends Plugin {
 		await this.loadSettings();
 		await this.maybeShowChangelog();
 		this.choiceRegistry = new ChoiceRegistry(this.settings.customChoices);
-		this.richSearch = createRichSearchProvider({ viewRegistered: () => this.xlsxViewRegistered });
+		this.richSearch = createRichSearchProvider({
+			viewRegistered: () => this.xlsxViewRegistered,
+			revealInNote: async (leaf, fromLine, anchor, query) => {
+				const view = leaf.view;
+				if (!(view instanceof MarkdownView)) return false;
+				const path = view.file?.path;
+				if (!path) return false;
+				// The note is still the one in this tab: a slow wait must not act on a note the user has left.
+				const found = await waitForBlockAt(path, fromLine, view.containerEl, () => leaf.view === view && view.file?.path === path);
+				return found ? found.block.revealSearchHit(anchor, query, found.framesLeft) : false;
+			},
+		});
 
 		this.registerMarkdownCodeBlockProcessor('rich-table', (source, el, ctx) => {
 			const info = ctx.getSectionInfo(el);

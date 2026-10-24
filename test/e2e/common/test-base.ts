@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const SHELL = path.join(__dirname, 'shell.html');
 const POLYFILL = path.join(__dirname, 'obsidian-dom-polyfill.js');
+const FAKE_SEARCH_HOST = path.join(__dirname, 'fake-search-host.js');
 const BUNDLE = path.join(__dirname, 'real-bundle.generated.js');
 const BUILD_TABLE_DOM = path.join(__dirname, 'build-table-dom.js');
 
@@ -57,6 +58,22 @@ export interface RenderFullOpts {
 }
 
 export interface RenderBlockResult {
+	/** Types a query into the fake search panel (null = closed or empty) and notifies the followers. */
+	setQuery: (query: { query: string; caseSensitive?: boolean; wholeWord?: boolean } | null) => Promise<void>;
+	/** Text of every highlighted fragment on the page, in document order. */
+	hits: () => Promise<string[]>;
+	/** How many listeners the fake panel has. */
+	panelListeners: () => Promise<number>;
+	/** Opens a match in the fake panel (null = none) and notifies the followers, as a click on a result does. */
+	openHit: (hit: unknown) => Promise<void>;
+	/** Text of every mark drawn at full strength, in document order. */
+	brightMarks: () => Promise<string[]>;
+	/** Listeners on the opened-match hook. */
+	hitListeners: () => Promise<number>;
+	/** What Rich Search's revealBlock does once it has found the block: show a hit and say whether there was one. */
+	revealHit: (anchor: unknown, query: { query: string; caseSensitive?: boolean; wholeWord?: boolean }) => Promise<boolean>;
+	/** The live block that opens on this fence line of the note, as the lookup behind revealBlock finds it. */
+	blockAtLine: (line: number, path?: string) => Promise<boolean>;
 	/** The note's current text — assert write-back against this. */
 	noteText: () => Promise<string>;
 	/** Re-runs the code-block processor the way Obsidian does after a write:
@@ -99,8 +116,8 @@ export interface LinkOpening {
 	where?: string | boolean;
 }
 
-/** panel: a full Rich Search; legacy: one that predates currentQuery; throws: matchLine fails; future: an apiVersion this plugin does not know; none: not installed. */
-export type FakeSearchHost = 'none' | 'panel' | 'legacy' | 'throws' | 'future';
+/** panel: a full Rich Search; noHit: one with the search but not the opened match; hitThrows: currentHit fails; legacy: one that predates currentQuery; throws: matchLine fails; future: an apiVersion this plugin does not know; none: not installed. */
+export type FakeSearchHost = 'none' | 'panel' | 'noHit' | 'legacy' | 'throws' | 'hitThrows' | 'future';
 
 export interface RenderXlsxFileResult {
 	/** Hands the viewer a search hit, the way setEphemeralState does. */
@@ -109,6 +126,16 @@ export interface RenderXlsxFileResult {
 	setQuery: (query: { query: string; caseSensitive?: boolean; wholeWord?: boolean } | null) => Promise<void>;
 	/** How many listeners the fake panel currently has. */
 	panelListeners: () => Promise<number>;
+	/** Opens a match in the fake panel (null = none) and notifies the followers, as a click on a result does. */
+	openHit: (hit: unknown) => Promise<void>;
+	/** Text of every mark drawn at full strength, in document order. */
+	brightMarks: () => Promise<string[]>;
+	/** Listeners on the opened-match hook. */
+	hitListeners: () => Promise<number>;
+	/** Which of its cell's marks is bright (0 = the first), or -1 when none is. */
+	brightIndex: () => Promise<number>;
+	/** Text of the cell that holds the bright mark. */
+	brightCellText: () => Promise<string | null>;
 	/** Inserts a link into the first cell the way MarkdownRenderer would, and returns its selector. */
 	addLink: (kind: 'internal' | 'external', href: string | null, text?: string) => Promise<string>;
 	/** Every link opened so far through workspace.openLinkText or window.open, in order. */
@@ -123,6 +150,10 @@ export interface RenderXlsxFileResult {
 	openOther: (path: string) => Promise<void>;
 	/** Closes the view the way Obsidian does when its tab goes away. */
 	closeView: () => Promise<void>;
+	/** Installs Rich Search after the view is already open, as when the user enables the plugin meanwhile. */
+	enableSearchHost: (name: FakeSearchHost) => Promise<void>;
+	/** Closes the shown file but keeps the view, as Obsidian does just before it shows another file in the same tab. */
+	closeFile: () => Promise<void>;
 	/** Unloads the view component without closing the file first. */
 	unloadView: () => Promise<void>;
 	/** Number of vault listeners still registered (for leak checks). */
@@ -138,7 +169,7 @@ export const test = base.extend<{
 	 *  why a byte array, not ArrayBuffer/Uint8Array. */
 	/** Mounts the real XlsxFileViewer on an in-memory vault holding `files` (path → bytes) and opens `open`. */
 	renderXlsxFile: (files: Record<string, number[]>, open: string, opts?: { searchHost?: FakeSearchHost; pendingReveal?: unknown; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderXlsxFileResult>;
-	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown> }) => Promise<RenderBlockResult>;
+	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown>; searchHost?: FakeSearchHost; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderBlockResult>;
 }>({
 	renderReal: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
@@ -285,6 +316,7 @@ export const test = base.extend<{
 	 */
 	renderXlsxFile: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
+		await page.addInitScript({ path: FAKE_SEARCH_HOST });
 
 		const helper = async (files: Record<string, number[]>, open: string, opts?: { searchHost?: FakeSearchHost; pendingReveal?: unknown; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }): Promise<RenderXlsxFileResult> => {
 			await page.goto(`file://${SHELL}`);
@@ -295,43 +327,12 @@ export const test = base.extend<{
 				for (const [path, bytes] of Object.entries(files)) vault.binaryFiles.set(path, new Uint8Array(bytes).buffer);
 				const w = window as unknown as Record<string, unknown>;
 				w.__btVault = vault;
-				// A fake Rich Search. It is the host's job, not the view's, to apply whole word and case.
-				const matchLine = (text: string, o: { query: string; caseSensitive?: boolean; wholeWord?: boolean }) => {
-					const out: { start: number; end: number }[] = [];
-					if (o.query === '') return out;
-					const hay = o.caseSensitive ? text : text.toLowerCase();
-					const needle = o.caseSensitive ? o.query : o.query.toLowerCase();
-					for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + needle.length)) {
-						const before = at === 0 ? '' : hay[at - 1]!;
-						const after = hay[at + needle.length] ?? '';
-						if (o.wholeWord && (/\w/.test(before) || /\w/.test(after))) continue;
-						out.push({ start: at, end: at + needle.length });
-					}
-					return out;
-				};
-				const panel = { query: null as { query: string } | null, listeners: new Set<(q: unknown) => void>() };
-				w.__btPanel = panel;
-				const apis: Record<string, any> = {
-					none: undefined,
-					panel: {
-						apiVersion: 1, matchLine,
-						currentQuery: () => panel.query,
-						onQueryChange: (fn: (q: unknown) => void) => { panel.listeners.add(fn); return () => { panel.listeners.delete(fn); }; },
-					},
-					legacy: { apiVersion: 1, matchLine },
-					throws: { apiVersion: 1, matchLine: () => { throw new Error('host failed'); } },
-					future: {
-						apiVersion: 2, matchLine,
-						currentQuery: () => panel.query,
-						onQueryChange: (fn: (q: unknown) => void) => { panel.listeners.add(fn); return () => { panel.listeners.delete(fn); }; },
-					},
-				};
+				const getHost = (window as any).__btMakeSearchHost(searchHost, initialQuery);
 				const opened: unknown[] = [];
 				w.__btOpened = opened;
 				window.open = ((href: string) => { opened.push({ kind: 'external', href }); return null; }) as typeof window.open;
 				const workspace = { openLinkText: (href: string, sourcePath: string, where: unknown) => { opened.push({ kind: 'internal', href, sourcePath, where }); return Promise.resolve(); } };
-				if (initialQuery) panel.query = initialQuery;
-				const host = { app: { vault, workspace }, choiceRegistry: new R.ChoiceRegistry([]), searchHost: () => apis[searchHost ?? 'none'] };
+				const host = { app: { vault, workspace }, choiceRegistry: new R.ChoiceRegistry([]), searchPanel: new R.SearchPanelFollower(getHost) };
 				const container = document.getElementById('root').createDiv();
 				const viewer = new R.XlsxFileViewer(host, container);
 				viewer.load();
@@ -369,6 +370,18 @@ export const test = base.extend<{
 					for (const fn of [...w.__btPanel.listeners]) fn(query);
 				}, query),
 				panelListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { listeners: Set<unknown> } }).__btPanel.listeners.size),
+				openHit: (hit) => page.evaluate((hit) => {
+					const w = window as unknown as { __btPanel: { hit: unknown; hitListeners: Set<(h: unknown) => void> } };
+					w.__btPanel.hit = hit;
+					for (const fn of [...w.__btPanel.hitListeners]) fn(hit);
+				}, hit),
+				brightMarks: () => page.evaluate(() => Array.from(document.querySelectorAll('mark.bt-search-hit-active')).map(m => m.textContent ?? '')),
+				hitListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { hitListeners: Set<unknown> } }).__btPanel.hitListeners.size),
+				brightIndex: () => page.evaluate(() => {
+					const bright = document.querySelector('mark.bt-search-hit-active');
+					return bright ? Array.from(bright.closest('td, th')!.querySelectorAll('mark.bt-search-hit')).indexOf(bright) : -1;
+				}),
+				brightCellText: () => page.evaluate(() => document.querySelector('mark.bt-search-hit-active')?.closest('td, th')?.textContent ?? null),
 				hits: () => page.evaluate(() => Array.from(document.querySelectorAll('mark.bt-search-hit')).map(m => m.textContent ?? '')),
 				modify: (bytes) => page.evaluate(({ bytes }) => {
 					const w = window as unknown as W;
@@ -392,6 +405,8 @@ export const test = base.extend<{
 					w.__btViewer.close();
 					w.__btViewer.unload();
 				}),
+				enableSearchHost: (name) => page.evaluate((name) => { (window as unknown as { __btHostState: { name: string } }).__btHostState.name = name; }, name),
+				closeFile: () => page.evaluate(() => { (window as unknown as W).__btViewer.close(); }),
 				unloadView: () => page.evaluate(() => {
 					const w = window as unknown as W;
 					w.__btViewer.unload();
@@ -410,12 +425,13 @@ export const test = base.extend<{
 
 	renderBlock: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
+		await page.addInitScript({ path: FAKE_SEARCH_HOST });
 
-		const helper = async (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown> }): Promise<RenderBlockResult> => {
+		const helper = async (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown>; searchHost?: FakeSearchHost; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }): Promise<RenderBlockResult> => {
 			await page.goto(`file://${SHELL}`);
 			await page.addScriptTag({ path: BUNDLE });
 
-			await page.evaluate(({ src, binaryFiles, sourcePath, settings }) => {
+			await page.evaluate(({ src, binaryFiles, sourcePath, settings, searchHost, initialQuery }) => {
 				const R = window.RichTableReal;
 				const NOTE = sourcePath ?? 'note.md';
 				const vault = new R.FakeVault();
@@ -435,6 +451,7 @@ export const test = base.extend<{
 				w.__btPlugin = {
 					app: { vault, metadataCache: new R.FakeMetadataCache(vault), fileManager: new R.FakeFileManager() },
 					choiceRegistry: new R.ChoiceRegistry([]),
+					searchPanel: new R.SearchPanelFollower((window as any).__btMakeSearchHost(searchHost, initialQuery)),
 					settings: {
 						allowReadingViewEdit: true,
 						singleClickEdit: false,
@@ -459,21 +476,22 @@ export const test = base.extend<{
 					const lineEnd = lines.findIndex((l, i) => i > lineStart && l.startsWith('```'));
 					return { lineStart, lineEnd };
 				};
-				w.__btMount = () => {
-					const host = document.getElementById('root');
+				w.__btMount = (into?: HTMLElement, fenceLineOverride?: number) => {
+					const host = into ?? document.getElementById('root');
 					// Obsidian hands each re-run a brand-new, EMPTY container.
 					const container = host.createDiv();
 					const { lineStart, lineEnd } = findBlockRange(vault.files.get(NOTE) ?? '');
 					const lines = (vault.files.get(NOTE) ?? '').split('\n');
 					const inner = lines.slice(lineStart + 1, lineEnd).join('\n') + '\n';
-					const ctx = { getSectionInfo: () => ({ ...findBlockRange(vault.files.get(NOTE) ?? ''), text: vault.files.get(NOTE) ?? '' }) };
+					// Reading view answers null until a section is attached to the page; a test can switch that on.
+					const ctx = { getSectionInfo: () => (w.__btSectionNull ? null : { ...findBlockRange(vault.files.get(NOTE) ?? ''), ...(fenceLineOverride === undefined ? {} : { lineStart: fenceLineOverride }), text: vault.files.get(NOTE) ?? '' }) };
 					const block = new R.TableBlock(container, inner, w.__btPlugin, NOTE, ctx, `${NOTE}:${lineStart}`);
 					w.__btBlock = block;
 					block.load();
 					return container;
 				};
 				w.__btMount();
-			}, { src: blockSource, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath, settings: opts?.settings });
+			}, { src: blockSource, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath, settings: opts?.settings, searchHost: opts?.searchHost, initialQuery: opts?.initialQuery });
 
 			// The first paint is async (a cell at a time), so wait for either
 			// outcome — a rendered table, or (an xlsx-backed block whose file
@@ -484,6 +502,29 @@ export const test = base.extend<{
 			]);
 
 			return {
+				setQuery: (query) => page.evaluate((query) => {
+					const w = window as unknown as { __btPanel: { query: unknown; listeners: Set<(q: unknown) => void> } };
+					w.__btPanel.query = query;
+					for (const fn of [...w.__btPanel.listeners]) fn(query);
+				}, query),
+				hits: () => page.evaluate(() => Array.from(document.querySelectorAll('mark.bt-search-hit')).map(m => m.textContent ?? '')),
+				panelListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { listeners: Set<unknown> } }).__btPanel.listeners.size),
+				openHit: (hit) => page.evaluate((hit) => {
+					const w = window as unknown as { __btPanel: { hit: unknown; hitListeners: Set<(h: unknown) => void> } };
+					w.__btPanel.hit = hit;
+					for (const fn of [...w.__btPanel.hitListeners]) fn(hit);
+				}, hit),
+				brightMarks: () => page.evaluate(() => Array.from(document.querySelectorAll('mark.bt-search-hit-active')).map(m => m.textContent ?? '')),
+				hitListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { hitListeners: Set<unknown> } }).__btPanel.hitListeners.size),
+				revealHit: (anchor, query) => page.evaluate(({ anchor, query }) => {
+					const w = window as unknown as { __btBlock: { revealSearchHit(a: unknown, q: unknown): Promise<boolean> } };
+					return w.__btBlock.revealSearchHit(anchor, query);
+				}, { anchor, query }),
+				blockAtLine: (line, path) => page.evaluate(({ line, path }) => {
+					const R = (window as any).RichTableReal;
+					const w = window as unknown as { __btNote: string };
+					return R.findBlockAt(path ?? w.__btNote, line, document.body) !== null;
+				}, { line, path }),
 				noteText: () => page.evaluate(() => {
 					const w = window as unknown as { __btVault: { files: Map<string, string> }; __btNote: string };
 					return w.__btVault.files.get(w.__btNote) ?? '';

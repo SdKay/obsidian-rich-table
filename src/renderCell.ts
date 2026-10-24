@@ -139,6 +139,9 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		onEnterFormulaMode, onExitFormulaMode,
 	} = options;
 	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
+	// The row's id lives on the <tr> (and the column's on its <col>) rather than on every cell:
+	// writing two attributes per cell cost 18 ms to 45 ms on 18 000 cells, this costs one per row.
+	tr.setAttribute('data-row-id', isHeader ? 'header' : (currentRow?.id ?? ''));
 	let c = 0;
 
 	while (c < model.columns.length) {

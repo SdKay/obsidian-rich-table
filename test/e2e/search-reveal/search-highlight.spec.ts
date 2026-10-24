@@ -117,4 +117,44 @@ test.describe('markSpans', () => {
 		const r = await run(page, '😀 find', [{ start: 3, end: 7 }]);
 		expect(r.marked).toEqual(['find']);
 	});
+
+	test('a table nested in the cell is not part of the cell\'s text and is left for its own block to mark', async ({ page }) => {
+		const r = await page.evaluate(() => {
+			const R = (window as any).RichTableReal;
+			const el = document.createElement('div');
+			el.innerHTML = 'before <div class="bt-render-root"><table><tr><td>inner word</td></tr></table></div> after word';
+			document.body.appendChild(el);
+			const text = R.markableText(el);
+			const needle = 'word';
+			const spans: { start: number; end: number }[] = [];
+			for (let i = text.indexOf(needle); i !== -1; i = text.indexOf(needle, i + needle.length)) spans.push({ start: i, end: i + needle.length });
+			R.markSpans(el, spans);
+			const out = {
+				text,
+				outer: Array.from(el.querySelectorAll('mark.bt-search-hit')).filter(m => !m.closest('.bt-render-root')).map(m => m.textContent),
+				inner: el.querySelectorAll('.bt-render-root mark.bt-search-hit').length,
+			};
+			el.remove();
+			return out;
+		});
+		expect(r.text).toBe('before  after word');
+		expect(r.outer).toEqual(['word']);
+		expect(r.inner).toBe(0);
+	});
+
+	test('offsets stay right when text comes both before and after a nested table', async ({ page }) => {
+		const r = await page.evaluate(() => {
+			const R = (window as any).RichTableReal;
+			const el = document.createElement('div');
+			el.innerHTML = 'aaa <div class="bt-render-root">XXXXXXXX</div> bbb';
+			document.body.appendChild(el);
+			const text = R.markableText(el);
+			const at = text.indexOf('bbb');
+			R.markSpans(el, [{ start: at, end: at + 3 }]);
+			const marked = Array.from(el.querySelectorAll('mark.bt-search-hit')).map(m => m.textContent);
+			el.remove();
+			return marked;
+		});
+		expect(r).toEqual(['bbb']);
+	});
 });

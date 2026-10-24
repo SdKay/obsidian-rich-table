@@ -3237,15 +3237,23 @@
 .bt-col-selector.bt-reorder-armed, .bt-row-selector.bt-reorder-armed { cursor: grabbing; }
 
 
-/* A search hit shown in the .xlsx file view. Not Obsidian's own mark colour, so it never reads as the
- * reader's `==highlight==`. Specificity (0,3,1) beats host rules on a bare mark, down to
- * `.markdown-preview-view.markdown-rendered mark` (0,2,1) that themes and snippets use. */
+/* A search match, in the .xlsx tab and in tables in notes. Every match is the user's colour at 45%; the one the user
+ * opened from the results is at full strength with a thin ring, as in VS Code (contract 5.9 and 5.10). The colour
+ * is set in Rich Search and published as two variables on the body; the fallbacks are the same colours, so nothing
+ * changes without Rich Search. Never the theme's accent, and never the reader's own `==highlight==`.
+ * Specificity (0,3,1), one class more for the opened one, beats host rules on a bare mark, down to
+ * `.markdown-preview-view.markdown-rendered mark` (0,2,1). */
 mark.bt-search-hit.bt-search-hit.bt-search-hit {
-	background-color: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	background-color: color-mix(in srgb, var(--rs-match-bg, #ccff00) 45%, transparent);
 	color: inherit;
 	border-radius: 2px;
-	box-shadow: 0 0 0 1px var(--interactive-accent);
+	box-shadow: none;
 	padding: 0;
+}
+mark.bt-search-hit.bt-search-hit.bt-search-hit.bt-search-hit-active {
+	background-color: var(--rs-match-bg, #ccff00);
+	color: var(--rs-match-fg, #000000);
+	box-shadow: 0 0 0 1px var(--rs-match-fg, #000000);
 }
 
 /* ── Built-in themes (auto-generated — do not edit below) ──── */

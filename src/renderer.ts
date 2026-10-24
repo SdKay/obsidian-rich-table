@@ -720,6 +720,7 @@ export async function renderTable(
 		if (!col) continue;
 		const colEl = colgroup.createEl('col');
 		colEl.dataset.col = String(ci);
+		colEl.setAttribute('data-col-id', col.id);
 		if (hasExplicitWidths) {
 			if (col.width != null) {
 				const w = Math.max(colMinWidth(), col.width);

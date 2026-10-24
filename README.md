@@ -450,6 +450,8 @@ Turn this off in **Settings → Rich Table → Open .xlsx files in Rich Table** 
 
 When the Rich Search plugin is installed, opening a hit in an `.xlsx` file goes to its sheet and cell and marks every match on that sheet. Search reads the cell values as stored: a date is its serial number, a formula is its last saved value, and a workbook of more than 200,000 cells is not searched. A match is marked in the text as shown, so a cell whose value contains Markdown syntax can be found without being marked.
 
+The tables in a note are searched too, by what they show: a formula by its result, a table in a workbook sheet by sheet. Opening a hit scrolls to the cell, switching to its sheet if needed without changing the note, and every table open in the note marks its matches. The match you opened is drawn at full strength with an outline; the others are dimmed. Marks last as long as the search panel holds the search, and use the colour chosen in Rich Search.
+
 ---
 
 

@@ -21,7 +21,12 @@ import { BUILTIN_TEMPLATES } from './templates/index';
 import { resolveDefaultTheme } from './themes';
 import { readXlsxAsModel, writeXlsxOps, isXlsxWritableOp, type XlsxWritableOp } from './xlsxSource';
 import { settleRenderedTables } from './renderAutofit';
-import { belongsToRoot } from './renderOwnScope';
+import { markSpans, markableText, stripSearchMarks, type Marked } from './searchHighlight';
+import { matchText } from './searchMatch';
+import type { MatchOptions } from './richSearchApi';
+import { isBlockAnchor, type BlockAnchor } from './blockExtract';
+import { revealCell } from './searchReveal';
+import { belongsToRoot, ownCells } from './renderOwnScope';
 import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
 import { electronShell, fsPromises } from './nodeBridge';
 import { watchXlsxFile, type XlsxFileWatch } from './xlsxFileWatch';
@@ -56,6 +61,47 @@ const renderCache = new Map<string, HTMLElement>();
  * what keeps this from ever holding a stale/torn-down instance.
  */
 const liveInstances = new Set<TableBlock>();
+
+/**
+ * The block drawn from the fence that opens on `line` (0-based) of the note at `path`, inside `within`. The same
+ * note can be open in several places at once (two tabs, Reading view and editing view, a hover preview), each
+ * with its own block on the same line, so the view being asked about has to say which one it means. A table
+ * nested in a cell shares its outer block's note and is never the answer.
+ *
+ * Even inside one view there can be two: Reading view builds a block again when a note is opened over itself, and
+ * the old one stays attached for a while with no size. The newest one that has a size is the one on screen; with
+ * `shownOnly` the old ones are not an answer at all, otherwise the newest is the fallback.
+ */
+export function findBlockAt(path: string, line: number, within: HTMLElement, shownOnly = false): TableBlock | null {
+	let newest: TableBlock | null = null;
+	let newestShown: TableBlock | null = null;
+	for (const block of liveInstances) {
+		if (block.notePath !== path || block.fenceLine !== line || block.isNested || !within.contains(block.containerEl)) continue;
+		newest = block;
+		if (block.containerEl.getClientRects().length > 0) newestShown = block;
+	}
+	return newestShown ?? (shownOnly ? null : newest);
+}
+
+/** Frames to wait for a note's block to exist and be drawn, about two seconds. Spent once, across both waits. */
+export const BLOCK_WAIT_FRAMES = 120;
+
+/**
+ * Like `findBlockAt`, but waits for the block: a note that was just opened builds its blocks section by
+ * section, so in Reading view the one asked for may not exist yet, its section info is null until it is
+ * attached, and a block that is not laid out yet has no size. Gives up after `frames`, or as soon as
+ * `stillWanted` says the note is no longer the one on screen. Only on the last frame is a block without a
+ * size accepted, for a note that is not on screen at all.
+ */
+export async function waitForBlockAt(path: string, line: number, within: HTMLElement, stillWanted: () => boolean, frames = BLOCK_WAIT_FRAMES): Promise<{ block: TableBlock; framesLeft: number } | null> {
+	for (let left = frames; left > 0; left--) {
+		if (!stillWanted()) return null;
+		const block = findBlockAt(path, line, within, left > 1);
+		if (block) return { block, framesLeft: left };
+		await new Promise<void>(r => window.requestAnimationFrame(() => r()));
+	}
+	return null;
+}
 
 /** Re-renders every currently-mounted table in place — main.ts's saveSettings
  *  calls this after every settings save, alongside its existing Reading View
@@ -184,6 +230,16 @@ export class TableBlock extends MarkdownRenderChild {
 	// The watcher on xlsxFile for external changes (see refreshXlsxWatch), replaced
 	// whenever the bound path changes (e.g. xlsxSource.path edited by hand).
 	private xlsxWatch: { path: string; watch: XlsxFileWatch } | null = null;
+	// The marks the search panel's query has put on this block's cells, and the query that came with the
+	// hit it was opened from (used only by a Rich Search that cannot say when a search ends).
+	private clearSearchMarks: (() => void) | null = null;
+	/** The marks of each cell, kept so the bright one can move without marking again. */
+	private markedCells = new Map<HTMLElement, Marked>();
+	private brightCell: HTMLElement | null = null;
+	private hitQuery: MatchOptions | null = null;
+	// The sheet a search hit asked to see. Applied on every draw of this instance and never written to the
+	// note by itself; a later edit on that sheet saves it as the active one, as any edit would.
+	private hitSheetId: string | undefined;
 
 	constructor(
 		container: HTMLElement,
@@ -203,6 +259,7 @@ export class TableBlock extends MarkdownRenderChild {
 		this.register(() => { liveInstances.delete(this); });
 		// Registered once here: reads the CURRENT watcher at unload time.
 		this.register(() => { this.xlsxWatch?.watch.stop(); });
+		this.register(this.plugin.searchPanel.follow(change => { if (change === 'hit') this.moveBright(); else this.syncSearchMarks(); }));
 		// A nested table's cacheKey (main.ts) is unique per mount — nothing will
 		// ever look it up again after THIS instance is done with it, unlike a
 		// top-level table's stable sourcePath:lineStart key, which the NEXT
@@ -335,6 +392,9 @@ export class TableBlock extends MarkdownRenderChild {
 				const parsed = isEmpty ? parseTable(source) : parseSource(source);
 				if (parsed.version === 3) { this.workbook = parsed; this.model = null; }
 				else                      { this.model = parsed; this.workbook = null; }
+				if (this.workbook && this.hitSheetId && this.workbook.sheets.some(sh => sh.id === this.hitSheetId)) {
+					this.workbook.activeSheetId = this.hitSheetId;
+				}
 			} else {
 				// Older format: migrate in-memory for a read-only preview. A v1
 				// table always migrates to a plain v2 single-sheet model —
@@ -631,6 +691,131 @@ export class TableBlock extends MarkdownRenderChild {
 			if (pull) titleEl.style.setProperty('--bt-title-mb-pull', pull);
 			else      titleEl.style.removeProperty('--bt-title-mb-pull');
 		}
+
+		this.plugin.searchPanel.connect();
+		this.syncSearchMarks();
+	}
+
+	/** The 0-based line of this block's opening fence in its note, or null when it cannot be told. */
+	get fenceLine(): number | null {
+		return this.ctx.getSectionInfo(this.containerEl)?.lineStart ?? null;
+	}
+
+	get notePath(): string {
+		return this.sourcePath;
+	}
+
+	get isNested(): boolean {
+		return this.cacheKey.includes(NESTED_CACHE_KEY_MARKER);
+	}
+
+	/**
+	 * Shows a search hit in this block: its sheet, then the place itself. Returns false when there is nothing
+	 * to show (a gone sheet or cell, a collapsed table), which leaves the block as it is.
+	 */
+	async revealSearchHit(anchor: BlockAnchor, query: MatchOptions, framesLeft = BLOCK_WAIT_FRAMES): Promise<boolean> {
+		this.hitQuery = query;
+		if (!(await this.untilDrawn(framesLeft))) return false;
+		if (anchor.kind !== 'cell' && anchor.kind !== 'header' && anchor.kind !== 'title' && anchor.kind !== 'footer' && anchor.kind !== 'sheet') return false;
+		if ('sheetId' in anchor && anchor.sheetId !== undefined) {
+			if (!this.workbook?.sheets.some(sh => sh.id === anchor.sheetId)) return false;
+			if (this.workbook.activeSheetId !== anchor.sheetId) {
+				this.hitSheetId = anchor.sheetId;
+				await this.render();
+			}
+		}
+		const root = this.containerEl.querySelector<HTMLElement>('.bt-render-root');
+		if (!root) return false;
+		const target = this.findHitElement(root, anchor);
+		if (!target) return false;
+		if (anchor.kind === 'cell' || anchor.kind === 'header') revealCell(target);
+		else target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		this.syncSearchMarks();
+		return true;
+	}
+
+	/** Waits for the block's table to be on the page: a note being opened draws its blocks a little after it appears. */
+	private async untilDrawn(framesLeft: number): Promise<boolean> {
+		for (let i = 0; i < framesLeft; i++) {
+			if (!this.isRendering && this.containerEl.querySelector('.bt-render-root')) return true;
+			await new Promise<void>(r => window.requestAnimationFrame(() => r()));
+		}
+		return false;
+	}
+
+	private findHitElement(root: HTMLElement, anchor: BlockAnchor): HTMLElement | null {
+		const own = (el: HTMLElement | null): HTMLElement | null => (el && belongsToRoot(el, root) ? el : null);
+		switch (anchor.kind) {
+			case 'cell':
+			case 'header': {
+				const rowId = anchor.kind === 'header' ? 'header' : anchor.rowId;
+				const col = Array.from(root.querySelectorAll<HTMLElement>('col[data-col-id]')).find(c => c.dataset.colId === anchor.colId && belongsToRoot(c, root));
+				const tr = Array.from(root.querySelectorAll<HTMLElement>('tr[data-row-id]')).find(r => r.dataset.rowId === rowId && belongsToRoot(r, root));
+				if (!col || !tr) return null;
+				return own(tr.querySelector<HTMLElement>(`:scope > [data-col="${col.dataset.col}"]`));
+			}
+			case 'title': return own(root.querySelector<HTMLElement>('.bt-table-title'));
+			case 'footer': return own(root.querySelectorAll<HTMLElement>('.bt-table-footer-line')[anchor.line] ?? null);
+			case 'sheet': {
+				// The tabs are drawn in the order of the sheets and carry no id of their own.
+				const at = this.workbook?.sheets.findIndex(sh => sh.id === anchor.sheetId) ?? -1;
+				return at < 0 ? null : (this.containerEl.querySelectorAll<HTMLElement>('.bt-sheet-tab')[at] ?? null);
+			}
+		}
+	}
+
+	/**
+	 * Marks every match of the search on screen in this block's own cells, following the panel as the
+	 * .xlsx tab does (contract 5.8). Cells of a table nested in one of ours belong to that block.
+	 */
+	private syncSearchMarks(): void {
+		this.clearSearchMarks?.();
+		this.clearSearchMarks = null;
+		this.markedCells.clear();
+		this.brightCell = null;
+		const panel = this.plugin.searchPanel;
+		const host = panel.host();
+		if (!host) return;
+		const state = panel.state();
+		const query = state.kind === 'query' ? state.query : state.kind === 'unknown' ? this.hitQuery : null;
+		if (!query || query.query === '') return;
+		const root = this.containerEl.querySelector<HTMLElement>('.bt-render-root');
+		if (!root) return;
+		root.querySelectorAll<HTMLElement>('table.bt-table').forEach(table => {
+			if (!belongsToRoot(table, root)) return;
+			for (const cell of ownCells(table)) {
+				const spans = matchText(markableText(cell), query, host);
+				if (spans.length > 0) this.markedCells.set(cell, markSpans(cell, spans));
+			}
+		});
+		this.clearSearchMarks = () => { for (const undo of this.markedCells.values()) undo(); };
+		this.moveBright();
+	}
+
+	/**
+	 * Draws the match the user opened from the results at full strength and every other one dimmed (contract
+	 * 5.10). Only the class moves; the text is not marked again. It is this block's only when the fence line is
+	 * the same, so another block of the note, even with an equal anchor, stays dimmed.
+	 */
+	private moveBright(): void {
+		if (this.brightCell) this.markedCells.get(this.brightCell)?.setActive(false);
+		this.brightCell = null;
+		const hit = this.plugin.searchPanel.hit();
+		if (!hit?.block || this.isNested || hit.path !== this.sourcePath || hit.block.fromLine !== this.fenceLine) return;
+		const root = this.containerEl.querySelector<HTMLElement>('.bt-render-root');
+		if (!root) return;
+		const cell = this.openedCell(root, hit.block.anchor);
+		const marked = cell ? this.markedCells.get(cell) : undefined;
+		if (!cell || !marked) return;
+		marked.setActive(true);
+		this.brightCell = cell;
+	}
+
+	/** The cell the anchor names, if it is a cell of the sheet this block is showing. */
+	private openedCell(root: HTMLElement, anchor: unknown): HTMLElement | null {
+		if (!isBlockAnchor(anchor) || (anchor.kind !== 'cell' && anchor.kind !== 'header')) return null;
+		if (anchor.sheetId !== undefined && anchor.sheetId !== this.workbook?.activeSheetId) return null;
+		return this.findHitElement(root, anchor);
 	}
 
 	/** Shared by the whole-block-empty case and the per-sheet-empty case (a
@@ -1294,7 +1479,9 @@ export class TableBlock extends MarkdownRenderChild {
 		// no blank/zero-height window, hence no flicker and no scroll jump. Captured here,
 		// before the reducers mutate anything, so it reflects the pre-op look (the rebuild
 		// replaces it with the post-op content once render() finishes).
-		renderCache.set(this.cacheKey, this.containerEl.cloneNode(true) as HTMLElement);
+		const snapshot = this.containerEl.cloneNode(true) as HTMLElement;
+		stripSearchMarks(snapshot);
+		renderCache.set(this.cacheKey, snapshot);
 		// Freeze any running theme animations now — this root is about to be replaced by
 		// the re-render this write triggers, so there's nothing to lose visually, and the
 		// main thread is freed up to resolve the write promptly instead of competing with
