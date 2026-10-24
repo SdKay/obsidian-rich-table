@@ -58,7 +58,7 @@ function argbToHex(argb: string | undefined): string | undefined {
  *  and saved); rich-text runs are flattened to plain concatenated text,
  *  losing per-run formatting (documented gap, same tier as borders/number
  *  formats — see the feature's own README/CLAUDE.md notes). */
-function cellValueToString(value: CellValue): string {
+export function cellValueToString(value: CellValue): string {
 	if (value === null || value === undefined) return '';
 	if (typeof value === 'string') return value;
 	if (typeof value === 'number') return String(value);

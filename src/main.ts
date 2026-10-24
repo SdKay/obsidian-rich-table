@@ -12,15 +12,22 @@ import { resolveDefaultTheme } from './themes';
 import { computeCacheKey } from './blockCacheKey';
 import { setNativeEditorEnabled } from './nativeCellEditor';
 import { addCellHighlightItems, clearCellPickOutside } from './renderEditorMenu';
+import { createRichSearchProvider } from './richSearchProvider';
+import type { RichSearchProvider } from './richSearchApi';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
 	choiceRegistry!: ChoiceRegistry;
+	/** Read by the Rich Search plugin (`app.plugins.plugins['rich-table'].richSearch`) to search workbook text. */
+	richSearch!: RichSearchProvider;
+	/** Whether this plugin's own `.xlsx` file view is registered. False until that view exists. */
+	private xlsxViewRegistered = false;
 
 	async onload(): Promise<void> {
 		setYamlAdapter({ parse: parseYaml, stringify: stringifyYaml });
 		await this.loadSettings();
 		await this.maybeShowChangelog();
 		this.choiceRegistry = new ChoiceRegistry(this.settings.customChoices);
+		this.richSearch = createRichSearchProvider({ viewRegistered: () => this.xlsxViewRegistered });
 
 		this.registerMarkdownCodeBlockProcessor('rich-table', (source, el, ctx) => {
 			const info = ctx.getSectionInfo(el);
