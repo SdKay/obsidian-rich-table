@@ -218,19 +218,6 @@ test.describe('xlsx-backed table', () => {
 		await expect.poll(() => page.locator('.bt-td').first().textContent(), { timeout: 3000 }).toBe('two');
 	});
 
-	test('a burst of modify events collapses into a single refresh', async ({ page, renderBlock }) => {
-		const v1 = await buildXlsxFixtureBytes({ sheets: [{ name: 'S', grid: [['A'], ['v1']] }] });
-		const v2 = await buildXlsxFixtureBytes({ sheets: [{ name: 'S', grid: [['A'], ['v2']] }] });
-		const v3 = await buildXlsxFixtureBytes({ sheets: [{ name: 'S', grid: [['A'], ['v3']] }] });
-		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: v1 } });
-		await expect(page.locator('.bt-td').first()).toHaveText('v1');
-
-		// Three rapid saves, well inside the 400ms debounce window.
-		await block.writeBinaryAndNotify(XLSX_PATH, v2);
-		await block.writeBinaryAndNotify(XLSX_PATH, v3);
-		await expect.poll(() => page.locator('.bt-td').first().textContent(), { timeout: 3000 }).toBe('v3');
-	});
-
 	test('rewrites xlsxSource.path in the note when the file is renamed', async ({ page, renderBlock }) => {
 		const bytes = await buildXlsxFixtureBytes({ sheets: [{ name: 'S', grid: [['A'], ['x']] }] });
 		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });

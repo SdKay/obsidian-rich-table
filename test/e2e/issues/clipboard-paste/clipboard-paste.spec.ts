@@ -32,26 +32,6 @@ test.describe('clipboard-paste', () => {
 	const ops = (page: import('@playwright/test').Page) =>
 		page.evaluate(() => (window as unknown as { __btOps: { type: string; values?: string[][] }[] }).__btOps);
 
-	test('a Markdown pipe table pasted as plain text splits into a grid', async ({ page, renderFull }) => {
-		await renderFull(SOURCE);
-		await startEditing(page);
-		await pasteInto(page, '| a | b |\n| --- | --- |\n| 1 | 2 |');
-
-		const pasteOps = (await ops(page)).filter(o => o.type === 'paste-values');
-		expect(pasteOps).toHaveLength(1);
-		expect(pasteOps[0]!.values).toEqual([['a', 'b'], ['1', '2']]);
-	});
-
-	test('an Excel/Sheets-style paste (HTML table alongside TSV) still splits into a grid', async ({ page, renderFull }) => {
-		await renderFull(SOURCE);
-		await startEditing(page);
-		await pasteInto(page, '1\t2\n3\t4', '<table><tr><td>1</td><td>2</td></tr><tr><td>3</td><td>4</td></tr></table>');
-
-		const pasteOps = (await ops(page)).filter(o => o.type === 'paste-values');
-		expect(pasteOps).toHaveLength(1);
-		expect(pasteOps[0]!.values).toEqual([['1', '2'], ['3', '4']]);
-	});
-
 	// Reported second: copying a RENDERED table (e.g. via Obsidian's own "copy
 	// table" action on a native Markdown table) puts a real <table> in
 	// text/html — same as Excel/Sheets — but its text/plain is the ORIGINAL

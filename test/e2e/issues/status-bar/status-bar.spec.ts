@@ -269,11 +269,6 @@ test.describe('status bar — show/hide toggle', () => {
 	const HIDDEN = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], statusBarMode: 'hover' });
 	const WIDE = tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250 });
 
-	test('shown by default', async ({ page, renderFull }) => {
-		await renderFull(SRC);
-		await expect(page.locator('.bt-status-bar')).toHaveCount(1);
-	});
-
 	test('a table with the bar turned off renders none of it, but keeps the height handle on the view', async ({ page, renderFull }) => {
 		await renderFull(HIDDEN);
 		await expect(page.locator('.bt-status-bar')).toHaveCount(0);

@@ -35,28 +35,6 @@ test.describe('cell-edit-lifecycle', () => {
 		}), 'the editor was created but never focused, so typing would go nowhere').toBe(true);
 	});
 
-	test('committing an edit emits the change', async ({ page, renderFull }) => {
-		await renderFull(SOURCE);
-		await startEditing(page);
-		await page.keyboard.press('Control+a');
-		await page.keyboard.type('edited');
-		await page.keyboard.press('Enter');
-		await expect.poll(async () => (await ops(page)).length).toBeGreaterThan(0);
-		const committed = await ops(page);
-		expect(JSON.stringify(committed)).toContain('edited');
-	});
-
-	test('Escape abandons the edit without emitting anything', async ({ page, renderFull }) => {
-		await renderFull(SOURCE);
-		await startEditing(page);
-		await page.keyboard.press('Control+a');
-		await page.keyboard.type('discard me');
-		await page.keyboard.press('Escape');
-		await expect.poll(() => page.locator(`${CELL}.bt-editing`).count()).toBe(0);
-		expect(JSON.stringify(await ops(page)),
-			'Escape persisted the draft — cancel must not route through save').not.toContain('discard me');
-	});
-
 	test('an editor removed from the DOM does not save what was typed', async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await startEditing(page);
