@@ -9,6 +9,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.6.0", date: "2026-10-25", changes: [
+		"fix: scrolling a note with tables no longer stutters",
+		"feat: clear a selection's contents, and fix header split and header line breaks",
+		"feat: search the tables in a note, mark the matches and brighten the opened one",
+		"feat: open an .xlsx file in its own read-only tab, with search hits located in it",
+		"feat: Rich Search can search the text of .xlsx files",
+	] },
 	{ version: "1.5.0", date: "2026-10-18", changes: [
 		"fix: pasting and the right-click menu in a cell editor now behave like Obsidian's",
 		"feat: optionally edit plain text cells in Obsidian's own editor",
