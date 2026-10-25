@@ -76,7 +76,7 @@ test.describe('freeze-outer-border', () => {
 test.describe('freeze-outer-border — frame colour survives repeated passes', () => {
 	const SOURCE = scrollableTable({ freezeRows: 2, freezeCols: 2, theme: 'grid' });
 
-	test('the frame keeps the theme\'s colour across a geometry change', async ({ page, renderReal }) => {
+	test('the frame keeps the theme\'s colour across a geometry change', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		const frameColour = () => page.locator('#table th[data-col="0"]').evaluate(el => getComputedStyle(el).boxShadow);
 		expect(await frameColour()).toContain('rgb(17, 17, 17)');

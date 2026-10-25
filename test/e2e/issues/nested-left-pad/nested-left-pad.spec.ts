@@ -14,7 +14,7 @@ import { tableSource } from '../../common/fixtures';
 // checked here against a plain table with no nested-specific setup at all.
 const SOURCE = tableSource({ widths: [60], rows: [{ 0: 'x' }] });
 
-test('reserveSelectorLeftPad reserves room for the selector strips against a flush-left table', async ({ page, renderFull }) => {
+test('reserveSelectorLeftPad reserves room for the selector strips against a flush-left table', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	const before = await page.locator('.bt-render-root').evaluate(el =>
@@ -41,7 +41,7 @@ test('reserveSelectorLeftPad reserves room for the selector strips against a flu
 	expect(after).toBe(44);
 });
 
-test("a table's left-padding reservation survives mouseleave — no longer collapsed back to 0", async ({ page, renderFull }) => {
+test("a table's left-padding reservation survives mouseleave — no longer collapsed back to 0", { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	// Same "remove the shell's own wide-viewport centering slack" step as the

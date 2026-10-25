@@ -40,7 +40,7 @@ test.describe('write-back-rebuild', () => {
 		expect(after).not.toContain('one'); // the old value is gone, not duplicated
 	});
 
-	test('the table never goes blank across the rebuild', async ({ page, renderBlock }) => {
+	test('the table never goes blank across the rebuild', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const block = await renderBlock(SOURCE);
 
 		// The placeholder that covers the rebuild is a snapshot the OUTGOING instance
@@ -125,7 +125,7 @@ test.describe('write-back-rebuild', () => {
 			'the edit resumed but lost what had been typed').toContain('half typed');
 	});
 
-	test('the hover strips come back after the rebuild without waiting for a mouse move', async ({ page, renderBlock }) => {
+	test('the hover strips come back after the rebuild without waiting for a mouse move', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		// The strips are driven by the root's own mouseenter, and a rebuild hands over
 		// an element that has never received one — so without an explicit handoff they
 		// stayed hidden until the user happened to move the pointer, which reads as a

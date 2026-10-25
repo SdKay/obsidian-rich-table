@@ -19,18 +19,18 @@ async function isAddStripVisible(page: import('@playwright/test').Page, selector
 	return page.locator(selector).evaluate(el => el.classList.contains('bt-strip-visible'));
 }
 
-test('add-row/add-col strips become visible on hover: plain table (previously the tightest case)', async ({ page, renderFull }) => {
+test('add-row/add-col strips become visible on hover: plain table (previously the tightest case)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }] }));
 	expect(await isAddStripVisible(page, '.bt-edge-add-row')).toBe(true);
 	expect(await isAddStripVisible(page, '.bt-edge-add-col')).toBe(true);
 });
 
-test('add-row strip becomes visible on hover: title + footer', async ({ page, renderFull }) => {
+test('add-row strip becomes visible on hover: title + footer', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], title: 'My title', footer: 'My footer' }));
 	expect(await isAddStripVisible(page, '.bt-edge-add-row')).toBe(true);
 });
 
-test('add-row strip becomes visible on hover: long title + long footer', async ({ page, renderFull }) => {
+test('add-row strip becomes visible on hover: long title + long footer', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({
 		widths: [80, 80], rows: [{ 0: 'a1' }],
 		title: 'A somewhat longer table title that could wrap onto two lines',

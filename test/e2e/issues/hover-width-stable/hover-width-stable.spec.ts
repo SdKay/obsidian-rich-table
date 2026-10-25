@@ -26,24 +26,24 @@ function expectStable(widths: number[]) {
 }
 
 test.describe('auto-layout table keeps its width across hovers', () => {
-	test('grid theme (the table has a border)', async ({ page, renderFull }) => {
+	test('grid theme (the table has a border)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [0, 0, 0], rows: ROWS, theme: 'grid' } as never));
 		expectStable(await hoverWidths(page));
 	});
 
-	test('a thick table border', async ({ page, renderFull }) => {
+	test('a thick table border', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [0, 0, 0], rows: ROWS }));
 		await page.addStyleTag({ content: '.bt-table { border: 6px solid red !important; }' });
 		expectStable(await hoverWidths(page));
 	});
 
-	test('table padding', async ({ page, renderFull }) => {
+	test('table padding', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [0, 0, 0], rows: ROWS }));
 		await page.addStyleTag({ content: '.bt-table { padding: 4px !important; }' });
 		expectStable(await hoverWidths(page));
 	});
 
-	test('no theme', async ({ page, renderFull }) => {
+	test('no theme', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [0, 0, 0], rows: ROWS }));
 		expectStable(await hoverWidths(page));
 	});

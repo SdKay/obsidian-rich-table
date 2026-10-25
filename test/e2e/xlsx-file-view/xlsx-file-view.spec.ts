@@ -68,7 +68,7 @@ test.describe('xlsx file view', () => {
 		await expect(page.locator('.bt-sheet-tab-active')).toHaveText('Second');
 	});
 
-	test('a table taller and wider than the tab scrolls inside its own frame', async ({ page, renderXlsxFile }) => {
+	test('a table taller and wider than the tab scrolls inside its own frame', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await page.setViewportSize({ width: 600, height: 400 });
 		const grid = Array.from({ length: 80 }, (_, r) => Array.from({ length: 30 }, (_, c) => (r === 0 ? `H${c}` : `r${r}c${c}`)));
 		await renderXlsxFile({ [PATH]: await one(grid) }, PATH);
@@ -85,7 +85,7 @@ test.describe('xlsx file view', () => {
 		expect(moved.l).toBeGreaterThan(0);
 	});
 
-	test('a column without a width of its own is fitted to its content next to columns that have one', async ({ page, renderXlsxFile }) => {
+	test('a column without a width of its own is fitted to its content next to columns that have one', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await page.setViewportSize({ width: 1400, height: 800 });
 		const long = 'a rather long piece of text that needs a wide column';
 		const bytes = await buildXlsxFixtureBytes({
@@ -103,7 +103,7 @@ test.describe('xlsx file view', () => {
 		expect(cellBox.width).toBeGreaterThanOrEqual(textWidth - 1);
 	});
 
-	test('a small table keeps its natural size instead of stretching to the tab', async ({ page, renderXlsxFile }) => {
+	test('a small table keeps its natural size instead of stretching to the tab', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await page.setViewportSize({ width: 1200, height: 800 });
 		await renderXlsxFile({ [PATH]: await one([['A', 'B'], ['1', '2']]) }, PATH);
 		const box = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;

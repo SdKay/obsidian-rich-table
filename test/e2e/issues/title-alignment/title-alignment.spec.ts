@@ -19,21 +19,21 @@ test.describe('title centers over the table, not the wider box containing addCol
 		return { titleCenter: t.left + t.width / 2, tableCenter: tb.left + tb.width / 2 };
 	});
 
-	test('editable table: title center matches table center', async ({ page, renderFull }) => {
+	test('editable table: title center matches table center', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [60, 60, 60], rows: [{ 0: 'a1', 1: 'b1', 2: 'c1' }], title: 'My Title' }));
 		await page.waitForTimeout(50);
 		const { titleCenter, tableCenter } = await centers(page);
 		expect(Math.abs(titleCenter - tableCenter)).toBeLessThanOrEqual(1);
 	});
 
-	test('locked table: title center still matches table center (unaffected regression check)', async ({ page, renderFull }) => {
+	test('locked table: title center still matches table center (unaffected regression check)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [60, 60, 60], rows: [{ 0: 'a1', 1: 'b1', 2: 'c1' }], title: 'My Title', locked: true }));
 		await page.waitForTimeout(50);
 		const { titleCenter, tableCenter } = await centers(page);
 		expect(Math.abs(titleCenter - tableCenter)).toBeLessThanOrEqual(1);
 	});
 
-	test('centering survives hover (strips appearing changes root geometry)', async ({ page, renderFull }) => {
+	test('centering survives hover (strips appearing changes root geometry)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [60, 60, 60], rows: [{ 0: 'a1', 1: 'b1', 2: 'c1' }], title: 'My Title' }));
 		await page.waitForTimeout(50);
 		const wrapperBox = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;
@@ -58,7 +58,7 @@ test.describe('title centers over the table, not the wider box containing addCol
 test.describe('title sits closer to the table at rest, without losing hover clearance', () => {
 	const SOURCE = tableSource({ widths: [60, 60, 60], rows: [{ 0: 'a1', 1: 'b1', 2: 'c1' }], title: 'My Title' });
 
-	test('at-rest gap is tighter than the full selector-strip clearance', async ({ page, renderFull }) => {
+	test('at-rest gap is tighter than the full selector-strip clearance', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await page.waitForTimeout(50);
 		const gap = await page.evaluate(() => {
@@ -70,7 +70,7 @@ test.describe('title sits closer to the table at rest, without losing hover clea
 		expect(gap).toBeGreaterThanOrEqual(0); // never negative — title must never overlap the table
 	});
 
-	test('hover still reserves the full 22px (SEL_UNIT) clearance for the column-selector strip', async ({ page, renderFull }) => {
+	test('hover still reserves the full 22px (SEL_UNIT) clearance for the column-selector strip', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await page.waitForTimeout(50);
 		const wrapperBox = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;

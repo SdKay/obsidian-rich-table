@@ -36,7 +36,7 @@ test.describe('freeze-hover-churn', () => {
 		return () => page.evaluate(() => (window as unknown as { __btWrites: number }).__btWrites);
 	};
 
-	test('pointer movement over a settled table writes no styles at all', async ({ page, renderFull }) => {
+	test('pointer movement over a settled table writes no styles at all', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		const writes = await countWrites(page);
 		const box = (await page.locator('.bt-table').boundingBox())!;

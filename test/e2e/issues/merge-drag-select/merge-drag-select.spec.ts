@@ -19,7 +19,7 @@ const SOURCE = tableSource({
 	merges: [[0, 1, 1, 1]], // column B (col 1), spanning both data rows
 });
 
-test('dragging into a merged cell expands the selection to include every row/col the merge spans', async ({ page, renderFull }) => {
+test('dragging into a merged cell expands the selection to include every row/col the merge spans', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	const headerA = (await page.locator('th[data-row="0"][data-col="0"]').boundingBox())!;

@@ -39,7 +39,7 @@ const SOURCE_TALL = fs.readFileSync(path.join(__dirname, 'source-tall.yaml'), 'u
 //      <tr> painted as one unit over the rowSpan cell reaching into it from the
 //      row above (styles.css: per-cell sticky for row-freeze)
 test.describe('freeze-merge-corruption', () => {
-	test('the merged cell (rows 2-3, cols 1-2) is treated as the frozen block\'s corner on both axes', async ({ page, renderReal }) => {
+	test('the merged cell (rows 2-3, cols 1-2) is treated as the frozen block\'s corner on both axes', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		const merged = page.locator('td[data-row="2"][data-col="1"]');
 		await expect(merged).toHaveCount(1);
@@ -68,7 +68,7 @@ test.describe('freeze-merge-corruption', () => {
 		expect(info.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
 	});
 
-	test('row-freeze stickies each cell, not the <tr>', async ({ page, renderReal }) => {
+	test('row-freeze stickies each cell, not the <tr>', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		// A sticky <tr> is an atomic paint unit (position:sticky always creates a
 		// stacking context), which is what let a later frozen row cover the row
@@ -84,7 +84,7 @@ test.describe('freeze-merge-corruption', () => {
 		expect(stickyCells).toBeGreaterThan(0);
 	});
 
-	test('frozen cells come to rest exactly where the table lays them out', async ({ page, renderReal }) => {
+	test('frozen cells come to rest exactly where the table lays them out', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		// The 1px-shift bug, asserted numerically rather than visually: a frozen
 		// cell's on-screen x must be the same stuck as unstuck. An accumulator
@@ -104,7 +104,7 @@ test.describe('freeze-merge-corruption', () => {
 		for (const d of drift) expect(d).toBeLessThan(0.5);
 	});
 
-	test('the frozen block renders identically at every horizontal scroll offset', async ({ page, renderReal }) => {
+	test('the frozen block renders identically at every horizontal scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		const geo = await frozenBlockGeometry(page);
 		expect(geo.maxScrollLeft, 'fixture must actually scroll horizontally or this asserts nothing').toBeGreaterThan(0);
@@ -113,7 +113,7 @@ test.describe('freeze-merge-corruption', () => {
 		await expectFrozenBlockInvariant(page, [[1, 0], [3, 0], [7, 0], [17, 0], [30, 0], [60, 0], [137, 0], [-1, 0]]);
 	});
 
-	test('the frozen block renders identically at every vertical and diagonal scroll offset', async ({ page, renderReal }) => {
+	test('the frozen block renders identically at every vertical and diagonal scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE_TALL);
 		const geo = await frozenBlockGeometry(page);
 		expect(geo.maxScrollTop, 'tall fixture must actually scroll vertically or this asserts nothing').toBeGreaterThan(0);
@@ -136,7 +136,7 @@ test.describe('freeze-merge-corruption', () => {
 // renderer.ts even claimed the two were "the same offset … just reusing the
 // existing one" — they never were, only coincidentally equal.
 test.describe('freeze geometry contract (what the selector strips are positioned from)', () => {
-	test('a frozen column\'s measured offset is where its cell actually comes to rest', async ({ page, renderReal }) => {
+	test('a frozen column\'s measured offset is where its cell actually comes to rest', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE, { scrollLeft: 137 });
 		const rows = await page.evaluate(() => {
 			const wrapper = document.querySelector('.bt-table-wrapper') as HTMLElement;
@@ -168,7 +168,7 @@ test.describe('freeze geometry contract (what the selector strips are positioned
 		}
 	});
 
-	test('an accumulator from zero would NOT satisfy that contract', async ({ page, renderReal }) => {
+	test('an accumulator from zero would NOT satisfy that contract', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE, { scrollLeft: 137 });
 		// Guards the fix from being "simplified" back: this reproduces the old
 		// accumulate-from-zero basis and asserts it disagrees with reality, so the

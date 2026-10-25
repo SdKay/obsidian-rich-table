@@ -39,7 +39,7 @@ code { padding: 0.5em 0.4em; background: rgba(120, 120, 120, 0.3); border-radius
 .bt-td p { line-height: 1.2; font-size: 16px; }
 `;
 
-test('two stacked lines of inline code no longer visually overlap after the fix runs', async ({ page, renderReal }) => {
+test('two stacked lines of inline code no longer visually overlap after the fix runs', { tag: '@geometry' }, async ({ page, renderReal }) => {
 	await renderReal(SOURCE);
 	await page.addStyleTag({ content: CHUNKY_CODE_CSS });
 

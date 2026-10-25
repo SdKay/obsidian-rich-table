@@ -13,7 +13,7 @@ import { tableSource } from '../../common/fixtures';
 // column that's already wide enough for its widest PAST value shouldn't
 // visibly resize just because the user later picks something shorter.
 
-test('an explicitly-sized typed column keeps its own narrow width, not forced up to a reservation for its type\'s longest label', async ({ page, renderFull }) => {
+test('an explicitly-sized typed column keeps its own narrow width, not forced up to a reservation for its type\'s longest label', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	// 50px is comfortably below what the OLD formula would have forced this
 	// column to (task-status's longest label, "In Progress", reserved ~112px
 	// regardless of the explicit width given) — if that reservation still
@@ -39,7 +39,7 @@ const FIXED_SOURCE = tableSource({
 	rows: [{ 0: 'todo' }],
 });
 
-test('picking a longer value grows the column to fit it', async ({ page, renderFull }) => {
+test('picking a longer value grows the column to fit it', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(FIXED_SOURCE);
 	const widthBefore = await page.locator('col[data-col="0"]').evaluate(el => (el as HTMLElement).getBoundingClientRect().width);
 
@@ -56,7 +56,7 @@ test('picking a longer value grows the column to fit it', async ({ page, renderF
 	expect(widthOp!.width).toBeGreaterThan(widthBefore);
 });
 
-test('picking a shorter value afterwards does not shrink the column back', async ({ page, renderFull }) => {
+test('picking a shorter value afterwards does not shrink the column back', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(FIXED_SOURCE);
 
 	const openMenuAndPick = (label: string) => page.evaluate((l) => {

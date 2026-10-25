@@ -52,7 +52,7 @@ test.describe('cell alignment menus', () => {
 		expect(ops).toContainEqual({ type: 'set-align', target: 'r_0.c_0', align: 'right' });
 	});
 
-	test('a multi-cell drag selection\'s Align applies to the whole selected range', async ({ page, renderFull }) => {
+	test('a multi-cell drag selection\'s Align applies to the whole selected range', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		const from = (await page.locator('[data-row="1"][data-col="0"]').boundingBox())!;
 		const to   = (await page.locator('[data-row="2"][data-col="1"]').boundingBox())!;
@@ -105,7 +105,7 @@ rows:
 			.toBe('right');
 	});
 
-	test('the column-selector strip\'s Align sets the whole-column default (set-col-align), not set-align', async ({ page, renderFull }) => {
+	test('the column-selector strip\'s Align sets the whole-column default (set-col-align), not set-align', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		const wrapperBox = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;
 		await page.mouse.move(wrapperBox.x + wrapperBox.width / 2, wrapperBox.y + wrapperBox.height / 2);

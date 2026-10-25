@@ -49,7 +49,7 @@ const scrollTo = (page: Page, left: number, top: number) => page.evaluate(({ lef
 }, { left, top });
 
 test.describe('revealCell with frozen rows and columns', () => {
-	test('scrolling back from the bottom right to a top-left cell leaves it fully visible, not under the frozen band', async ({ page, renderXlsxFile }) => {
+	test('scrolling back from the bottom right to a top-left cell leaves it fully visible, not under the frozen band', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await open(page, renderXlsxFile, 2, 2);
 		await scrollTo(page, 100000, 100000);
 		// Data cell sheet (r10, c5): data-row 9, data-col 4 -- not frozen.
@@ -61,7 +61,7 @@ test.describe('revealCell with frozen rows and columns', () => {
 		expect(seen.visible, JSON.stringify(seen.box)).toBe(true);
 	});
 
-	test('the browser\'s own scrollIntoView does leave that cell under the frozen band (why a function of our own is needed)', async ({ page, renderXlsxFile }) => {
+	test('the browser\'s own scrollIntoView does leave that cell under the frozen band (why a function of our own is needed)', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await open(page, renderXlsxFile, 2, 2);
 		await scrollTo(page, 100000, 100000);
 		await page.evaluate(() => {
@@ -70,7 +70,7 @@ test.describe('revealCell with frozen rows and columns', () => {
 		expect((await hiddenUnderFrozen(page, 9, 4)).visible).toBe(false);
 	});
 
-	test('reaching a far cell from the top left scrolls forward until it is fully inside', async ({ page, renderXlsxFile }) => {
+	test('reaching a far cell from the top left scrolls forward until it is fully inside', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await open(page, renderXlsxFile, 2, 2);
 		await scrollTo(page, 0, 0);
 		await page.evaluate(() => {
@@ -92,7 +92,7 @@ test.describe('revealCell with frozen rows and columns', () => {
 		expect(after).toEqual(before);
 	});
 
-	test('without a frozen band a cell is still brought into view', async ({ page, renderXlsxFile }) => {
+	test('without a frozen band a cell is still brought into view', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await open(page, renderXlsxFile, 0, 0);
 		await scrollTo(page, 100000, 100000);
 		await page.evaluate(() => {

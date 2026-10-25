@@ -177,7 +177,7 @@ test.describe('xlsx-backed table', () => {
 		}, { timeout: 3000 }).toBe(0);
 	});
 
-	test('dragging across cells and clicking "Merge cells" creates a new merge in the xlsx file', async ({ page, renderBlock }) => {
+	test('dragging across cells and clicking "Merge cells" creates a new merge in the xlsx file', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const bytes = await buildXlsxFixtureBytes({
 			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done'], ['Code', 'WIP']] }],
 		});
@@ -260,7 +260,7 @@ test.describe('xlsx-backed table', () => {
 		await expect(page.locator('.bt-error')).toContainText(XLSX_PATH);
 	});
 
-	test('drag-resizing the view persists viewWidth/viewHeight into the note', async ({ page, renderBlock }) => {
+	test('drag-resizing the view persists viewWidth/viewHeight into the note', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const bytes = await buildXlsxFixtureBytes({ sheets: [{ name: 'S', grid: [['A', 'B'], ['x', 'y']] }] });
 		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
 		expect(await block.noteText()).not.toContain('viewWidth');

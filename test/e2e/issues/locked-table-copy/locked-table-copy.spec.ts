@@ -30,7 +30,7 @@ const EDITABLE = tableSource({
 	rows: [{ 0: 'copyme', 1: 'b1' }],
 });
 
-test('a locked table lets native drag-select capture a cell\'s text', async ({ page, renderFull }) => {
+test('a locked table lets native drag-select capture a cell\'s text', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(LOCKED);
 	const cell = page.locator('[data-row="1"][data-col="0"]');
 	const box = (await cell.boundingBox())!;
@@ -49,7 +49,7 @@ test('a locked table lets native drag-select capture a cell\'s text', async ({ p
 	await expect(cell).not.toHaveClass(/bt-selected/);
 });
 
-test('an editable table still gets the custom range-select highlight, not native text selection', async ({ page, renderFull }) => {
+test('an editable table still gets the custom range-select highlight, not native text selection', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(EDITABLE);
 	// A drag has to cross into a DIFFERENT cell to count as a range-select
 	// (sel.hasMoved) rather than a plain click on the cell it started in —

@@ -31,7 +31,7 @@ merges:
     end: r_0.c_1
 ---`;
 
-test('a header-anchored merge reaching into a data row renders at its full, uncollapsed height', async ({ page, renderFull }) => {
+test('a header-anchored merge reaching into a data row renders at its full, uncollapsed height', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	const headerCell = page.locator('[data-row="0"][data-col="1"]');

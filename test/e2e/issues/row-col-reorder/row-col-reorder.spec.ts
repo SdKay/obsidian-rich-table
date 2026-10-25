@@ -19,7 +19,7 @@ async function hoverTable(page: import('@playwright/test').Page) {
 		.toBe(true);
 }
 
-test('Ctrl+drag on the column selector dispatches move-col, not a range selection', async ({ page, renderFull }) => {
+test('Ctrl+drag on the column selector dispatches move-col, not a range selection', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await hoverTable(page);
 
@@ -42,7 +42,7 @@ test('Ctrl+drag on the column selector dispatches move-col, not a range selectio
 	expect(ops).toEqual([{ type: 'move-col', fromColId: 'c_0', toColId: 'c_2' }]);
 });
 
-test('a plain drag (no Ctrl) on the column selector still opens the range-selection panel, not a reorder', async ({ page, renderFull }) => {
+test('a plain drag (no Ctrl) on the column selector still opens the range-selection panel, not a reorder', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await hoverTable(page);
 
@@ -60,7 +60,7 @@ test('a plain drag (no Ctrl) on the column selector still opens the range-select
 	expect(ops.filter((o: any) => o.type === 'move-col')).toEqual([]);
 });
 
-test('Cmd (metaKey)+drag on the row selector dispatches move-row', async ({ page, renderFull }) => {
+test('Cmd (metaKey)+drag on the row selector dispatches move-row', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await hoverTable(page);
 
@@ -83,7 +83,7 @@ test('Cmd (metaKey)+drag on the row selector dispatches move-row', async ({ page
 	expect(ops).toEqual([{ type: 'move-row', fromRowId: 'r_0', toRowId: 'r_2' }]);
 });
 
-test('Alt+Shift+ArrowRight moves the selected column one step right', async ({ page, renderFull }) => {
+test('Alt+Shift+ArrowRight moves the selected column one step right', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await hoverTable(page);
 
@@ -97,7 +97,7 @@ test('Alt+Shift+ArrowRight moves the selected column one step right', async ({ p
 	expect(ops).toEqual([{ type: 'move-col', fromColId: 'c_0', toColId: 'c_1' }]);
 });
 
-test('Alt+Shift+ArrowUp moves the selected row one step up', async ({ page, renderFull }) => {
+test('Alt+Shift+ArrowUp moves the selected row one step up', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await hoverTable(page);
 
@@ -110,7 +110,7 @@ test('Alt+Shift+ArrowUp moves the selected row one step up', async ({ page, rend
 	expect(ops).toEqual([{ type: 'move-row', fromRowId: 'r_1', toRowId: 'r_0' }]);
 });
 
-test('Alt+Shift+ArrowUp at row index 1 (adjacent to the header) does not move into the header', async ({ page, renderFull }) => {
+test('Alt+Shift+ArrowUp at row index 1 (adjacent to the header) does not move into the header', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await hoverTable(page);
 

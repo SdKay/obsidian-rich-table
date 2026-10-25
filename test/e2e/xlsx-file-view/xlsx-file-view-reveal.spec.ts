@@ -441,7 +441,7 @@ test.describe('search hit colour (contract 5.9 and 5.10)', () => {
 		return view;
 	};
 
-	test('without Rich Search\'s variables a match is the shared default colour at 45%, and the opened one at full strength', async ({ page, renderXlsxFile }) => {
+	test('without Rich Search\'s variables a match is the shared default colour at 45%, and the opened one at full strength', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await bothMarks(renderXlsxFile);
 		// A dark theme's light text must not leak into the dim marks; they take the cell's own text colour.
 		await page.evaluate(() => { document.body.style.color = 'rgb(240, 240, 240)'; });
@@ -449,7 +449,7 @@ test.describe('search hit colour (contract 5.9 and 5.10)', () => {
 		expect(await paint(page, 'bright')).toMatchObject({ rgb: [204, 255, 0], alpha: 1, fg: 'rgb(0, 0, 0)' });
 	});
 
-	test('the dim marks have no ring and keep the text colour of the cell; the opened one has a ring in the chosen text colour', async ({ page, renderXlsxFile }) => {
+	test('the dim marks have no ring and keep the text colour of the cell; the opened one has a ring in the chosen text colour', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await bothMarks(renderXlsxFile);
 		await page.evaluate(() => {
 			document.body.style.color = 'rgb(240, 240, 240)';
@@ -464,7 +464,7 @@ test.describe('search hit colour (contract 5.9 and 5.10)', () => {
 		expect(bright.ring).toContain('1px');
 	});
 
-	test('takes the colours the user chose, from the variables on the body', async ({ page, renderXlsxFile }) => {
+	test('takes the colours the user chose, from the variables on the body', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await bothMarks(renderXlsxFile);
 		await page.evaluate(() => {
 			document.body.style.setProperty('--rs-match-bg', 'rgb(10, 20, 30)');
@@ -474,7 +474,7 @@ test.describe('search hit colour (contract 5.9 and 5.10)', () => {
 		expect(await paint(page, 'bright')).toMatchObject({ rgb: [10, 20, 30], alpha: 1, fg: 'rgb(250, 240, 230)' });
 	});
 
-	test('follows a change of the chosen colour without being redrawn', async ({ page, renderXlsxFile }) => {
+	test('follows a change of the chosen colour without being redrawn', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await bothMarks(renderXlsxFile);
 		await page.evaluate(() => document.body.style.setProperty('--rs-match-bg', 'rgb(1, 1, 1)'));
 		expect((await paint(page, 'bright')).rgb).toEqual([1, 1, 1]);
@@ -483,7 +483,7 @@ test.describe('search hit colour (contract 5.9 and 5.10)', () => {
 		expect((await paint(page, 'dim')).rgb).toEqual([2, 2, 2]);
 	});
 
-	test('a theme or snippet rule on every mark does not override either strength', async ({ page, renderXlsxFile }) => {
+	test('a theme or snippet rule on every mark does not override either strength', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await bothMarks(renderXlsxFile);
 		await inNote(page);
 		await hostile(page);
@@ -495,14 +495,14 @@ test.describe('search hit colour (contract 5.9 and 5.10)', () => {
 		expect(bright.ring).not.toBe('none');
 	});
 
-	test('does not take the theme\'s accent colour', async ({ page, renderXlsxFile }) => {
+	test('does not take the theme\'s accent colour', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await bothMarks(renderXlsxFile);
 		await page.evaluate(() => document.body.style.setProperty('--interactive-accent', 'rgb(200, 0, 200)'));
 		expect((await paint(page, 'dim')).rgb).not.toEqual([200, 0, 200]);
 		expect((await paint(page, 'bright')).rgb).not.toEqual([200, 0, 200]);
 	});
 
-	test('the reader\'s own highlight is left as it is', async ({ page, renderXlsxFile }) => {
+	test('the reader\'s own highlight is left as it is', { tag: '@geometry' }, async ({ page, renderXlsxFile }) => {
 		await bothMarks(renderXlsxFile);
 		await page.evaluate(() => {
 			document.body.style.setProperty('--rs-match-bg', 'rgb(10, 20, 30)');

@@ -15,7 +15,7 @@ const SOURCE = tableSource({
 	rows: [{ 0: 'a1', 1: 'b1' }],
 });
 
-test('dragging a column resize handle with a fractional pointer delta commits a whole-pixel width', async ({ page, renderFull }) => {
+test('dragging a column resize handle with a fractional pointer delta commits a whole-pixel width', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	const wrapperBox = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;

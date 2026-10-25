@@ -20,7 +20,7 @@ import { tableSource } from '../../common/fixtures';
 // already had for the identical reason (see its own CSS comment) — so
 // table's height is governed by its own content only, never by contentRow's
 // derived cross-size.
-test('a table does not grow taller than its own content after being hovered', async ({ page, renderFull }) => {
+test('a table does not grow taller than its own content after being hovered', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], title: 'My title' }));
 	const table = page.locator('.bt-table');
 	const wrapper = page.locator('.bt-table-wrapper');

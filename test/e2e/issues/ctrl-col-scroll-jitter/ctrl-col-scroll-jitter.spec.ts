@@ -22,7 +22,7 @@ viewHeight: 130
 ---
 `;
 
-test('the ctrl column icon count/height stays stable across the full scroll range', async ({ page, renderBlock }) => {
+test('the ctrl column icon count/height stays stable across the full scroll range', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 	await renderBlock(TALL_SOURCE);
 	await page.locator('table.bt-table').hover();
 	await page.waitForTimeout(150);

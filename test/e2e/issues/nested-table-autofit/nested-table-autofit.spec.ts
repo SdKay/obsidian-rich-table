@@ -28,7 +28,7 @@ const SOURCE = tableSource({
 	rows: [{ 0: 'x', 1: 'y' }],
 });
 
-test("applyAutoColWidths pins an auto column to a nested table's true content width, not its capped rendered width", async ({ page, renderFull }) => {
+test("applyAutoColWidths pins an auto column to a nested table's true content width, not its capped rendered width", { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	await page.evaluate(() => {

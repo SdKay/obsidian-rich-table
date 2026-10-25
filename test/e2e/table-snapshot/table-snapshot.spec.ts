@@ -79,7 +79,7 @@ test.describe('table snapshot', () => {
 		}
 	});
 
-	test('an untitled table has no leftover top-clearance padding in its snapshot', async ({ page, renderBlock }) => {
+	test('an untitled table has no leftover top-clearance padding in its snapshot', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		// --bt-sel-pad (TOP_STRIP_PAD in renderer.ts) reserves EXTRA top padding
 		// on an untitled table specifically, so the hover strip clears
 		// Obsidian's own floating block toolbar (see the no-title-top-clearance

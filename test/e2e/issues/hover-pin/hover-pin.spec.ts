@@ -38,7 +38,7 @@ test.describe('hover-pin', () => {
 		await expect.poll(() => page.evaluate(() => document.querySelectorAll('.bt-cell-panel').length)).toBeGreaterThan(0);
 	};
 
-	test('strips appear on hover and hide when the pointer leaves', async ({ page, renderFull }) => {
+	test('strips appear on hover and hide when the pointer leaves', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 		await leaveTable(page);
@@ -47,7 +47,7 @@ test.describe('hover-pin', () => {
 		await expect.poll(() => stripsVisible(page)).toBe(0);
 	});
 
-	test('strips stay while a panel opened from the table is showing', async ({ page, renderFull }) => {
+	test('strips stay while a panel opened from the table is showing', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 
@@ -65,7 +65,7 @@ test.describe('hover-pin', () => {
 			.toBeGreaterThan(0);
 	});
 
-	test('strips hide once the panel closes and the pointer really is away', async ({ page, renderFull }) => {
+	test('strips hide once the panel closes and the pointer really is away', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 		await openPanel(page);
@@ -78,7 +78,7 @@ test.describe('hover-pin', () => {
 		await expect.poll(() => stripsVisible(page)).toBe(0);
 	});
 
-	test('strips stay if the pointer is back over the table when the panel closes', async ({ page, renderFull }) => {
+	test('strips stay if the pointer is back over the table when the panel closes', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		const box = await hoverTable(page);
 		await openPanel(page);
@@ -92,7 +92,7 @@ test.describe('hover-pin', () => {
 			.toBeGreaterThan(0);
 	});
 
-	test('a table torn down with its panel open does not leak the pin', async ({ page, renderFull }) => {
+	test('a table torn down with its panel open does not leak the pin', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 		await openPanel(page);

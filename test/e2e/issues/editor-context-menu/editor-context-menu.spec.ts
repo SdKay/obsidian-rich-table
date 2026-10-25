@@ -123,7 +123,7 @@ test.describe('editor-context-menu', () => {
 		expect(state).toEqual({ link: true, format: true, paragraph: false, insert: false });
 	});
 
-	test('the top level follows Obsidian: links, then the Format, Paragraph and Insert submenus', async ({ page, renderFull }) => {
+	test('the top level follows Obsidian: links, then the Format, Paragraph and Insert submenus', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await startEditing(page);
 		await rightClick(page, 0, 5);
@@ -258,7 +258,7 @@ test.describe('editor-context-menu', () => {
 		await expect.poll(async () => JSON.stringify(await ops(page))).toContain('hello ==world==');
 	});
 
-	test('the Highlight submenu checks the color the selection is in, with Obsidian\'s swatch for each color', async ({ page, renderFull }) => {
+	test('the Highlight submenu checks the color the selection is in, with Obsidian\'s swatch for each color', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await startEditing(page);
 		await rightClick(page, 0, 5);

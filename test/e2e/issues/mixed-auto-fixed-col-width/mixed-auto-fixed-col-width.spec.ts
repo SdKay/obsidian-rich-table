@@ -23,7 +23,7 @@ rows:
 ---
 `;
 
-test('an auto column next to a fixed one is pinned to its own content width, not squeezed to nothing', async ({ page, renderBlock }) => {
+test('an auto column next to a fixed one is pinned to its own content width, not squeezed to nothing', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 	await renderBlock(SOURCE);
 
 	const fixedWidth = await page.locator('col[data-col="0"]').evaluate(el => (el as HTMLElement).getBoundingClientRect().width);

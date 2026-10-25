@@ -19,7 +19,7 @@ test.describe('academic theme bottomrule survives a background on the last row',
 		styles: [{ target: 'r_1.c_0:r_1.c_1', bg: '#ffcccc' }],
 	});
 
-	test('the last row\'s own cells carry the bottomrule box-shadow when it has a background', async ({ page, renderFull }) => {
+	test('the last row\'s own cells carry the bottomrule box-shadow when it has a background', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(bgSource);
 		const shadows = await page.evaluate(() => {
 			const cells = Array.from(document.querySelectorAll('[data-row="2"]')) as HTMLElement[];
@@ -39,7 +39,7 @@ test.describe('academic theme bottomrule survives a background on the last row',
 		merges: [[0, 0, 1, 0]],
 	});
 
-	test('a merge spanning into the last row still gets the line under its own column (tbody rule)', async ({ page, renderFull }) => {
+	test('a merge spanning into the last row still gets the line under its own column (tbody rule)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(mergeSource);
 		// The merged cell (column A) lives in row 1's <tr>, has no cell of its
 		// own in row 2 — its line has to come from tbody's own box-shadow, not

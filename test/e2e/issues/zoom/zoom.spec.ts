@@ -15,19 +15,19 @@ import { tableSource, scrollableTable } from '../../common/fixtures';
  * whole reason those corrections exist.
  */
 test.describe('zoom', () => {
-	test('applies the model\'s zoom percent as a real CSS zoom factor on the render root', async ({ page, renderFull }) => {
+	test('applies the model\'s zoom percent as a real CSS zoom factor on the render root', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], zoom: 150 }));
 		const zoomStyle = await page.locator('.bt-render-root').evaluate(el => getComputedStyle(el).zoom);
 		expect(zoomStyle).toBe('1.5');
 	});
 
-	test('a table with no zoom field renders at exactly 100% — old tables are unaffected', async ({ page, renderFull }) => {
+	test('a table with no zoom field renders at exactly 100% — old tables are unaffected', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }] }));
 		const zoomStyle = await page.locator('.bt-render-root').evaluate(el => getComputedStyle(el).zoom);
 		expect(zoomStyle).toBe('1');
 	});
 
-	test('the status bar shows the current zoom percent and a functional -/+/slider control', async ({ page, renderFull }) => {
+	test('the status bar shows the current zoom percent and a functional -/+/slider control', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 120 }));
 		await expect(page.locator('.bt-status-zoom-value')).toHaveText('120%');
 		await expect(page.locator('.bt-status-zoom-slider')).toHaveValue('120');
@@ -40,7 +40,7 @@ test.describe('zoom', () => {
 	// the text, between it and the "+" button, for every narrower value.
 	// Fixed by shrinking min-width to fit "400%" (the widest possible value)
 	// with no leftover slack.
-	test('the gap between "+" and the percent label stays tight at every zoom value, including the widest', async ({ page, renderFull }) => {
+	test('the gap between "+" and the percent label stays tight at every zoom value, including the widest', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 120 }));
 		const plusBtn = page.locator('.bt-status-zoom-btn').nth(1);
 		const valueEl = page.locator('.bt-status-zoom-value');
@@ -73,7 +73,7 @@ test.describe('zoom', () => {
 		expect(gap120).toBeLessThan(10);
 	});
 
-	test('clicking "+" dispatches set-zoom stepped by 10, and updates the CSS zoom live', async ({ page, renderFull }) => {
+	test('clicking "+" dispatches set-zoom stepped by 10, and updates the CSS zoom live', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 120 }));
 		await page.locator('.bt-status-zoom-btn').nth(1).click(); // + is the second button
 		const ops = await page.evaluate(() => window.__btOps);
@@ -82,14 +82,14 @@ test.describe('zoom', () => {
 		expect(zoomStyle).toBe('1.3');
 	});
 
-	test('clicking "-" dispatches set-zoom stepped down by 10', async ({ page, renderFull }) => {
+	test('clicking "-" dispatches set-zoom stepped down by 10', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 120 }));
 		await page.locator('.bt-status-zoom-btn').nth(0).click();
 		const ops = await page.evaluate(() => window.__btOps);
 		expect(ops).toEqual([{ type: 'set-zoom', percent: 110 }]);
 	});
 
-	test('typing a value into the percent label commits it on Enter', async ({ page, renderFull }) => {
+	test('typing a value into the percent label commits it on Enter', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 120 }));
 		await page.locator('.bt-status-zoom-value').click();
 		const input = page.locator('.bt-status-zoom-input');
@@ -99,7 +99,7 @@ test.describe('zoom', () => {
 		expect(ops).toEqual([{ type: 'set-zoom', percent: 75 }]);
 	});
 
-	test('dragging the slider only updates the CSS live and does not dispatch until release', async ({ page, renderFull }) => {
+	test('dragging the slider only updates the CSS live and does not dispatch until release', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 100 }));
 		const slider = page.locator('.bt-status-zoom-slider');
 		await slider.evaluate((el: HTMLInputElement) => {
@@ -115,7 +115,7 @@ test.describe('zoom', () => {
 		expect(ops).toEqual([{ type: 'set-zoom', percent: 200 }]);
 	});
 
-	test('on a locked table, the zoom widget shows the value read-only with no interactive controls', async ({ page, renderFull }) => {
+	test('on a locked table, the zoom widget shows the value read-only with no interactive controls', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 130, locked: true }));
 		await expect(page.locator('.bt-status-zoom-value')).toHaveText('130%');
 		await expect(page.locator('.bt-status-zoom-btn')).toHaveCount(0);
@@ -128,7 +128,7 @@ test.describe('zoom', () => {
 	// real, on-screen pixel relationship that would only hold if the
 	// correction is right — not just "no crash". ──
 
-	test('zoomed content does not overlap whatever comes after the table (the reason zoom was chosen over transform:scale)', async ({ page, renderFull }) => {
+	test('zoomed content does not overlap whatever comes after the table (the reason zoom was chosen over transform:scale)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], zoom: 250 }));
 		// A real DOM marker appended right after the table's own root — if the
 		// zoomed root's reserved layout space were wrong (e.g. using
@@ -146,7 +146,7 @@ test.describe('zoom', () => {
 		expect(markerRect.top).toBeGreaterThanOrEqual(rootRect.bottom - 0.5);
 	});
 
-	test('a column resize-drag under zoom moves the column by the exact number of real (visual) pixels dragged', async ({ page, renderFull }) => {
+	test('a column resize-drag under zoom moves the column by the exact number of real (visual) pixels dragged', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], zoom: 200 }));
 		await page.locator('table.bt-table').hover();
 		const handle = page.locator('.bt-sel-resize-col').first();
@@ -165,7 +165,7 @@ test.describe('zoom', () => {
 		expect(widthOp.width).toBe(130); // 100 (initial) + 30 (logical delta)
 	});
 
-	test('a row resize-drag under zoom moves the row by the exact number of logical pixels', async ({ page, renderFull }) => {
+	test('a row resize-drag under zoom moves the row by the exact number of logical pixels', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		// 3 rows, not 1 — .bt-row-selector clips its own children to --rs-height
 		// (overflow: hidden), and a single-row table's only resize handle sits
 		// tight against that clip boundary, right where elementFromPoint can miss
@@ -192,7 +192,7 @@ test.describe('zoom', () => {
 		expect(heightOp.height).toBe(startHeight + 30);
 	});
 
-	test('a frozen column\'s real left edge lines up exactly with its non-frozen neighbor at rest, under zoom', async ({ page, renderFull }) => {
+	test('a frozen column\'s real left edge lines up exactly with its non-frozen neighbor at rest, under zoom', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		// renderFull, not renderReal — renderReal builds its table DOM through a
 		// hand-ported fixture (build-table-dom.js) that predates this feature and
 		// never applies `zoom` at all, which would make this test vacuous (freeze
@@ -229,7 +229,7 @@ test.describe('zoom', () => {
 	// drag test); this test only checks the persisted MODEL value still
 	// scales correctly with zoom on top of that ×2, not the visible-edge
 	// speed itself.
-	test('the view-resize handle under zoom grows the view by twice the logical pixels dragged, scaled correctly by zoom', async ({ page, renderFull }) => {
+	test('the view-resize handle under zoom grows the view by twice the logical pixels dragged, scaled correctly by zoom', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 200, viewWidth: 150 }));
 		await page.locator('table.bt-table').hover();
 		const handle = page.locator('.bt-view-resize-r');
@@ -262,7 +262,7 @@ test.describe('zoom', () => {
 	// instead of waiting on the ResizeObserver directly, since showSelectors()
 	// calls rebuild() unconditionally on the very next frame — deterministic,
 	// unlike the observer's own timing.
-	test('a live zoom drag does not corrupt an all-auto table\'s pinned column widths', async ({ page, renderFull }) => {
+	test('a live zoom drag does not corrupt an all-auto table\'s pinned column widths', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [undefined, undefined], rows: [
 			{ 0: 'x', 1: 'a fairly long line of content that this auto column should track without ever squeezing narrower than its own content needs' },
 		] }));
@@ -313,7 +313,7 @@ test.describe('zoom', () => {
 	// intentionally kept it fixed-size, per the user's own earlier choice) —
 	// this reverses that: the title is now INSIDE root, so it scales with
 	// everything else.
-	test('the table title scales together with the table under zoom', async ({ page, renderFull }) => {
+	test('the table title scales together with the table under zoom', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }], zoom: 200, title: 'My Title' }));
 		const insideRoot = await page.evaluate(() => {
 			const title = document.querySelector('.bt-table-title') as HTMLElement | null;
@@ -334,7 +334,7 @@ test.describe('zoom', () => {
 	// subtree entirely (renderer.ts's `shell`) — confirmed via a direct probe
 	// that a slider inside a self-changing zoomed ancestor runs away (a 20px
 	// mouse move produced a 100%→212% jump) while one outside it doesn't.
-	test('the zoom slider does not live inside the zoomed subtree (no drag runaway)', async ({ page, renderFull }) => {
+	test('the zoom slider does not live inside the zoomed subtree (no drag runaway)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }] }));
 		const sliderInsideRoot = await page.evaluate(() => {
 			const slider = document.querySelector('.bt-status-zoom-slider');
@@ -384,7 +384,7 @@ test.describe('zoom', () => {
 	// margin-bottom (--bt-title-sel-pad) instead of root's padding-top
 	// whenever a title exists — confirmed via direct measurement: the strip
 	// now sits exactly between title and table, at every scroll offset.
-	test('a title never gets covered by the column-selector strip on hover', async ({ page, renderFull }) => {
+	test('a title never gets covered by the column-selector strip on hover', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], title: 'My Title' }));
 		await page.locator('table.bt-table').hover();
 		await page.waitForTimeout(50);

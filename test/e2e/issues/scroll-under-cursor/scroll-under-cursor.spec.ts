@@ -48,7 +48,7 @@ const tableCentreTop = (page: Page) => page.evaluate(() => {
 	return Math.round(pane.scrollTop + r.top + r.height / 2 - 300);
 });
 
-test('a table scrolling under a resting cursor shows no hover while the note scrolls', async ({ page, renderFull }) => {
+test('a table scrolling under a resting cursor shows no hover while the note scrolls', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await placeInScrollingNote(page);
 	const centre = await tableCentreTop(page);
@@ -61,7 +61,7 @@ test('a table scrolling under a resting cursor shows no hover while the note scr
 	expect(await hoveredCells(page), 'cells were tinted while the note was still scrolling').toBe(0);
 });
 
-test('when the note comes to rest on the table, its hover appears', async ({ page, renderFull }) => {
+test('when the note comes to rest on the table, its hover appears', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await placeInScrollingNote(page);
 	const centre = await tableCentreTop(page);
@@ -73,7 +73,7 @@ test('when the note comes to rest on the table, its hover appears', async ({ pag
 	await expect.poll(() => stripsVisible(page), { timeout: 2000 }).toBeGreaterThan(0);
 });
 
-test('a table that only passed under the cursor has no hover once the note rests elsewhere', async ({ page, renderFull }) => {
+test('a table that only passed under the cursor has no hover once the note rests elsewhere', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await placeInScrollingNote(page);
 	const centre = await tableCentreTop(page);
@@ -86,7 +86,7 @@ test('a table that only passed under the cursor has no hover once the note rests
 	expect(await stripsVisible(page)).toBe(0);
 });
 
-test('a table hovered before the note scrolls keeps working once it stops', async ({ page, renderFull }) => {
+test('a table hovered before the note scrolls keeps working once it stops', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await placeInScrollingNote(page);
 	await scrollTo(page, await tableCentreTop(page));

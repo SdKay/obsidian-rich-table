@@ -31,7 +31,7 @@ rows:
 | 2 |
 `;
 
-test('double-click auto-fit grows a narrow column to its header text width', async ({ page, renderBlock }) => {
+test('double-click auto-fit grows a narrow column to its header text width', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 	const block = await renderBlock(SOURCE);
 	const wrapper = page.locator('.bt-table-wrapper:not(#wrapper)');
 	const wb = (await wrapper.boundingBox())!;

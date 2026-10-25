@@ -22,7 +22,7 @@ const SOURCE = tableSource({
 	rows: [{ 0: 'x' }],
 });
 
-test('a typed column shows the type icon inline, immediately before the header text', async ({ page, renderFull }) => {
+test('a typed column shows the type icon inline, immediately before the header text', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	const icon = page.locator('.bt-th-type-icon').first();
@@ -44,7 +44,7 @@ test('a typed column shows the type icon inline, immediately before the header t
 // .bt-th-text itself the flex container: the icon and the text both become
 // flex items, and the flex algorithm's own cross-axis centering aligns them
 // against each other directly, not against an assumed text-metrics offset.
-test('the type icon is vertically centered against the header text, not offset above or below it', async ({ page, renderFull }) => {
+test('the type icon is vertically centered against the header text, not offset above or below it', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	const iconBox = (await page.locator('.bt-th-type-icon').first().boundingBox())!;
@@ -65,7 +65,7 @@ test('clicking the type icon is inert — no panel opens, the click falls throug
 	expect(await page.locator('[data-row="0"][data-col="0"]').evaluate(el => el.classList.contains('bt-editing'))).toBe(true);
 });
 
-test("auto-fit includes the type icon's width — a typed and an untyped column with identical text fit to different widths", async ({ page, renderBlock }) => {
+test("auto-fit includes the type icon's width — a typed and an untyped column with identical text fit to different widths", { tag: '@geometry' }, async ({ page, renderBlock }) => {
 	// renderBlock (not renderFull): auto-fit-all now CLEARS both columns'
 	// widths rather than writing a computed number (see choice-col-reactive-
 	// width's own notes) — the actual size only shows up after the note is
@@ -119,7 +119,7 @@ rows:
 // fix's own `box-sizing: border-box` would pass here and still break in the
 // app it's meant to run in.
 for (const mode of ['content-box (this harness\'s own default)', 'border-box (simulated Obsidian global reset)'] as const) {
-	test(`a live-sorted, filtered header grows tall enough to fit both corner icons with no overlap — ${mode}`, async ({ page, renderFull }) => {
+	test(`a live-sorted, filtered header grows tall enough to fit both corner icons with no overlap — ${mode}`, { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(`---
 version: 2
 columns:

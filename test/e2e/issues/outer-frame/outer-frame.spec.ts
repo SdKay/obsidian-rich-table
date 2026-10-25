@@ -19,7 +19,7 @@ test.describe('outer frame', () => {
 	// bar's own content (sheet tabs/stats/zoom) can need more room than a
 	// small table does, in which case the frame widens to fit the BAR
 	// instead, still well short of the full page.
-	test('at rest, an auto-width table\'s frame hugs the table (or the status bar, whichever is wider), not the full page', async ({ page, renderFull }) => {
+	test('at rest, an auto-width table\'s frame hugs the table (or the status bar, whichever is wider), not the full page', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const shell = page.locator('.bt-render-root-shell');
 		const wrapper = page.locator('.bt-table-wrapper');
@@ -47,7 +47,7 @@ test.describe('outer frame', () => {
 	// wrapper wider than <table>+addColBtn — the handle/frame/status-bar
 	// consistency this test actually checks is unrelated to which of the two
 	// causes it.
-	test('a view wider than the table pulls the handle and the status bar out to wrapper\'s new edge, not just the frame', async ({ page, renderFull }) => {
+	test('a view wider than the table pulls the handle and the status bar out to wrapper\'s new edge, not just the frame', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [50], rows: [{ 0: 'x' }], viewWidth: 400 }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
@@ -71,7 +71,7 @@ test.describe('outer frame', () => {
 		expect(statusBarBox.x + statusBarBox.width).toBeCloseTo(wrapperBox.x + wrapperBox.width, 0);
 	});
 
-	test('on hover, the frame grows to cover the row/col selector strips and left toolbar, none of which spill outside it', async ({ page, renderFull }) => {
+	test('on hover, the frame grows to cover the row/col selector strips and left toolbar, none of which spill outside it', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
@@ -94,7 +94,7 @@ test.describe('outer frame', () => {
 	// LEFT edge sat flush against the frame at rest and only pulled outward
 	// on the FIRST hover — the two sides were on different rules. Both edges
 	// must now be identical before and after hover.
-	test('the frame\'s left edge is identical before and after hover, matching the right edge\'s own already-stable behavior', async ({ page, renderFull }) => {
+	test('the frame\'s left edge is identical before and after hover, matching the right edge\'s own already-stable behavior', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const frame = page.locator('.bt-outer-frame');
 		const restBox = (await frame.boundingBox())!;
@@ -109,7 +109,7 @@ test.describe('outer frame', () => {
 		expect(hoverBox.width).toBeCloseTo(restBox.width, 0);
 	});
 
-	test('a PINNED status bar is always inside the frame, before and after hover', async ({ page, renderFull }) => {
+	test('a PINNED status bar is always inside the frame, before and after hover', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const statusBar = page.locator('.bt-status-bar');
 		const frame = page.locator('.bt-outer-frame');
@@ -128,7 +128,7 @@ test.describe('outer frame', () => {
 		expect(barAfter.y + barAfter.height).toBeLessThanOrEqual(after.y + after.height + 1);
 	});
 
-	test('with the status bar turned off, the frame\'s bottom edge is root\'s bottom edge', async ({ page, renderFull }) => {
+	test('with the status bar turned off, the frame\'s bottom edge is root\'s bottom edge', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], statusBarMode: 'hover' }));
 		const root = (await page.locator('.bt-render-root').boundingBox())!;
 		const frame = (await page.locator('.bt-outer-frame').boundingBox())!;
@@ -147,7 +147,7 @@ test.describe('outer frame', () => {
 	// (since removed) to show the real edge instead. Now the frame itself
 	// narrows to the wrapper's own box whenever a manual width is actually
 	// narrower than what's available.
-	test('the frame narrows to a manually-set viewWidth instead of hugging root\'s full available width', async ({ page, renderFull }) => {
+	test('the frame narrows to a manually-set viewWidth instead of hugging root\'s full available width', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], viewWidth: 400 }));
 		const root = page.locator('.bt-render-root');
 		const wrapper = page.locator('.bt-table-wrapper');
@@ -181,7 +181,7 @@ test.describe('outer frame', () => {
 	// updateOuterFrame's own comment on why sharing that hover-widened edge
 	// would shift the status bar's own layout sideways purely from
 	// hover/unhover.
-	test('a manually-narrowed frame keeps the PINNED status bar and both resize handles aligned to its own right edge, not root\'s', async ({ page, renderFull }) => {
+	test('a manually-narrowed frame keeps the PINNED status bar and both resize handles aligned to its own right edge, not root\'s', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], viewWidth: 400 }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
@@ -211,7 +211,7 @@ test.describe('outer frame', () => {
 	// re-render gave it a real model value to read on the SECOND drag.
 	// applyOuterFrame (renderGeometry.ts) already used the class correctly —
 	// this only needed updateOuterFrame to match it.
-	test('the frame narrows live during the FIRST width drag, before any release/re-render', async ({ page, renderFull }) => {
+	test('the frame narrows live during the FIRST width drag, before any release/re-render', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
@@ -247,7 +247,7 @@ test.describe('outer frame', () => {
 	// hugs..." test above), not root's (the full page width). The handle, the
 	// frame, and the status bar all read the exact same edge — see
 	// updateOuterFrame's own comment on why.
-	test('the width handle sits at the auto-width table\'s real edge at rest, not root\'s wide page edge', async ({ page, renderFull }) => {
+	test('the width handle sits at the auto-width table\'s real edge at rest, not root\'s wide page edge', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
@@ -263,7 +263,7 @@ test.describe('outer frame', () => {
 	});
 
 	// Dragging from that resting position must move continuously, no snap.
-	test('dragging the width handle from its auto-width resting position moves it continuously, no jump', async ({ page, renderFull }) => {
+	test('dragging the width handle from its auto-width resting position moves it continuously, no jump', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
@@ -293,7 +293,7 @@ test.describe('outer frame', () => {
 	// (pointerdown handler's own comment, renderer.ts), so the width grows at
 	// 2x the cursor's movement and the visible right edge — getting exactly
 	// half of that — ends up tracking the cursor 1:1.
-	test('dragging the width handle moves the wrapper\'s visible right edge at exactly 1:1 with the mouse, despite wrapper staying centered', async ({ page, renderFull }) => {
+	test('dragging the width handle moves the wrapper\'s visible right edge at exactly 1:1 with the mouse, despite wrapper staying centered', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }] }));
 		const root = page.locator('.bt-render-root');
 		const rootBox = (await root.boundingBox())!;
@@ -321,7 +321,7 @@ test.describe('outer frame', () => {
 	// separate code path from renderer.ts's own closure-local updateOuterFrame
 	// exercised by every test above. Drives a real insert-row op (clicking the
 	// "+" add-row button) to force that rebuild.
-	test('after a write-back rebuild, the frame is resized to the new (taller) table by applyOuterFrame', async ({ page, renderBlock }) => {
+	test('after a write-back rebuild, the frame is resized to the new (taller) table by applyOuterFrame', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const SOURCE = `---
 version: 2
 columns:
@@ -358,7 +358,7 @@ rows:
 	// Same manual-viewWidth narrowing renderer.ts's own updateOuterFrame does
 	// (see that function's own comment), exercised through applyOuterFrame's
 	// separate post-swap code path via renderBlock.
-	test('a manually-narrowed frame stays narrow through a write-back rebuild too (applyOuterFrame)', async ({ page, renderBlock }) => {
+	test('a manually-narrowed frame stays narrow through a write-back rebuild too (applyOuterFrame)', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const SOURCE = `---
 version: 2
 columns:

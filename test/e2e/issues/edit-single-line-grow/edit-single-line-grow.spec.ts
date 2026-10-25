@@ -21,7 +21,7 @@ test.describe('a narrow auto column stays single-line while typing', () => {
 	const oneLineHeight = async (locator: import('@playwright/test').Locator) =>
 		locator.evaluate(el => el.getBoundingClientRect().height);
 
-	test('data cell in a mixed explicit+auto table: stays single-line and the <col> widens live, without touching the model', async ({ page, renderFull }) => {
+	test('data cell in a mixed explicit+auto table: stays single-line and the <col> widens live, without touching the model', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
 		const cell = 'td[data-row="1"][data-col="1"]';
 		await page.locator(cell).click();
@@ -54,7 +54,7 @@ test.describe('a narrow auto column stays single-line while typing', () => {
 	// total unchanged. Fixed by growing <table>'s own width by the exact same
 	// delta as the column — the extra space then comes from the table
 	// widening, and every sibling column keeps its original width untouched.
-	test('growing the edited column widens the TABLE, not its sibling columns', async ({ page, renderFull }) => {
+	test('growing the edited column widens the TABLE, not its sibling columns', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
 		const cell = 'td[data-row="1"][data-col="1"]';
 		await page.locator(cell).click();
@@ -76,7 +76,7 @@ test.describe('a narrow auto column stays single-line while typing', () => {
 		expect(tableAfter - tableBefore).toBeCloseTo(col1After - col1Before, 0);
 	});
 
-	test('header cell: typing a long column name also stays single-line and grows the column', async ({ page, renderFull }) => {
+	test('header cell: typing a long column name also stays single-line and grows the column', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
 		const headerCell = 'th[data-row="0"][data-col="1"]';
 		await page.locator(headerCell).click();
@@ -96,7 +96,7 @@ test.describe('a narrow auto column stays single-line while typing', () => {
 		expect(widthAfter).toBeGreaterThan(widthBefore);
 	});
 
-	test('a real newline (Shift+Enter) still renders as a genuine line break, not just suppressed wrap', async ({ page, renderFull }) => {
+	test('a real newline (Shift+Enter) still renders as a genuine line break, not just suppressed wrap', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
 		const cell = 'td[data-row="1"][data-col="1"]';
 		await page.locator(cell).click();
@@ -115,7 +115,7 @@ test.describe('a narrow auto column stays single-line while typing', () => {
 		expect(await editor.innerText()).toContain('line two');
 	});
 
-	test('the column shrinks back to the committed content\'s real width after a write-back rebuild', async ({ page, renderBlock }) => {
+	test('the column shrinks back to the committed content\'s real width after a write-back rebuild', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const r = await renderBlock(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
 		const cell = 'td[data-row="1"][data-col="1"]';
 		await page.locator(cell).click();
@@ -158,7 +158,7 @@ test.describe('a narrow auto column stays single-line while typing', () => {
 	// (renderAutofit.ts), which snapshots both widths before any edit-time
 	// growth and is invoked from inside restoreNodes() itself, so every
 	// existing "no real change" path gets the undo for free.
-	test('an edit that ends with no real content change restores the column\'s pre-edit width', async ({ page, renderFull }) => {
+	test('an edit that ends with no real content change restores the column\'s pre-edit width', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
 		const cell = 'td[data-row="1"][data-col="1"]';
 		await page.locator(cell).click();
@@ -195,7 +195,7 @@ test.describe('a narrow auto column stays single-line while typing', () => {
 		expect(ops).toEqual([]); // genuinely no change was ever committed
 	});
 
-	test('Escape after growing an auto column restores its pre-edit width', async ({ page, renderFull }) => {
+	test('Escape after growing an auto column restores its pre-edit width', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
 		const cell = 'td[data-row="1"][data-col="1"]';
 		await page.locator(cell).click();

@@ -23,7 +23,7 @@ test.describe('status bar — DOM skeleton (Task 4)', () => {
 		await expect(bar.locator('.bt-status-stats')).toHaveText('2 rows × 2 cols');
 	});
 
-	test('.bt-status-stats carries an is-selection class only while a multi-cell selection is active (issue #7)', async ({ page, renderFull }) => {
+	test('.bt-status-stats carries an is-selection class only while a multi-cell selection is active (issue #7)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		const stats = page.locator('.bt-status-stats');
 		await expect(stats).not.toHaveClass(/is-selection/);
@@ -63,7 +63,7 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 	const WIDE = tableSource({ widths: [150, 150, 150, 150, 150], rows: [{ 0: 'a1' }], viewWidth: 200 });
 	const NARROW = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }] });
 
-	test('thumb tracks wrapper.scrollLeft as the table scrolls', async ({ page, renderFull }) => {
+	test('thumb tracks wrapper.scrollLeft as the table scrolls', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const wrapper = page.locator('.bt-table-wrapper');
 		const thumb = page.locator('.bt-status-scroll-thumb');
@@ -80,7 +80,7 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 		}).toBe(Math.round(trackRect.x + trackRect.width));
 	});
 
-	test('the scrollbar track fills about half of the status bar height, so it is easy to grab', async ({ page, renderFull }) => {
+	test('the scrollbar track fills about half of the status bar height, so it is easy to grab', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const track = (await page.locator('.bt-status-scroll-track').boundingBox())!;
 		const thumb = (await page.locator('.bt-status-scroll-thumb').boundingBox())!;
@@ -90,7 +90,7 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 		expect(thumb.height).toBeCloseTo(track.height, 0);
 	});
 
-	test('no resize handle overlaps the scrollbar track, so dragging the thumb never grabs the view edge', async ({ page, renderFull }) => {
+	test('no resize handle overlaps the scrollbar track, so dragging the thumb never grabs the view edge', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const overlap = await page.evaluate(() => {
 			const t = document.querySelector('.bt-status-scroll-track')!.getBoundingClientRect();
@@ -102,14 +102,14 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 		expect(overlap).toEqual([false, false, false]);
 	});
 
-	test('the scrollbar track is vertically centered with the other status bar content', async ({ page, renderFull }) => {
+	test('the scrollbar track is vertically centered with the other status bar content', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const mid = async (sel: string) => { const b = (await page.locator(sel).boundingBox())!; return b.y + b.height / 2; };
 		expect(Math.abs((await mid('.bt-status-scroll-track')) - (await mid('.bt-status-stats')))).toBeLessThanOrEqual(1);
 		expect(Math.abs((await mid('.bt-status-scroll-track')) - (await mid('.bt-status-zoom')))).toBeLessThanOrEqual(1);
 	});
 
-	test('pressing the empty track pages the table toward the pointer', async ({ page, renderFull }) => {
+	test('pressing the empty track pages the table toward the pointer', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const wrapper = page.locator('.bt-table-wrapper');
 		const track = (await page.locator('.bt-status-scroll-track').boundingBox())!;
@@ -119,7 +119,7 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 		await expect.poll(() => wrapper.evaluate((el: HTMLElement) => el.scrollLeft)).toBe(0);
 	});
 
-	test('dragging the thumb sets wrapper.scrollLeft', async ({ page, renderFull }) => {
+	test('dragging the thumb sets wrapper.scrollLeft', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const wrapper = page.locator('.bt-table-wrapper');
 		const thumb = page.locator('.bt-status-scroll-thumb');
@@ -137,7 +137,7 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 		expect(scrollLeft, 'dragging the thumb all the way right should scroll to the end').toBe(maxScroll);
 	});
 
-	test('the scrollbar fills the whole track when the table has nothing to scroll', async ({ page, renderFull }) => {
+	test('the scrollbar fills the whole track when the table has nothing to scroll', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(NARROW);
 		const scroll = page.locator('.bt-status-scroll');
 		const track = page.locator('.bt-status-scroll-track');
@@ -161,7 +161,7 @@ test.describe('status bar — divider drag + persistence (Task 7)', () => {
 		widths: [150, 150, 150, 150, 150], rows: [{ 0: 'a1' }], viewWidth: 400, statusBarScrollWidth: 200,
 	});
 
-	test('dragging the divider left grows .bt-status-scroll and commits set-status-bar-scroll-width on release', async ({ page, renderFull }) => {
+	test('dragging the divider left grows .bt-status-scroll and commits set-status-bar-scroll-width on release', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const divider = page.locator('.bt-status-divider');
 		const scroll = page.locator('.bt-status-scroll');
@@ -182,7 +182,7 @@ test.describe('status bar — divider drag + persistence (Task 7)', () => {
 		expect(ops[0]!.width).toBeGreaterThan(before.width + 20);
 	});
 
-	test('a persisted statusBarScrollWidth is applied on render', async ({ page, renderFull }) => {
+	test('a persisted statusBarScrollWidth is applied on render', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WITH_WIDTH);
 		const scroll = page.locator('.bt-status-scroll');
 		// flex-basis (the persisted width) is a content-box size; the element's
@@ -205,7 +205,7 @@ test.describe('status bar — height-resize handle', () => {
 		await expect(page.locator('.bt-status-bar')).toHaveCount(1);
 	});
 
-	test('the height handle sits on the view bottom edge (the bar\'s bottom) and is centered on the view', async ({ page, renderFull }) => {
+	test('the height handle sits on the view bottom edge (the bar\'s bottom) and is centered on the view', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(EDITABLE);
 		const frame = (await page.locator('.bt-outer-frame').boundingBox())!;
 		const bar = (await page.locator('.bt-status-bar').boundingBox())!;
@@ -215,7 +215,7 @@ test.describe('status bar — height-resize handle', () => {
 		expect(handle.x + handle.width / 2).toBeCloseTo(frame.x + frame.width / 2, 0);
 	});
 
-	test('dragging it resizes the wrapper and commits set-view-height on release', async ({ page, renderFull }) => {
+	test('dragging it resizes the wrapper and commits set-view-height on release', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(EDITABLE);
 		const wrapper = page.locator('.bt-table-wrapper');
 		const handle = page.locator('.bt-render-root-shell > .bt-view-resize-b');
@@ -241,7 +241,7 @@ test.describe('status bar — height-resize handle', () => {
 	// whole table (matches every other discoverability hint in this file —
 	// ctrl column, row/col selectors — which shows on entering the outer
 	// frame, not on landing on one exact pixel-precise strip within it).
-	test('hovering anywhere over the table reveals the height-handle dash, not just the handle\'s own hotspot', async ({ page, renderFull }) => {
+	test('hovering anywhere over the table reveals the height-handle dash, not just the handle\'s own hotspot', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(EDITABLE);
 		const root = page.locator('.bt-render-root');
 		const handle = page.locator('.bt-render-root-shell > .bt-view-resize-b');
@@ -301,7 +301,7 @@ test.describe('status bar — show/hide toggle', () => {
 	});
 
 	for (const [label, src] of [['shown', SRC], ['hidden', HIDDEN]] as const) {
-		test(`Shift+wheel scrolls horizontally with the bar ${label}`, async ({ page, renderFull }) => {
+		test(`Shift+wheel scrolls horizontally with the bar ${label}`, { tag: '@geometry' }, async ({ page, renderFull }) => {
 			await renderFull(label === 'shown'
 				? tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250 })
 				: tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250, statusBarMode: 'hover' }));
@@ -383,7 +383,7 @@ test.describe('status bar — multi-sheet tab integration (Task 9)', () => {
 	// renderer.ts) — hidden entirely rather than shown disabled, per the
 	// user's own call: a disabled item nobody can act on isn't worth the
 	// extra "why is this greyed out" UI.
-	test('the view-settings menu omits "Show status bar" entirely for a 2+-sheet workbook', async ({ page, renderBlock }) => {
+	test('the view-settings menu omits "Show status bar" entirely for a 2+-sheet workbook', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		await renderBlock(WORKBOOK);
 		const root = page.locator('.bt-render-root:not(#root)');
 		const rootBox = (await root.boundingBox())!;

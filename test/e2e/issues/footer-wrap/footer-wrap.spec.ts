@@ -75,7 +75,7 @@ footer:
 	// is the opposite: the footer should never widen the table, only wrap.
 	// positionFooter (renderer.ts) caps --bt-footer-max-width to contentRow's
 	// (table + addColBtn) own rendered width.
-	test('a footer line longer than the table wraps onto more lines instead of widening the table', async ({ page, renderFull }) => {
+	test('a footer line longer than the table wraps onto more lines instead of widening the table', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		const longFooter = '这是一个比table本身宽很多的很长很长很长很长很长很长很长很长的注脚文字';
 		await renderFull(tableSource({ widths: [50], rows: [{ 0: 'x' }], footer: longFooter }));
 		const wrapper = (await page.locator('.bt-table-wrapper').boundingBox())!;
@@ -93,7 +93,7 @@ footer:
 	// already uses (positionEdgeStrips, renderer.ts) — so a column-resize drag
 	// (or any other live width change) reflows the footer's wrap points in the
 	// same tick, not only on the next full re-render.
-	test('widening a column live reflows the footer\'s own wrap width in the same drag', async ({ page, renderFull }) => {
+	test('widening a column live reflows the footer\'s own wrap width in the same drag', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		const footerText = 'this is a moderately long footer line that should wrap here';
 		await renderFull(tableSource({ widths: [60, 60], rows: [{ 0: 'a1', 1: 'b1' }], footer: footerText }));
 		const wrapperBox = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;
@@ -125,7 +125,7 @@ footer:
 	// scratch against the fresh post-swap DOM, and positionFooter's own
 	// first-paint call (not a resize-observer tick) is what sets the
 	// CSS var before anything is even visible.
-	test('the width cap is already in place immediately after a write-back rebuild', async ({ page, renderBlock }) => {
+	test('the width cap is already in place immediately after a write-back rebuild', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const SOURCE = `---
 version: 2
 columns:

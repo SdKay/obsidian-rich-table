@@ -49,7 +49,7 @@ const pickType = (page: P, kind: string) => setting(page, 'Fill type').locator('
 const submit = (page: P) => page.locator('.modal button', { hasText: /^Fill$/ }).click();
 
 test.describe('auto-fill', () => {
-	test('a column fills its data rows with 1, 2, 3 by default', async ({ page, renderFull }) => {
+	test('a column fills its data rows with 1, 2, 3 by default', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openColumnMenu(page, 1);
 		await openDialog(page);
@@ -62,7 +62,7 @@ test.describe('auto-fill', () => {
 		expect(ops[0]?.values).toEqual(['1', '2', '3']);
 	});
 
-	test('start and step are honoured, including a negative step', async ({ page, renderFull }) => {
+	test('start and step are honoured, including a negative step', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openColumnMenu(page, 0);
 		await openDialog(page);
@@ -72,7 +72,7 @@ test.describe('auto-fill', () => {
 		expect((await fillOps(page))[0]?.values).toEqual(['10', '7', '4']);
 	});
 
-	test('circled and roman forms', async ({ page, renderFull }) => {
+	test('circled and roman forms', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openColumnMenu(page, 0);
 		await openDialog(page);
@@ -87,7 +87,7 @@ test.describe('auto-fill', () => {
 		expect((await fillOps(page))[1]?.values).toEqual(['I', 'II', 'III']);
 	});
 
-	test('dates step by the chosen unit', async ({ page, renderFull }) => {
+	test('dates step by the chosen unit', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openColumnMenu(page, 2);
 		await openDialog(page);
@@ -98,7 +98,7 @@ test.describe('auto-fill', () => {
 		expect((await fillOps(page))[0]?.values).toEqual(['2026-01-31', '2026-02-28', '2026-03-31']);
 	});
 
-	test('a row fills left to right', async ({ page, renderFull }) => {
+	test('a row fills left to right', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openRowMenu(page, 2);
 		await openDialog(page);
@@ -108,7 +108,7 @@ test.describe('auto-fill', () => {
 		expect(op.values).toEqual(['1', '2', '3']);
 	});
 
-	test('several selected columns each restart from the first value', async ({ page, renderFull }) => {
+	test('several selected columns each restart from the first value', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await dragSelect(page, 'col', 0, 1);
 		await openDialog(page);
@@ -119,7 +119,7 @@ test.describe('auto-fill', () => {
 		expect(ops.map(o => o.values)).toEqual([['1', '2', '3'], ['1', '2', '3']]);
 	});
 
-	test('selecting the header together with data rows fills only the data rows', async ({ page, renderFull }) => {
+	test('selecting the header together with data rows fills only the data rows', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await dragSelect(page, 'row', 0, 1);
 		await openDialog(page);
@@ -129,13 +129,13 @@ test.describe('auto-fill', () => {
 		expect(ops[0]?.cells.map(c => c.rowId)).toEqual(['r_0', 'r_0', 'r_0']);
 	});
 
-	test('the header row has no auto-fill', async ({ page, renderFull }) => {
+	test('the header row has no auto-fill', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openRowMenu(page, 0);
 		await expect(page.locator('.bt-cp-item', { hasText: 'Auto-fill…' })).toHaveCount(0);
 	});
 
-	test('a bad start date shows a message and writes nothing', async ({ page, renderFull }) => {
+	test('a bad start date shows a message and writes nothing', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openColumnMenu(page, 0);
 		await openDialog(page);
@@ -147,7 +147,7 @@ test.describe('auto-fill', () => {
 		await expect(page.locator('.modal .bt-fill-preview')).toHaveText('Enter the start date as YYYY-MM-DD');
 	});
 
-	test('the dialog previews the first values as they are typed', async ({ page, renderFull }) => {
+	test('the dialog previews the first values as they are typed', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openColumnMenu(page, 0);
 		await openDialog(page);
@@ -156,7 +156,7 @@ test.describe('auto-fill', () => {
 		await expect(page.locator('.modal .bt-fill-preview')).toHaveText('1, 6, 11');
 	});
 
-	test('the dialog remembers the last choices for the next fill', async ({ page, renderFull }) => {
+	test('the dialog remembers the last choices for the next fill', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await openColumnMenu(page, 0);
 		await openDialog(page);

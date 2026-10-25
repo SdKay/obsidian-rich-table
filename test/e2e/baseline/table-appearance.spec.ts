@@ -92,12 +92,12 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 	});
 
 	test.describe(`appearance — ${label}`, () => {
-		test('every gridline the layout expects is painted, unfrozen, at every scroll offset', async ({ page, renderReal }) => {
+		test('every gridline the layout expects is painted, unfrozen, at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			await renderReal(themed(source('')));
 			await expectLinesPainted(page, OFFSETS);
 		});
 
-		test('every gridline the layout expects is painted, frozen, at every scroll offset', async ({ page, renderReal }) => {
+		test('every gridline the layout expects is painted, frozen, at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			await renderReal(themed(FROZEN));
 			// Guard against a vacuous pass: if this theme draws cell borders at
 			// all, the probe must have found some to check. Asked of the DOM rather
@@ -114,7 +114,7 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 			await expectLinesPainted(page, OFFSETS);
 		});
 
-		test('turning freeze on does not change the table\'s outer frame', async ({ page, renderReal }) => {
+		test('turning freeze on does not change the table\'s outer frame', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			// Freeze suppresses the table's real top/left border and redraws it
 			// synthetically. That substitution has to be invisible — and a frame
 			// that's uniformly missing is invisible to every other check here.
@@ -151,7 +151,7 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 			}
 		});
 
-		test('cell content stays fully visible while scrolling', async ({ page, renderReal }) => {
+		test('cell content stays fully visible while scrolling', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			await renderReal(themed(FROZEN));
 			// Ink = dark pixels inside a cell. A frozen cell's content can't change
 			// as the table scrolls; if a neighbour's opaque background slides over
@@ -182,7 +182,7 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 			}
 		});
 
-		test('turning freeze on changes no layout geometry', async ({ page, renderReal }) => {
+		test('turning freeze on changes no layout geometry', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			// THE INVARIANT THAT KEEPS OBSIDIAN RESPONSIVE: applyFreeze runs inside a
 			// ResizeObserver on the <table>, and renderer.ts's own observer re-pins
 			// column widths from the same signal. If applyFreeze changed any measured
@@ -223,7 +223,7 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 			expect(on.cells).toEqual(off.cells);
 		});
 
-		test('a bounded view stays scrollable on both axes', async ({ page, renderReal }) => {
+		test('a bounded view stays scrollable on both axes', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			// The wrapper is the plugin's scroll container: base styles.css gives it
 			// overflow:auto on purpose, and a frozen row's position:sticky has
 			// nothing to stick against without it. A theme is not allowed to touch
@@ -254,12 +254,12 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 			}
 		});
 
-		test('nothing from the scrolling region shows through the frozen block', async ({ page, renderReal }) => {
+		test('nothing from the scrolling region shows through the frozen block', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			await renderReal(themed(FROZEN));
 			await expectNoLeakThroughFrozenBlock(page, OFFSETS);
 		});
 
-		test('the frozen block renders identically at every scroll offset', async ({ page, renderReal }) => {
+		test('the frozen block renders identically at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			await renderReal(themed(FROZEN));
 			const geo = await frozenBlockGeometry(page);
 			expect(geo.maxScrollLeft, 'fixture must scroll horizontally or this asserts nothing').toBeGreaterThan(0);

@@ -17,7 +17,7 @@ const SOURCE = tableSource({
 	rows: [{ 0: 'a1', 1: 'b1', 2: 'c1' }],
 });
 
-test('dragging column B never changes column C\'s width, and the table\'s total width tracks B alone', async ({ page, renderFull }) => {
+test('dragging column B never changes column C\'s width, and the table\'s total width tracks B alone', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	const wrapperBox = (await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!;

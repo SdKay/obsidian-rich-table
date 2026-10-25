@@ -17,7 +17,7 @@ rows:
 ---
 `;
 
-test('a column just created by split-cell-col renders at the auto-fit minimum, not a flat 120px', async ({ page, renderBlock }) => {
+test('a column just created by split-cell-col renders at the auto-fit minimum, not a flat 120px', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 	const block = await renderBlock(SPLIT_SOURCE);
 	await page.locator('[data-row="1"][data-col="0"]').dblclick();
 	await page.locator('.bt-cp-item', { hasText: 'Split into 2 columns' }).click();
@@ -38,7 +38,7 @@ rows:
 ---
 `;
 
-test('a plain inserted column (no split involved) also renders at the auto-fit minimum, not 120px', async ({ page, renderBlock }) => {
+test('a plain inserted column (no split involved) also renders at the auto-fit minimum, not 120px', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 	const block = await renderBlock(PLAIN_SOURCE);
 	await page.locator('table.bt-table').hover();
 	await page.locator('.bt-edge-add-col').click();

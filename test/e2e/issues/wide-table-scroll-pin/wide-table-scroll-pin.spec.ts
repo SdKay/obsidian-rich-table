@@ -22,7 +22,7 @@ test.describe('wide table — scroll position survives the left-padding reservat
 		viewWidth: 300,
 	});
 
-	test('scrollbar stays pinned to the right edge across the first hover', async ({ page, renderFull }) => {
+	test('scrollbar stays pinned to the right edge across the first hover', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		// Narrow viewport reproduces "table fills its container flush-left" —
 		// see the locked-wide-table-ctrl-col suite's own note on why the default
 		// (much wider) Playwright viewport hides this class of bug entirely.

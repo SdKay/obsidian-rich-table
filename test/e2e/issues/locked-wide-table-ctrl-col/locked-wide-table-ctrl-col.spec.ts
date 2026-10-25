@@ -30,7 +30,7 @@ test.describe('locked wide table — ctrl column stays reachable', () => {
 	const lockBtnBox = (page: import('@playwright/test').Page) =>
 		page.locator('.bt-ctrl-col .bt-ctrl-btn.is-locked').boundingBox();
 
-	test('unlock button is on-screen without ever hovering the table', async ({ page, renderFull }) => {
+	test('unlock button is on-screen without ever hovering the table', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		// The bug only shows up when the table's container has no natural
 		// left margin to spare — Playwright's default (much wider) viewport
 		// leaves so much room around a 300px-wide wrapper that even an
@@ -55,7 +55,7 @@ test.describe('locked wide table — ctrl column stays reachable', () => {
 		expect(ops).toEqual([{ type: 'toggle-lock' }]);
 	});
 
-	test('a narrow locked table is unaffected (sanity check the fixture itself)', async ({ page, renderFull }) => {
+	test('a narrow locked table is unaffected (sanity check the fixture itself)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		const NARROW_LOCKED = tableSource({
 			widths: [80, 80],
 			rows: [{ 0: 'a1' }],
@@ -66,7 +66,7 @@ test.describe('locked wide table — ctrl column stays reachable', () => {
 		expect(box!.x).toBeGreaterThanOrEqual(0);
 	});
 
-	test('unlock button sits close to the table, not reserving room for a nonexistent selector strip', async ({ page, renderFull }) => {
+	test('unlock button sits close to the table, not reserving room for a nonexistent selector strip', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		// A locked table has no row/col selectors at all (onStructuralOp gates
 		// them off), so the gap the ctrl column needs to clear is just its own
 		// icon width — not the full row-selector-strip-sized gap a table with

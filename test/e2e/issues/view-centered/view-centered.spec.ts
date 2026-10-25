@@ -14,7 +14,7 @@ const gaps = (page: Page) => page.evaluate(() => {
 });
 
 for (const cols of [2, 3, 4, 8]) {
-	test(`a blank ${cols}-column table is centered in its view`, async ({ page, renderFull }) => {
+	test(`a blank ${cols}-column table is centered in its view`, { tag: '@geometry' }, async ({ page, renderFull }) => {
 		const widths = Array(cols).fill(0);
 		const row = Object.fromEntries(widths.map((_, i) => [i, '']));
 		await renderFull(tableSource({ widths, rows: [row, row] }));
@@ -26,7 +26,7 @@ for (const cols of [2, 3, 4, 8]) {
 	});
 }
 
-test('a table already wider than the status bar keeps its symmetric gaps', async ({ page, renderFull }) => {
+test('a table already wider than the status bar keeps its symmetric gaps', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [90, 90, 90, 90, 90, 90], rows: [{ 0: 'x' }] }));
 	await page.waitForTimeout(600);
 	const g = await gaps(page);

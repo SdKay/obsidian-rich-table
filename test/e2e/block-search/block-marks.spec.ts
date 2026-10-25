@@ -121,7 +121,7 @@ test.describe('rich-table block in a note: marks follow the search panel', () =>
 		expect(await block.panelListeners()).toBe(1);
 	});
 
-	test('the placeholder shown while a block is rebuilt carries no marks of the old table', async ({ page, renderBlock }) => {
+	test('the placeholder shown while a block is rebuilt carries no marks of the old table', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const block = await renderBlock(TABLE, { searchHost: 'panel', initialQuery: { query: 'apple' } });
 		expect(await block.hits()).toEqual(['apple', 'Apple']);
 		// A write snapshots the live table for the placeholder; adding a row is the simplest write.
@@ -164,7 +164,7 @@ test.describe('rich-table block in a note: marks follow the search panel', () =>
 		expect(inner).toBe(0);
 	});
 
-	test('a mark in a table in a note has the colour the user chose, dimmed, and at full strength when it is the opened one', async ({ page, renderBlock }) => {
+	test('a mark in a table in a note has the colour the user chose, dimmed, and at full strength when it is the opened one', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const block = await renderBlock(TABLE, { searchHost: 'panel', initialQuery: { query: 'apple' } });
 		await block.openHit({ path: 'note.md', line: 2, index: 0, block: { fromLine: 2, anchor: { kind: 'cell', rowId: 'r_1', colId: 'c_a' } } });
 		await page.evaluate(() => {
@@ -331,7 +331,7 @@ test.describe('rich-table block in a note: the opened match is brighter (contrac
 		await expect.poll(() => block.brightMarks()).toEqual(['apple']);
 	});
 
-	test('the placeholder shown during a rebuild carries no bright mark either', async ({ page, renderBlock }) => {
+	test('the placeholder shown during a rebuild carries no bright mark either', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const block = await renderBlock(TABLE, { searchHost: 'panel', initialQuery: { query: 'apple' } });
 		await block.openHit(open(cellA));
 		expect(await block.brightMarks()).toEqual(['apple']);

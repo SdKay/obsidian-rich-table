@@ -24,7 +24,7 @@ const SOURCE = tableSource({
 	merges: [[0, 0, 1, 0]], // column A merged across storage rows 0-1 (display rows 1-2)
 });
 
-test('the selection panel\'s "Copy" button + Ctrl+V on a range copies values AND reconstructs merges at the destination', async ({ page, context, renderFull }) => {
+test('the selection panel\'s "Copy" button + Ctrl+V on a range copies values AND reconstructs merges at the destination', { tag: '@geometry' }, async ({ page, context, renderFull }) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	await renderFull(SOURCE);
 

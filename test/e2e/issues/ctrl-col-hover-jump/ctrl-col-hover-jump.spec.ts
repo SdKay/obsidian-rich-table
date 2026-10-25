@@ -7,7 +7,7 @@ test.describe('toolbar position on hover', () => {
 		'with title': tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], title: 'T' } as never),
 	};
 	for (const [name, src] of Object.entries(CASES)) {
-		test(`stays aligned to the body top on every frame while fading in (${name})`, async ({ page, renderFull }) => {
+		test(`stays aligned to the body top on every frame while fading in (${name})`, { tag: '@geometry' }, async ({ page, renderFull }) => {
 			await renderFull(src);
 			await page.evaluate(() => {
 				const w = window as unknown as { __tops: number[] };

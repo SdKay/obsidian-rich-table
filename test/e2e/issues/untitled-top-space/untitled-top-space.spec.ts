@@ -10,17 +10,17 @@ const top = async (page: import('@playwright/test').Page) => {
 	return Math.round(body.y - frame.y);
 };
 
-test('an editable untitled table has the gap plus the selector strip above the body', async ({ page, renderFull }) => {
+test('an editable untitled table has the gap plus the selector strip above the body', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }] }));
 	expect(await top(page)).toBe(8 + 22);
 });
 
-test('a locked untitled table has just the gap above the body', async ({ page, renderFull }) => {
+test('a locked untitled table has just the gap above the body', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], locked: true }));
 	expect(await top(page)).toBe(8);
 });
 
-test('a titled table keeps the same gap above its title', async ({ page, renderFull }) => {
+test('a titled table keeps the same gap above its title', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], title: 'T' } as never));
 	const frame = (await page.locator('.bt-outer-frame').boundingBox())!;
 	const title = (await page.locator('.bt-table-title').boundingBox())!;
@@ -32,7 +32,7 @@ for (const [name, extra, bodyTop, titleTop] of [
 	['untitled', {}, 8, null],
 	['titled', { title: 'T' }, 32, 8],
 ] as const)
-	test(`a read-only (reading view) ${name} table keeps the same top gap`, async ({ page, renderBlock }) => {
+	test(`a read-only (reading view) ${name} table keeps the same top gap`, { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		await renderBlock(tableSource({ widths: [60, 60], rows: [{ 0: 'a', 1: 'b' }], ...extra } as never), { settings: { allowReadingViewEdit: false } });
 		const r = await page.evaluate(async () => {
 			const w = window as unknown as Record<string, any>;
@@ -60,7 +60,7 @@ for (const [name, extra, bodyTop] of [
 	['locked untitled', { locked: true }, 8],
 	['editable titled', { title: 'T' }, 32],
 ] as const)
-	test(`a host stylesheet padding every div cannot remove the top gap (${name})`, async ({ page, renderFull }) => {
+	test(`a host stylesheet padding every div cannot remove the top gap (${name})`, { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], ...extra } as never));
 		await page.evaluate(() => document.getElementById('root')?.classList.add('markdown-rendered'));
 		await page.addStyleTag({ content: '.markdown-rendered div { padding-top: 0; }' });

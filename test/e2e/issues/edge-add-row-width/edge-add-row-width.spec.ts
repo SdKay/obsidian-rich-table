@@ -8,7 +8,7 @@ test.describe('row adder width', () => {
 		'scrolling wide table': tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250 }),
 	};
 	for (const [name, src] of Object.entries(SOURCES)) {
-		test(`stays within the body's left/right edges (${name})`, async ({ page, renderFull }) => {
+		test(`stays within the body's left/right edges (${name})`, { tag: '@geometry' }, async ({ page, renderFull }) => {
 			await renderFull(src);
 			const root = (await page.locator('.bt-render-root').boundingBox())!;
 			await page.mouse.move(root.x + root.width / 2, root.y + 30);

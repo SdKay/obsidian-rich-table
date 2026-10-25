@@ -19,7 +19,7 @@ const linkWeights = (page: import('@playwright/test').Page) => page.evaluate(() 
 	return [...document.querySelectorAll('tbody td')].map(td => getComputedStyle(td.querySelector('a')!).fontWeight);
 });
 
-test('a link inside a bold cell is bold even when a host rule sets the link weight', async ({ page, renderFull }) => {
+test('a link inside a bold cell is bold even when a host rule sets the link weight', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SRC);
 	await page.evaluate(() => document.getElementById('root')?.classList.add('markdown-rendered'));
 	await page.addStyleTag({ content: '.markdown-rendered a.external-link { font-weight: 400; }' });

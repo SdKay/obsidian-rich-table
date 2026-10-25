@@ -6,7 +6,7 @@ import { tableSource, scrollableTable } from '../../common/fixtures';
 // (.bt-ctrl-col): same width (SEL_UNIT), same visibility rule (hover when
 // unlocked, permanent when locked), sitting right of the column adder.
 
-test('the native vertical scrollbar is hidden — .bt-view-scroll draws its own', async ({ page, renderFull }) => {
+test('the native vertical scrollbar is hidden — .bt-view-scroll draws its own', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(scrollableTable());
 	const wrapper = page.locator('.bt-table-wrapper:not(#wrapper)');
 	// A hidden native scrollbar still leaves clientWidth === offsetWidth minus
@@ -17,7 +17,7 @@ test('the native vertical scrollbar is hidden — .bt-view-scroll draws its own'
 	void wrapper;
 });
 
-test('unlocked table: the vertical scrollbar is hidden at rest and shown on hover, exactly like the toolbar', async ({ page, renderFull }) => {
+test('unlocked table: the vertical scrollbar is hidden at rest and shown on hover, exactly like the toolbar', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(scrollableTable());
 	const viewScroll = page.locator('.bt-view-scroll');
 	const ctrlCol = page.locator('.bt-ctrl-col');
@@ -39,7 +39,7 @@ test('locked table: the vertical scrollbar is permanently visible, matching the 
 	expect(await viewScroll.evaluate(el => getComputedStyle(el).opacity)).toBe('1');
 });
 
-test('the scrollbar and toolbar share the same width (SEL_UNIT)', async ({ page, renderFull }) => {
+test('the scrollbar and toolbar share the same width (SEL_UNIT)', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(scrollableTable({ locked: true }));
 	const viewScrollWidth = await page.locator('.bt-view-scroll').evaluate(el => (el as HTMLElement).getBoundingClientRect().width);
 	const ctrlBtnWidth = await page.locator('.bt-ctrl-btn').first().evaluate(el => (el as HTMLElement).getBoundingClientRect().width);
@@ -56,7 +56,7 @@ test('a table with no vertical overflow shows an empty (full-track) thumb, not a
 	await expect(page.locator('.bt-view-scroll')).toHaveClass(/bt-view-scroll-empty/);
 });
 
-test('a table with real vertical overflow shows a proportional thumb and drags to scroll', async ({ page, renderFull }) => {
+test('a table with real vertical overflow shows a proportional thumb and drags to scroll', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(scrollableTable({ locked: true }));
 	const viewScroll = page.locator('.bt-view-scroll');
 	await expect(viewScroll).not.toHaveClass(/bt-view-scroll-empty/);

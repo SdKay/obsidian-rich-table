@@ -26,7 +26,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Deliberately NOT part of `npm run build` or `npm run test` (vitest) — run
 // manually via `npm run test:e2e` before a release, or from the nightly-test
 // GitHub Actions workflow.
-// Everything runs at more than one devicePixelRatio. Obsidian is used on HiDPI
+// Tests tagged @geometry also run at a fractional devicePixelRatio. Obsidian is used on HiDPI
 // laptops and on Windows with display scaling, where a hairline border lands on
 // a fractional device pixel and can round away entirely — a whole class of
 // "the line is missing" reports that simply cannot occur at dpr 1. It also keeps
@@ -46,6 +46,8 @@ export default defineConfig({
 		// 1.5 rather than 2: an integer ratio maps every CSS pixel onto a whole
 		// number of device pixels, so it misses exactly the fractional-rounding
 		// cases this dimension exists to cover.
-		{ name: 'dpr1.5', use: { deviceScaleFactor: 1.5 } },
+		// Only tests that read sizes, positions or pixels: a test about ops, text or
+		// DOM structure reaches the same verdict at any scale factor.
+		{ name: 'dpr1.5', use: { deviceScaleFactor: 1.5 }, grep: /@geometry/ },
 	],
 });

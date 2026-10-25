@@ -73,7 +73,7 @@ test.describe('finding the block for a fence line', () => {
 });
 
 test.describe('revealing a hit in a block', () => {
-	test('a cell is found by its ids, not by the place the sort gave its row', async ({ page, renderBlock }) => {
+	test('a cell is found by its ids, not by the place the sort gave its row', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		await page.setViewportSize({ width: 700, height: 300 });
 		// Sorted high to low, the stored first row r_0 is the last one on screen, far below the visible part.
 		const block = await renderBlock(bigTable(80, 3, 'sort: { colId: c_0, dir: desc }\nviewHeight: 160\n'));
@@ -113,7 +113,7 @@ test.describe('revealing a hit in a block', () => {
 		expect(await block.revealHit(cell({ rowId: 'r_1', colId: 'c_a' }), q)).toBe(false);
 	});
 
-	test('a hit far down and right scrolls into view clear of the frozen rows and columns, from either side', async ({ page, renderBlock }) => {
+	test('a hit far down and right scrolls into view clear of the frozen rows and columns, from either side', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		await page.setViewportSize({ width: 700, height: 420 });
 		const block = await renderBlock(bigTable(80, 30, 'freezeRows: 1\nfreezeCols: 2\nviewHeight: 240\nviewWidth: 520\n'));
 		expect(await block.revealHit(cell({ rowId: 'r_70', colId: 'c_25' }), q)).toBe(true);
@@ -431,7 +431,7 @@ test.describe('a block that the page has replaced but not yet dropped', () => {
 		await expect(page.locator('.fresh .bt-sheet-tab-active')).toHaveText('Second', { useInnerText: false });
 	});
 
-	test('a block that is laid out a moment later is waited for, rather than settling for one without a size', async ({ page, renderBlock }) => {
+	test('a block that is laid out a moment later is waited for, rather than settling for one without a size', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		await renderBlock(BOOK);
 		const out = await page.evaluate(async () => {
 			const R = (window as any).RichTableReal;

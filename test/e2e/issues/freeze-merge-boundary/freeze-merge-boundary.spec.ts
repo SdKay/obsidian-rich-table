@@ -47,7 +47,7 @@ test.describe('freeze-merge-boundary', () => {
 		expect(layers.length, `expected both seams' shadows, got: ${info.shadow}`).toBeGreaterThanOrEqual(2);
 	});
 
-	test('the boundary edge keeps the theme\'s own border rather than a synthetic line', async ({ page, renderReal }) => {
+	test('the boundary edge keeps the theme\'s own border rather than a synthetic line', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		const info = await page.locator('#table td[data-row="1"][data-col="0"]').evaluate(el => {
 			const cs = getComputedStyle(el);

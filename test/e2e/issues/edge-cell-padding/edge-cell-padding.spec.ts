@@ -21,7 +21,7 @@ const SOURCE = tableSource({
 	merges: [[0, 1, 1, 1]],
 });
 
-test('a row\'s first and last cell keep their own full padding despite Obsidian\'s edge-cell trim', async ({ page, renderFull }) => {
+test('a row\'s first and last cell keep their own full padding despite Obsidian\'s edge-cell trim', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 
 	const cells = await page.evaluate(() => {

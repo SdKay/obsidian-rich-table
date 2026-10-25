@@ -12,7 +12,7 @@ import { scrollableTable } from '../../common/fixtures';
 test.describe('freeze-multi-band', () => {
 	const SOURCE = scrollableTable({ freezeRows: 2, freezeCols: 2, theme: 'grid' });
 
-	test('interior cells of a multi-row/multi-column block keep every real border', async ({ page, renderReal }) => {
+	test('interior cells of a multi-row/multi-column block keep every real border', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		// Row 1 / column 1: inside the block on both axes, touching none of its
 		// outer edges, so nothing about it should be suppressed at all.
@@ -27,7 +27,7 @@ test.describe('freeze-multi-band', () => {
 		expect(sides.bottom).toBe('rgb(17, 17, 17)');
 	});
 
-	test('the block\'s true corner cell suppresses only its two outer-frame sides', async ({ page, renderReal }) => {
+	test('the block\'s true corner cell suppresses only its two outer-frame sides', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		const sides = await page.locator('#table th[data-col="0"]').evaluate(el => {
 			const cs = getComputedStyle(el);
@@ -41,7 +41,7 @@ test.describe('freeze-multi-band', () => {
 		expect(sides.bottom).not.toBe('rgba(0, 0, 0, 0)');
 	});
 
-	test('the seam against the scrolling region keeps the theme\'s own line, plus elevation', async ({ page, renderReal }) => {
+	test('the seam against the scrolling region keeps the theme\'s own line, plus elevation', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
 		// The last frozen row/column used to have its border replaced by a generic
 		// synthetic line, which under grid swapped a near-black rule for a pale

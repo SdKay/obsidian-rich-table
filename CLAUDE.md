@@ -83,7 +83,8 @@ A block is user content in people's notes; breaking it is data loss.
 
 ## Testing
 
-- `test/*.test.ts` (vitest) for pure logic; `test/e2e` (Playwright, both dprs) for behaviour. Run e2e serially (`--workers=1`) and in batches; the full suite can exhaust memory otherwise.
+- `test/*.test.ts` (vitest) for pure logic; `test/e2e` (Playwright) for behaviour. Run e2e serially (`--workers=1`) and in batches; the full suite can exhaust memory otherwise.
+- Every e2e test runs at dpr 1; one tagged `{ tag: '@geometry' }` also runs at dpr 1.5. Tag any test that asserts a size, position, scroll offset, inline width or pixels, whether it reads it directly or through a helper; an untagged one loses the fractional-scaling check without a warning.
 - Three fixtures, smallest that works: `renderReal` (real merge/style resolution), `renderFull` (real `renderTable`, ops land in `window.__btOps`), `renderBlock` (real `tableBlock`, writes a note; call `reprocess()` to simulate Obsidian's rebuild).
 - `common/obsidian-shim.ts` stands in for Obsidian; keep it faithful where layout, event timing or `Component` lifecycle matter. `common/obsidian-vars.css` carries Obsidian's competing table declarations so a rule that cannot win the cascade fails here, not in a vault.
 - Frozen-block rendering is verified with pixel oracles (`common/pixel-invariance.ts`, `common/appearance-probe.ts`), not computed styles: the defect is where pixels are painted, and computed styles read back correct.

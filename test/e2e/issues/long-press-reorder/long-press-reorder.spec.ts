@@ -29,7 +29,7 @@ async function selectCols(page: Page, from: number, to: number) {
 }
 
 test.describe('long-press reorder', () => {
-	test('long-pressing a selected column block and dragging it right dispatches one move-cols', async ({ page, renderFull }) => {
+	test('long-pressing a selected column block and dragging it right dispatches one move-cols', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 		await selectCols(page, 0, 1);
@@ -49,7 +49,7 @@ test.describe('long-press reorder', () => {
 		expect(await ops(page)).toEqual([{ type: 'move-cols', colIds: ['c_0', 'c_1'], beforeColId: null }]);
 	});
 
-	test('the other columns slide aside while the block is dragged', async ({ page, renderFull }) => {
+	test('the other columns slide aside while the block is dragged', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 		await selectCols(page, 0, 0);
@@ -68,7 +68,7 @@ test.describe('long-press reorder', () => {
 		await page.mouse.up();
 	});
 
-	test('dragging rows down dispatches move-rows with the selected rows in order', async ({ page, renderFull }) => {
+	test('dragging rows down dispatches move-rows with the selected rows in order', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 		const r1 = await center(page, '.bt-row-selector [data-idx="1"]');
@@ -89,7 +89,7 @@ test.describe('long-press reorder', () => {
 		expect(await ops(page)).toEqual([{ type: 'move-rows', rowIds: ['r_0', 'r_1'], beforeRowId: null }]);
 	});
 
-	test('a short press on a selected strip behaves like before: no reorder, panel reopens', async ({ page, renderFull }) => {
+	test('a short press on a selected strip behaves like before: no reorder, panel reopens', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 		await selectCols(page, 0, 1);
@@ -101,7 +101,7 @@ test.describe('long-press reorder', () => {
 		expect(await ops(page)).toEqual([]);
 	});
 
-	test('pressing on a selected strip then moving before the delay turns into a normal range select', async ({ page, renderFull }) => {
+	test('pressing on a selected strip then moving before the delay turns into a normal range select', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		await hoverTable(page);
 		await selectCols(page, 0, 0);
@@ -140,7 +140,7 @@ test.describe('long-press reorder', () => {
 		await page.mouse.up();
 	}
 
-	test('frozen columns do not stop rows from being reordered', async ({ page, renderFull }) => {
+	test('frozen columns do not stop rows from being reordered', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(GRID({ freezeCols: 1 }));
 		await hoverTable(page);
 		await selectRows(page, 1, 1);
@@ -148,7 +148,7 @@ test.describe('long-press reorder', () => {
 		expect(await ops(page)).toEqual([{ type: 'move-rows', rowIds: ['r_0'], beforeRowId: null }]);
 	});
 
-	test('frozen rows do not stop columns from being reordered', async ({ page, renderFull }) => {
+	test('frozen rows do not stop columns from being reordered', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(GRID({ freezeRows: 1 }));
 		await hoverTable(page);
 		await selectCols(page, 1, 1);
@@ -156,7 +156,7 @@ test.describe('long-press reorder', () => {
 		expect(await ops(page)).toEqual([{ type: 'move-cols', colIds: ['c_1'], beforeColId: null }]);
 	});
 
-	test('columns right of the frozen ones can be reordered among themselves', async ({ page, renderFull }) => {
+	test('columns right of the frozen ones can be reordered among themselves', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(GRID({ freezeCols: 1 }));
 		await hoverTable(page);
 		await selectCols(page, 2, 2);
@@ -164,7 +164,7 @@ test.describe('long-press reorder', () => {
 		expect(await ops(page)).toEqual([{ type: 'move-cols', colIds: ['c_2'], beforeColId: null }]);
 	});
 
-	test('a block cannot be dragged into the frozen columns', async ({ page, renderFull }) => {
+	test('a block cannot be dragged into the frozen columns', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(GRID({ freezeCols: 1 }));
 		await hoverTable(page);
 		await selectCols(page, 2, 2);
@@ -172,7 +172,7 @@ test.describe('long-press reorder', () => {
 		expect(await ops(page)).toEqual([{ type: 'move-cols', colIds: ['c_2'], beforeColId: 'c_1' }]);
 	});
 
-	test('a frozen column itself does not lift, and says why', async ({ page, renderBlock }) => {
+	test('a frozen column itself does not lift, and says why', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const block = await renderBlock(GRID({ freezeCols: 1 }));
 		await hoverTable(page);
 		await selectCols(page, 0, 0);
@@ -185,7 +185,7 @@ test.describe('long-press reorder', () => {
 		await page.mouse.up();
 	});
 
-	test('a block covering a merged row span moves as a whole, and the merge rides along', async ({ page, renderFull }) => {
+	test('a block covering a merged row span moves as a whole, and the merge rides along', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(GRID({ merges: [[1, 0, 2, 0]] }));
 		await hoverTable(page);
 		await selectRows(page, 2, 3);
@@ -193,7 +193,7 @@ test.describe('long-press reorder', () => {
 		expect(await ops(page)).toEqual([{ type: 'move-rows', rowIds: ['r_1', 'r_2'], beforeRowId: null }]);
 	});
 
-	test('a merged row span is never split by the drop position', async ({ page, renderFull }) => {
+	test('a merged row span is never split by the drop position', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(GRID({ merges: [[2, 0, 3, 0]] }));
 		await hoverTable(page);
 		await selectRows(page, 1, 1);
@@ -203,7 +203,7 @@ test.describe('long-press reorder', () => {
 		expect(['r_2', null]).toContain(op!.beforeRowId);
 	});
 
-	test('a merge in the other direction does not restrict this axis', async ({ page, renderFull }) => {
+	test('a merge in the other direction does not restrict this axis', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(GRID({ merges: [[0, 0, 0, 1]] }));
 		await hoverTable(page);
 		await selectRows(page, 2, 2);
@@ -215,7 +215,7 @@ test.describe('long-press reorder', () => {
 		['a selection that cuts a merged row span', 'row', GRID({ merges: [[0, 0, 1, 0]] }), /merged/i],
 		['a selection that cuts a merged column span', 'col', GRID({ merges: [[0, 0, 0, 1]] }), /merged/i],
 	] as const)
-		test(`${name} does not lift and says why`, async ({ page, renderBlock }) => {
+		test(`${name} does not lift and says why`, { tag: '@geometry' }, async ({ page, renderBlock }) => {
 			const block = await renderBlock(blockedSource);
 			await hoverTable(page);
 			const sel = axis === 'row' ? '.bt-row-selector [data-idx="2"]' : '.bt-col-selector [data-idx="1"]';
@@ -232,7 +232,7 @@ test.describe('long-press reorder', () => {
 			await page.mouse.up();
 		});
 
-	test('the note is rewritten in the new order and the rebuilt table keeps it', async ({ page, renderBlock }) => {
+	test('the note is rewritten in the new order and the rebuilt table keeps it', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const block = await renderBlock(`---
 version: 2
 columns:

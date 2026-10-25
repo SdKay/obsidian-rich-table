@@ -25,7 +25,7 @@ async function hoverTable(page: import('@playwright/test').Page): Promise<void> 
 		.toBe(true);
 }
 
-test('column-selector labels stay aligned with their real columns when the table is centered in a wider view', async ({ page, renderFull }) => {
+test('column-selector labels stay aligned with their real columns when the table is centered in a wider view', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await hoverTable(page);
 
@@ -39,7 +39,7 @@ test('column-selector labels stay aligned with their real columns when the table
 	}
 });
 
-test('column resize-handle seams stay on the real column boundary when the table is centered in a wider view', async ({ page, renderFull }) => {
+test('column resize-handle seams stay on the real column boundary when the table is centered in a wider view', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SOURCE);
 	await hoverTable(page);
 
@@ -72,7 +72,7 @@ const FROZEN_SOURCE = tableSource({
 	viewHeight: 197,
 });
 
-test('frozen column-selector labels stay aligned with their real (sticky) cells when the table is centered in a wider view', async ({ page, renderFull }) => {
+test('frozen column-selector labels stay aligned with their real (sticky) cells when the table is centered in a wider view', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(FROZEN_SOURCE);
 	await hoverTable(page);
 
@@ -83,7 +83,7 @@ test('frozen column-selector labels stay aligned with their real (sticky) cells 
 	}
 });
 
-test('frozen row-selector labels stay aligned with their real (sticky) cells when the table is centered in a wider view', async ({ page, renderFull }) => {
+test('frozen row-selector labels stay aligned with their real (sticky) cells when the table is centered in a wider view', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(FROZEN_SOURCE);
 	await hoverTable(page);
 
@@ -113,7 +113,7 @@ const NARROW_SOURCE = tableSource({
 	viewHeight: 150,
 });
 
-test('narrowing the view via drag past the scroll threshold keeps the frozen column glued to the real cell', async ({ page, renderFull }) => {
+test('narrowing the view via drag past the scroll threshold keeps the frozen column glued to the real cell', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(NARROW_SOURCE);
 	await hoverTable(page);
 
@@ -148,7 +148,7 @@ test('narrowing the view via drag past the scroll threshold keeps the frozen col
 // the frozen column stuttering back a pixel every other frame during a slow
 // drag. Fixed by calling applyFreeze synchronously in onMove itself, same
 // pattern already used there for updateOuterFrame.
-test('a slow narrowing drag never moves the frozen column backwards frame-to-frame', async ({ page, renderFull }) => {
+test('a slow narrowing drag never moves the frozen column backwards frame-to-frame', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(NARROW_SOURCE);
 	await hoverTable(page);
 

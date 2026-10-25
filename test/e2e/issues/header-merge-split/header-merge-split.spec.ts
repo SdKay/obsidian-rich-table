@@ -42,7 +42,7 @@ test.describe('header row split/merge with data rows', () => {
 		expect(ops).toContainEqual({ type: 'split-cell-col', rowId: 'header', colId: 'c_0' });
 	});
 
-	test('dragging straight down from a header cell into a data cell (same column) opens the merge panel, not a cleared selection', async ({ page, renderFull }) => {
+	test('dragging straight down from a header cell into a data cell (same column) opens the merge panel, not a cleared selection', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		const from = (await page.locator('th[data-row="0"][data-col="0"]').boundingBox())!;
 		const to   = (await page.locator('[data-row="1"][data-col="0"]').boundingBox())!;
@@ -58,7 +58,7 @@ test.describe('header row split/merge with data rows', () => {
 		expect(ops).toContainEqual({ type: 'merge-cells', anchorRowId: 'header', anchorColId: 'c_0', endRowId: 'r_0', endColId: 'c_0' });
 	});
 
-	test('dragging up from a data cell into the header (same column) also opens the merge panel', async ({ page, renderFull }) => {
+	test('dragging up from a data cell into the header (same column) also opens the merge panel', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
 		const from = (await page.locator('[data-row="1"][data-col="0"]').boundingBox())!;
 		const to   = (await page.locator('th[data-row="0"][data-col="0"]').boundingBox())!;
@@ -121,7 +121,7 @@ merges:
   - { anchor: header.c_1, end: r_new.c_1 }
 ---`;
 
-	test('a row absorbed into <thead> by a header split matches the header background with no explicit style', async ({ page, renderFull }) => {
+	test('a row absorbed into <thead> by a header split matches the header background with no explicit style', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(SPLIT_NO_EXPLICIT_STYLE_SOURCE);
 		const info = await page.evaluate(() => {
 			const a1 = document.querySelector('[data-row="0"][data-col="0"]')!;

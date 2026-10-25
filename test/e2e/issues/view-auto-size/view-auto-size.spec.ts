@@ -9,7 +9,7 @@ async function openSettings(page: import('@playwright/test').Page) {
 const clickItem = (page: import('@playwright/test').Page, title: string) =>
 	page.evaluate((t) => window.RichTableReal.ShimMenu.opened.at(-1)!.clickItem(t), title);
 
-test('unchecking Auto width pins the current rendered width', async ({ page, renderFull }) => {
+test('unchecking Auto width pins the current rendered width', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'a', 1: 'b' }] }));
 	const w = Math.round((await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!.width);
 	await openSettings(page);
@@ -18,7 +18,7 @@ test('unchecking Auto width pins the current rendered width', async ({ page, ren
 	expect(ops).toContainEqual({ type: 'set-view-width', width: w });
 });
 
-test('unchecking Auto height pins the current rendered height', async ({ page, renderFull }) => {
+test('unchecking Auto height pins the current rendered height', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(tableSource({ widths: [100], rows: [{ 0: 'a' }, { 0: 'b' }] }));
 	const h = Math.round((await page.locator('.bt-table-wrapper:not(#wrapper)').boundingBox())!.height);
 	await openSettings(page);
