@@ -18,6 +18,7 @@ export const fr: Dict = {
 	alignCenter:     'Centrer',
 	alignRight:      'Aligner à droite',
 	alignClear:      'Effacer l\'alignement',
+	clearCells:      'Vider les cellules',
 	copyToExcel:     'Copier pour Excel/rich-table',
 	copyToMarkdown:  'Copier en Markdown',
 	copyFailed:      'Échec de la copie — accès au presse-papiers refusé',

@@ -18,6 +18,7 @@ export const en = {
 	alignCenter:     'Align center',
 	alignRight:      'Align right',
 	alignClear:      'Clear alignment',
+	clearCells:      'Clear cell contents',
 	copyToExcel:     'Copy as Excel/rich-table',
 	copyToMarkdown:  'Copy as Markdown',
 	copyFailed:      'Copy failed — clipboard access was denied',

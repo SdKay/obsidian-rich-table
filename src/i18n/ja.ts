@@ -18,6 +18,7 @@ export const ja: Dict = {
 	alignCenter:     '中央揃え',
 	alignRight:      '右揃え',
 	alignClear:      '配置をクリア',
+	clearCells:      'セルの内容を消去',
 	copyToExcel:     'Excel/rich-table 用にコピー',
 	copyToMarkdown:  'Markdown としてコピー',
 	copyFailed:      'コピーに失敗しました — クリップボードへのアクセスが拒否されました',

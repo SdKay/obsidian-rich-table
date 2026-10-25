@@ -8580,9 +8580,8 @@ function splitMergedCellIntoRows(model, covering) {
   if (r1 === void 0 || r2 === void 0 || c1 < 0 || c2 < 0) return;
   if (Math.abs(r2 - r1) + 1 > 1) return;
   if (Math.abs(c2 - c1) + 1 <= 1) return;
-  if (anchorRowId === "header") return;
-  const rowIdx = model.rows.findIndex((r) => r.id === anchorRowId);
-  if (rowIdx < 0) return;
+  const rowIdx = anchorRowId === "header" ? -1 : model.rows.findIndex((r) => r.id === anchorRowId);
+  if (anchorRowId !== "header" && rowIdx < 0) return;
   const existingRowIds = new Set(model.rows.map((r) => r.id));
   const newRow = { id: genId("r", existingRowIds), cells: {} };
   model.rows.splice(rowIdx + 1, 0, newRow);

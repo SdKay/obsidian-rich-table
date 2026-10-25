@@ -1968,6 +1968,9 @@
 	width: var(--bt-suggest-width, 260px);
 }
 
+/* A header name is plain text, not rendered Markdown, so its line breaks need white-space to show. */
+.bt-table .bt-th .bt-th-text { white-space: pre-line; }
+
 /* Column-type indicator — an inline icon inside .bt-th-text, right before the
  * header's own name (renderCell.ts), not a corner overlay like filter/sort.
  * A corner-pinned badge was tried first and tracked the CELL's corner rather

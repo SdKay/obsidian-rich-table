@@ -18,6 +18,7 @@ export const zh: Dict = {
 	alignCenter:     '居中',
 	alignRight:      '右对齐',
 	alignClear:      '取消对齐',
+	clearCells:      '清空单元格内容',
 	copyToExcel:     '复制为Excel/rich-table',
 	copyToMarkdown:  '复制为 Markdown',
 	copyFailed:      '复制失败——剪贴板访问被拒绝',

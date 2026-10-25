@@ -18,6 +18,7 @@ export const de: Dict = {
 	alignCenter:     'Zentriert',
 	alignRight:      'Rechtsbündig',
 	alignClear:      'Ausrichtung zurücksetzen',
+	clearCells:      'Zellinhalte löschen',
 	copyToExcel:     'Als Excel/rich-table kopieren',
 	copyToMarkdown:  'Als Markdown kopieren',
 	copyFailed:      'Kopieren fehlgeschlagen – Zugriff auf die Zwischenablage verweigert',

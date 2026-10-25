@@ -145,12 +145,15 @@ describe('split-cell-row on the header (header can now merge downward into data 
 		expect(model.rows.map(r => r.id)).toEqual([newRowId, 'r_0', 'r_1', 'r_2']);
 	});
 
-	it('no-ops when the header cell targeted is already part of a merge', () => {
+	it('splits a header cell that is already part of a horizontal merge, like any merged cell', () => {
 		const model = baseModel();
 		model.merges.push({ anchor: 'header.c_1', end: 'header.c_2' });
-		const before = JSON.parse(JSON.stringify(model));
 		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'header', colId: 'c_1' });
-		expect(model).toEqual(before);
+
+		const newRowId = model.rows[0]!.id;
+		expect(model.merges).toContainEqual({ anchor: 'header.c_1', end: 'header.c_2' });
+		expect(model.merges).toContainEqual({ anchor: `${newRowId}.c_1`, end: `${newRowId}.c_2` });
+		expect(model.merges).toContainEqual({ anchor: 'header.c_0', end: `${newRowId}.c_0` });
 	});
 });
 

@@ -124,15 +124,17 @@ describe('split-cell-row on a horizontal-only merge (column-axis mirror)', () =>
 		expect(model.merges).toEqual([{ anchor: 'r_0.c_0', end: 'r_1.c_1' }]);
 	});
 
-	it('is a no-op on a header-anchored horizontal merge (no second header row to split into)', () => {
+	it('splits a header-anchored horizontal merge into two rows, the new one inserted first', () => {
 		const model = baseModel();
-		model.merges.push({ anchor: 'header.c_0', end: 'header.c_2' });
-		// 'header' is a valid rowId here — resolveMergeRowIndex treats it as a
-		// sentinel row (index -1), same as every other header-merge lookup in
-		// this codebase (see getMergeOrigin/findMergeCoveringCell).
+		model.merges.push({ anchor: 'header.c_0', end: 'header.c_1' });
 		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'header', colId: 'c_0' });
 
-		expect(model.rows).toHaveLength(3); // no row inserted
-		expect(model.merges).toEqual([{ anchor: 'header.c_0', end: 'header.c_2' }]); // untouched
+		expect(model.rows).toHaveLength(4);
+		const newRowId = model.rows[0]!.id; // between the header and the old first data row
+		expect(model.rows[1]!.id).toBe('r_0');
+		expect(model.merges).toContainEqual({ anchor: 'header.c_0', end: 'header.c_1' });
+		expect(model.merges).toContainEqual({ anchor: `${newRowId}.c_0`, end: `${newRowId}.c_1` });
+		// The column outside the merge spans the header and the new row.
+		expect(model.merges).toContainEqual({ anchor: 'header.c_2', end: `${newRowId}.c_2` });
 	});
 });

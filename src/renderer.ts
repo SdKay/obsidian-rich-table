@@ -851,6 +851,24 @@ export async function renderTable(
 
 	const removeSelectionPanel = () => { selectionPanel?.remove(); selectionPanel = null; };
 
+	/** Empties every selected cell. Data cells go in one op (which also drops their formulas); header cells are column names. */
+	const clearCellsOp = (r1: number, r2: number, c1: number, c2: number, op: StructuralOpHandler, setCell: CellChangeHandler): CellOpEntry => ({
+		icon: 'eraser', label: t('clearCells'),
+		action: () => {
+			const cells: { rowId: string; colId: string }[] = [];
+			for (let r = Math.max(r1, 1); r <= r2; r++) {
+				const rid = rowId(model, r);
+				if (!rid || isRowFiltered(r, model)) continue;
+				for (let c = c1; c <= c2; c++) {
+					const cid = colId(model, c);
+					if (cid) cells.push({ rowId: rid, colId: cid });
+				}
+			}
+			if (cells.length > 0) void op({ type: 'fill-cells', cells, values: cells.map(() => '') });
+			if (r1 === 0) for (let c = c1; c <= c2; c++) setCell(0, c, '');
+		},
+	});
+
 	const showSelectionPanel = () => {
 		if (!sel.start || !sel.end || (!onStructuralOp && !onMergeOp)) return;
 		removeSelectionPanel();
@@ -911,6 +929,7 @@ export async function renderTable(
 					buildAlignCellOp(existingStyle.align, (align) => void onStructuralOp({ type: 'set-align', target: rangeTarget, align })),
 				] as CellOpEntry[] : []),
 				{ divider: true },
+				...(onStructuralOp && onCellChange ? [clearCellsOp(r1, r2, c1, c2, onStructuralOp, onCellChange)] : []),
 				{ icon: 'copy', label: t('copyToExcel'),
 					action: () => copyRangeToClipboard(model, r1, r2, c1, c2) },
 				{ icon: 'file-text', label: t('copyToMarkdown'),

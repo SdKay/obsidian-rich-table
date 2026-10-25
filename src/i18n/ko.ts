@@ -18,6 +18,7 @@ export const ko: Dict = {
 	alignCenter:     '가운데 정렬',
 	alignRight:      '오른쪽 정렬',
 	alignClear:      '정렬 해제',
+	clearCells:      '셀 내용 지우기',
 	copyToExcel:     'Excel/rich-table용으로 복사',
 	copyToMarkdown:  'Markdown으로 복사',
 	copyFailed:      '복사 실패 — 클립보드 접근이 거부되었습니다',

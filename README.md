@@ -226,7 +226,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![状态栏](docs/demo-nesting.gif)
 
-**20 · Select all** — grid icon in the left control column selects every cell (header included) and opens the same range menu a corner-to-corner drag-select would
+**20 · Select all** — grid icon in the left control column selects every cell (header included) and opens the same range menu a corner-to-corner drag-select would. That menu can also **clear the contents** of every selected cell in one step
 
 > 🎬 *Demo GIF coming soon*
 
@@ -260,6 +260,7 @@ A cell is in one of three states, and every shortcut below follows from which on
 | `←` `→` | Move the caret. Once it's at the first/last character, commit and select the cell beside it |
 | `↑` `↓` | Jump to the start / end of the cell's content. Once there, commit and select the cell above / below |
 | `Shift`+`Enter` | Line break inside the cell |
+| `Ctrl`+`A` | Select all the text in the cell being edited |
 
 **Selected** — the cell is outlined but no editor is open. Reached with `Esc` or `Enter` above.
 

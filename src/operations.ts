@@ -1254,10 +1254,10 @@ function splitMergedCellIntoRows(model: TableModelV2, covering: MergeRangeV2): v
 	if (r1 === undefined || r2 === undefined || c1 < 0 || c2 < 0) return;
 	if (Math.abs(r2 - r1) + 1 > 1) return; // multi-row (± multi-col) — not eligible, see doc comment
 	if (Math.abs(c2 - c1) + 1 <= 1) return; // not actually a horizontal merge
-	if (anchorRowId === 'header') return; // no second header row to split into
 
-	const rowIdx = model.rows.findIndex(r => r.id === anchorRowId);
-	if (rowIdx < 0) return;
+	// The header has no entry in model.rows: the new row goes right below it.
+	const rowIdx = anchorRowId === 'header' ? -1 : model.rows.findIndex(r => r.id === anchorRowId);
+	if (anchorRowId !== 'header' && rowIdx < 0) return;
 	const existingRowIds = new Set(model.rows.map(r => r.id));
 	const newRow: RowDefV2 = { id: genId('r', existingRowIds), cells: {} };
 	model.rows.splice(rowIdx + 1, 0, newRow);
