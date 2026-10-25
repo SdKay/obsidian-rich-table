@@ -12,54 +12,53 @@ import { scrollableTable } from '../../common/fixtures';
 test.describe('freeze-multi-band', () => {
 	const SOURCE = scrollableTable({ freezeRows: 2, freezeCols: 2, theme: 'grid' });
 
-	test('interior cells of a multi-row/multi-column block keep every real border', { tag: '@geometry' }, async ({ page, renderReal }) => {
+	test('every border of a multi-row, multi-column frozen block is drawn where it belongs', { tag: '@geometry' }, async ({ page, renderReal }) => {
 		await renderReal(SOURCE);
-		// Row 1 / column 1: inside the block on both axes, touching none of its
-		// outer edges, so nothing about it should be suppressed at all.
-		const sides = await page.locator('#table td[data-row="1"][data-col="1"]').evaluate(el => {
-			const cs = getComputedStyle(el);
-			return { top: cs.borderTopColor, right: cs.borderRightColor, bottom: cs.borderBottomColor, left: cs.borderLeftColor };
+		await test.step('interior cells of a multi-row/multi-column block keep every real border', async () => {
+			// Row 1 / column 1: inside the block on both axes, touching none of its
+			// outer edges, so nothing about it should be suppressed at all.
+			const sides = await page.locator('#table td[data-row="1"][data-col="1"]').evaluate(el => {
+				const cs = getComputedStyle(el);
+				return { top: cs.borderTopColor, right: cs.borderRightColor, bottom: cs.borderBottomColor, left: cs.borderLeftColor };
+			});
+			// top/left are none by design for every cell (one border per edge — the
+			// table's outer frame supplies the grid's top and left), so the two edges
+			// this cell actually owns are the ones to check.
+			expect.soft(sides.right).toBe('rgb(17, 17, 17)');
+			expect.soft(sides.bottom).toBe('rgb(17, 17, 17)');
 		});
-		// top/left are none by design for every cell (one border per edge — the
-		// table's outer frame supplies the grid's top and left), so the two edges
-		// this cell actually owns are the ones to check.
-		expect(sides.right).toBe('rgb(17, 17, 17)');
-		expect(sides.bottom).toBe('rgb(17, 17, 17)');
+		await test.step('the block\'s true corner cell suppresses only its two outer-frame sides', async () => {
+			const sides = await page.locator('#table th[data-col="0"]').evaluate(el => {
+				const cs = getComputedStyle(el);
+				return { top: cs.borderTopColor, right: cs.borderRightColor, bottom: cs.borderBottomColor, left: cs.borderLeftColor };
+			});
+			// Only the two edges replaced by the synthetic outer frame are hidden…
+			expect.soft(sides.top).toBe('rgba(0, 0, 0, 0)');
+			expect.soft(sides.left).toBe('rgba(0, 0, 0, 0)');
+			// …and the two facing INTO the block keep the theme's real gridline.
+			expect.soft(sides.right).toBe('rgb(17, 17, 17)');
+			expect.soft(sides.bottom).not.toBe('rgba(0, 0, 0, 0)');
+		});
+		await test.step('the seam against the scrolling region keeps the theme\'s own line, plus elevation', async () => {
+			// The last frozen row/column used to have its border replaced by a generic
+			// synthetic line, which under grid swapped a near-black rule for a pale
+			// grey one a pixel out of place. Now the real border stays and only the
+			// elevation shadow is added, so the block reads as floating above the
+			// content it covers.
+			const lastRow = await page.locator('#table td[data-row="2"][data-col="4"]').evaluate(el => {
+				const cs = getComputedStyle(el);
+				return { bottom: cs.borderBottomColor, shadow: cs.boxShadow };
+			});
+			expect.soft(lastRow.bottom).toBe('rgb(17, 17, 17)');
+			expect.soft(lastRow.shadow).toContain('inset');
+
+			const lastCol = await page.locator('#table td[data-row="4"][data-col="1"]').evaluate(el => {
+				const cs = getComputedStyle(el);
+				return { right: cs.borderRightColor, shadow: cs.boxShadow };
+			});
+			expect.soft(lastCol.right).toBe('rgb(17, 17, 17)');
+			expect.soft(lastCol.shadow).toContain('inset');
+		});
 	});
 
-	test('the block\'s true corner cell suppresses only its two outer-frame sides', { tag: '@geometry' }, async ({ page, renderReal }) => {
-		await renderReal(SOURCE);
-		const sides = await page.locator('#table th[data-col="0"]').evaluate(el => {
-			const cs = getComputedStyle(el);
-			return { top: cs.borderTopColor, right: cs.borderRightColor, bottom: cs.borderBottomColor, left: cs.borderLeftColor };
-		});
-		// Only the two edges replaced by the synthetic outer frame are hidden…
-		expect(sides.top).toBe('rgba(0, 0, 0, 0)');
-		expect(sides.left).toBe('rgba(0, 0, 0, 0)');
-		// …and the two facing INTO the block keep the theme's real gridline.
-		expect(sides.right).toBe('rgb(17, 17, 17)');
-		expect(sides.bottom).not.toBe('rgba(0, 0, 0, 0)');
-	});
-
-	test('the seam against the scrolling region keeps the theme\'s own line, plus elevation', { tag: '@geometry' }, async ({ page, renderReal }) => {
-		await renderReal(SOURCE);
-		// The last frozen row/column used to have its border replaced by a generic
-		// synthetic line, which under grid swapped a near-black rule for a pale
-		// grey one a pixel out of place. Now the real border stays and only the
-		// elevation shadow is added, so the block reads as floating above the
-		// content it covers.
-		const lastRow = await page.locator('#table td[data-row="2"][data-col="4"]').evaluate(el => {
-			const cs = getComputedStyle(el);
-			return { bottom: cs.borderBottomColor, shadow: cs.boxShadow };
-		});
-		expect(lastRow.bottom).toBe('rgb(17, 17, 17)');
-		expect(lastRow.shadow).toContain('inset');
-
-		const lastCol = await page.locator('#table td[data-row="4"][data-col="1"]').evaluate(el => {
-			const cs = getComputedStyle(el);
-			return { right: cs.borderRightColor, shadow: cs.boxShadow };
-		});
-		expect(lastCol.right).toBe('rgb(17, 17, 17)');
-		expect(lastCol.shadow).toContain('inset');
-	});
 });

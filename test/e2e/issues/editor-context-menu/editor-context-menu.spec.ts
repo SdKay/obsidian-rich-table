@@ -139,6 +139,12 @@ test.describe('editor-context-menu', () => {
 		expect(tree.insert).toEqual(['Callout', 'Horizontal rule', 'Code block', 'Math block']);
 	});
 
+	/** Escape leaves the editor without writing, so the next step starts on a cell that is not being edited. */
+	const leaveEditing = async (page: P) => {
+		await page.keyboard.press('Escape');
+		await expect.poll(() => page.locator(`${CELL}.bt-editing`).count()).toBe(0);
+	};
+
 	/** Types `text` (with real line breaks) into the editor, selects `[from, to)` and right-clicks. */
 	const multiline = async (page: P, text: string, from: number, to: number) => {
 		await startEditing(page);
@@ -151,17 +157,22 @@ test.describe('editor-context-menu', () => {
 		await rightClick(page, from, to);
 	};
 
-	for (const [title, expected] of [
+	const PARAGRAPH_FORMATS = [
 		['Bullet list', '- one\n- two'], ['Numbered list', '1. one\n2. two'], ['Task list', '- [ ] one\n- [ ] two'],
 		['Quote', '> one\n> two'], ['Heading 2', '## one\n## two'],
-	] as const) {
-		test(`${title} applies to every selected line`, async ({ page, renderFull }) => {
-			await renderFull(SOURCE);
-			await multiline(page, 'one\ntwo', 0, 7);
-			await clickItem(page, title);
-			expect(await page.locator('.bt-cell-editor').textContent()).toBe(expected);
-		});
-	}
+	] as const;
+	// One table for every kind: each starts from a cell that is not being edited, as a fresh render would.
+	test('each paragraph format applies to every selected line', async ({ page, renderFull }) => {
+		await renderFull(SOURCE);
+		for (const [title, expected] of PARAGRAPH_FORMATS) {
+			await test.step(title, async () => {
+				await multiline(page, 'one\ntwo', 0, 7);
+				await clickItem(page, title);
+				expect.soft(await page.locator('.bt-cell-editor').textContent()).toBe(expected);
+				await leaveEditing(page);
+			});
+		}
+	});
 
 	test('a list can be taken off again and Heading shows its check', async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
@@ -223,19 +234,23 @@ test.describe('editor-context-menu', () => {
 		await expect.poll(() => page.locator(`${CELL}.bt-editing`).count()).toBe(0);
 	});
 
-	for (const [title, wrapped] of [['Bold', '**hello** world'], ['Italic', '*hello* world'], ['Strikethrough', '~~hello~~ world'], ['Code', '`hello` world'], ['Math', '$hello$ world'], ['Comment', '%%hello%% world']] as const) {
-		test(`${title} wraps the selection and a second pick unwraps it`, async ({ page, renderFull }) => {
-			await renderFull(SOURCE);
-			await startEditing(page);
-			await rightClick(page, 0, 5);
-			await clickItem(page, title);
-			expect(await page.locator('.bt-cell-editor').textContent()).toBe(wrapped);
-			await page.evaluate(() => (document.querySelector('.bt-cell-editor') as HTMLElement).dispatchEvent(
-				new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
-			await clickItem(page, title);
-			expect(await page.locator('.bt-cell-editor').textContent()).toBe('hello world');
-		});
-	}
+	const INLINE_FORMATS = [['Bold', '**hello** world'], ['Italic', '*hello* world'], ['Strikethrough', '~~hello~~ world'], ['Code', '`hello` world'], ['Math', '$hello$ world'], ['Comment', '%%hello%% world']] as const;
+	test('each inline format wraps the selection and a second pick unwraps it', async ({ page, renderFull }) => {
+		await renderFull(SOURCE);
+		for (const [title, wrapped] of INLINE_FORMATS) {
+			await test.step(title, async () => {
+				await startEditing(page);
+				await rightClick(page, 0, 5);
+				await clickItem(page, title);
+				expect.soft(await page.locator('.bt-cell-editor').textContent()).toBe(wrapped);
+				await page.evaluate(() => (document.querySelector('.bt-cell-editor') as HTMLElement).dispatchEvent(
+					new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
+				await clickItem(page, title);
+				expect.soft(await page.locator('.bt-cell-editor').textContent()).toBe('hello world');
+				await leaveEditing(page);
+			});
+		}
+	});
 
 	test('Clear format removes the marks again', async ({ page, renderFull }) => {
 		await renderFull(SOURCE);

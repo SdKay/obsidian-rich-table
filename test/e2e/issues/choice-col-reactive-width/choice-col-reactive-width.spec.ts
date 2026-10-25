@@ -39,25 +39,9 @@ const FIXED_SOURCE = tableSource({
 	rows: [{ 0: 'todo' }],
 });
 
-test('picking a longer value grows the column to fit it', { tag: '@geometry' }, async ({ page, renderFull }) => {
+test('picking a longer value grows the column, and a shorter one afterwards does not shrink it back', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(FIXED_SOURCE);
 	const widthBefore = await page.locator('col[data-col="0"]').evaluate(el => (el as HTMLElement).getBoundingClientRect().width);
-
-	await page.locator('[data-row="1"][data-col="0"]').click();
-	await expect.poll(() => page.evaluate(() => !!window.RichTableReal.getActiveCellMenu())).toBe(true);
-	await page.evaluate(() => {
-		const menu = window.RichTableReal.ShimMenu.opened[window.RichTableReal.ShimMenu.opened.length - 1];
-		menu.clickItem('In Progress');
-	});
-
-	const ops = await page.evaluate(() => (window as unknown as { __btOps: { type: string; colId?: string; width?: number }[] }).__btOps);
-	const widthOp = ops.find(o => o.type === 'set-col-width');
-	expect(widthOp, 'picking "In Progress" should have grown the column').toBeTruthy();
-	expect(widthOp!.width).toBeGreaterThan(widthBefore);
-});
-
-test('picking a shorter value afterwards does not shrink the column back', { tag: '@geometry' }, async ({ page, renderFull }) => {
-	await renderFull(FIXED_SOURCE);
 
 	const openMenuAndPick = (label: string) => page.evaluate((l) => {
 		const menu = window.RichTableReal.ShimMenu.opened[window.RichTableReal.ShimMenu.opened.length - 1];
@@ -68,7 +52,10 @@ test('picking a shorter value afterwards does not shrink the column back', { tag
 	await expect.poll(() => page.evaluate(() => !!window.RichTableReal.getActiveCellMenu())).toBe(true);
 	await openMenuAndPick('In Progress');
 	const opsAfterGrow = await page.evaluate(() => (window as unknown as { __btOps: { type: string; width?: number }[] }).__btOps);
-	const grownWidth = opsAfterGrow.find(o => o.type === 'set-col-width')!.width!;
+	const widthOp = opsAfterGrow.find(o => o.type === 'set-col-width');
+	expect(widthOp, 'picking "In Progress" should have grown the column').toBeTruthy();
+	expect(widthOp!.width).toBeGreaterThan(widthBefore);
+	const grownWidth = widthOp!.width!;
 	await page.evaluate((w) => {
 		document.querySelector<HTMLElement>('col[data-col="0"]')!.style.width = `${w}px`;
 	}, grownWidth);
