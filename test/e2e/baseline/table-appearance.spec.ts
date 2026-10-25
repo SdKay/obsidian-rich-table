@@ -92,27 +92,31 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 	});
 
 	test.describe(`appearance — ${label}`, () => {
-		test('every gridline the layout expects is painted, unfrozen, at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
-			await renderReal(themed(source('')));
-			await expectLinesPainted(page, OFFSETS);
-		});
+		// Only grid draws cell borders; for the others the expected set of lines is empty. Default stays
+		// so that the base rules every theme inherits are still checked for stray lines.
+		if (theme === undefined || theme === 'grid') {
+			test('every gridline the layout expects is painted, unfrozen, at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
+				await renderReal(themed(source('')));
+				await expectLinesPainted(page, OFFSETS);
+			});
 
-		test('every gridline the layout expects is painted, frozen, at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
-			await renderReal(themed(FROZEN));
-			// Guard against a vacuous pass: if this theme draws cell borders at
-			// all, the probe must have found some to check. Asked of the DOM rather
-			// than hardcoded per theme, because most built-ins legitimately draw no
-			// cell borders (base default is --bt-cell-border: none) and for those
-			// "zero lines expected" is the correct answer, not a broken probe.
-			const drawsBorders = await page.evaluate(() =>
-				Array.from(document.querySelectorAll('.bt-table .bt-td')).some(c => {
-					const cs = getComputedStyle(c);
-					return cs.borderBottomStyle !== 'none' && parseFloat(cs.borderBottomWidth) > 0;
-				}));
-			const found = await probeLines(page);
-			if (drawsBorders) expect(found.length, 'theme draws cell borders but the probe found none to check').toBeGreaterThan(20);
-			await expectLinesPainted(page, OFFSETS);
-		});
+			test('every gridline the layout expects is painted, frozen, at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
+				await renderReal(themed(FROZEN));
+				// Guard against a vacuous pass: if this theme draws cell borders at
+				// all, the probe must have found some to check. Asked of the DOM rather
+				// than hardcoded per theme, because most built-ins legitimately draw no
+				// cell borders (base default is --bt-cell-border: none) and for those
+				// "zero lines expected" is the correct answer, not a broken probe.
+				const drawsBorders = await page.evaluate(() =>
+					Array.from(document.querySelectorAll('.bt-table .bt-td')).some(c => {
+						const cs = getComputedStyle(c);
+						return cs.borderBottomStyle !== 'none' && parseFloat(cs.borderBottomWidth) > 0;
+					}));
+				const found = await probeLines(page);
+				if (drawsBorders) expect(found.length, 'theme draws cell borders but the probe found none to check').toBeGreaterThan(20);
+				await expectLinesPainted(page, OFFSETS);
+			});
+		}
 
 		test('turning freeze on does not change the table\'s outer frame', { tag: '@geometry' }, async ({ page, renderReal }) => {
 			// Freeze suppresses the table's real top/left border and redraws it

@@ -267,7 +267,6 @@ test.describe('status bar — height-resize handle', () => {
 test.describe('status bar — show/hide toggle', () => {
 	const SRC = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }] });
 	const HIDDEN = tableSource({ widths: [80, 80], rows: [{ 0: 'a1' }], statusBarMode: 'hover' });
-	const WIDE = tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250 });
 
 	test('a table with the bar turned off renders none of it, but keeps the height handle on the view', async ({ page, renderFull }) => {
 		await renderFull(HIDDEN);
@@ -295,21 +294,17 @@ test.describe('status bar — show/hide toggle', () => {
 		expect(ops).toContainEqual({ type: 'set-status-bar-mode', mode: null });
 	});
 
-	for (const [label, src] of [['shown', SRC], ['hidden', HIDDEN]] as const) {
-		test(`Shift+wheel scrolls horizontally with the bar ${label}`, { tag: '@geometry' }, async ({ page, renderFull }) => {
-			await renderFull(label === 'shown'
-				? tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250 })
-				: tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250, statusBarMode: 'hover' }));
-			void src; void WIDE;
-			const wrapper = page.locator('.bt-table-wrapper');
-			const box = (await wrapper.boundingBox())!;
-			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-			await page.keyboard.down('Shift');
-			await page.mouse.wheel(0, 120);
-			await page.keyboard.up('Shift');
-			await expect.poll(() => wrapper.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
-		});
-	}
+	// The wheel handler sits on the wrapper and does not look at the bar, so one case covers both.
+	test('Shift+wheel scrolls the view horizontally', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [200, 200, 200], rows: [{ 0: 'a1' }], viewWidth: 250 }));
+		const wrapper = page.locator('.bt-table-wrapper');
+		const box = (await wrapper.boundingBox())!;
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.keyboard.down('Shift');
+		await page.mouse.wheel(0, 120);
+		await page.keyboard.up('Shift');
+		await expect.poll(() => wrapper.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+	});
 });
 
 test.describe('status bar — multi-sheet tab integration (Task 9)', () => {

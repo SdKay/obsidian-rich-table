@@ -13,7 +13,9 @@ const gaps = (page: Page) => page.evaluate(() => {
 	return { left: body.left - frame.left, right: frame.right - body.right, barL: bar.left - frame.left, barR: frame.right - bar.right };
 });
 
-for (const cols of [2, 3, 4, 8]) {
+// Below the bar's width the view widens to hold it, leaving an odd number of px to split; two widths cover
+// that. A table wider than the bar is the test after this loop.
+for (const cols of [2, 4]) {
 	test(`a blank ${cols}-column table is centered in its view`, { tag: '@geometry' }, async ({ page, renderFull }) => {
 		const widths = Array(cols).fill(0);
 		const row = Object.fromEntries(widths.map((_, i) => [i, '']));
