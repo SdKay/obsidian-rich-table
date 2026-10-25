@@ -38,6 +38,7 @@ import { blockReorderBlocker, blockFloor, axisSpans } from './reorderPlan';
 import { liftBlock, type BlockLift } from './renderReorderDrag';
 import { canFreezeRows, canFreezeCols } from './operations';
 import { computeSelectionStats } from './renderStatusBar';
+import { isNoteScrolling, onNoteScrollEnd } from './noteScroll';
 
 export async function renderTable(
 	model: TableModelV2,
@@ -217,6 +218,7 @@ export async function renderTable(
 	let hideSelectors     = () => { /* assigned in selector block */ };
 	let prepareLayout     = () => { /* assigned in selector block */ };
 	let restoreLayout     = () => { /* assigned in selector block */ };
+	let liftTitle         = () => { /* assigned in selector block */ };
 	let repositionLockBtn    = () => { /* assigned in lock-button block */ };
 	let repositionAutoFitBtn = () => { /* assigned in auto-fit-button block */ };
 	// Optional `geom` — bindScrollSync (below) computes the shared frame's
@@ -1162,6 +1164,8 @@ export async function renderTable(
 	};
 	let lastHoverCell: HTMLTableCellElement | null = null;
 	table.addEventListener('mouseover', (evt: MouseEvent) => {
+		// The note scrolling cells past a resting cursor is not the user pointing at them.
+		if (isNoteScrolling()) return;
 		const cell = (evt.target as HTMLElement).closest<HTMLTableCellElement>('.bt-td, .bt-th');
 		if (cell === lastHoverCell) return; // moving within the same cell's own nested content
 		lastHoverCell = cell;
@@ -2820,6 +2824,22 @@ export async function renderTable(
 			}
 		};
 
+		// The table's size when the strips were last rebuilt. Nothing else changes what
+		// rebuild() draws without changing that size or going through an op, and an op
+		// rebuilds the whole table.
+		let lastRebuiltW = -1, lastRebuiltH = -1;
+		const tableResizedSinceRebuild = () => {
+			const r = table.getBoundingClientRect();
+			return Math.abs(r.width - lastRebuiltW) >= 0.5 || Math.abs(r.height - lastRebuiltH) >= 0.5;
+		};
+		const rebuildAndRecordSize = () => {
+			rebuild();
+			const r = table.getBoundingClientRect();
+			lastRebuiltW = r.width;
+			lastRebuiltH = r.height;
+		};
+		const rebuildIfResized = () => { if (tableResizedSinceRebuild()) rebuildAndRecordSize(); };
+
 		let selHideTimer: number | null = null;
 		const scheduleSelHide = () => {
 			if (selAxis !== null) return;
@@ -2877,6 +2897,16 @@ export async function renderTable(
 		// prepareLayout / restoreLayout are called by the proximity handler BEFORE
 		// show/hide so that positionEdgeStrips() and positionSelectors() both see
 		// the same layout (table already shifted by --bt-sel-pad).
+		// Cancel whatever --bt-title-mb-pull the active theme set (bridged onto titleEl in
+		// tableBlock.ts) so the title sits flush above the col-selector strip on hover
+		// instead of stacking a second gap on top of the theme's own pull-closer value.
+		// The theme's value is fixed for this render, so it is read once.
+		let titlePull: number | null = null;
+		liftTitle = () => {
+			if (!titleEl) return;
+			titlePull ??= parseFloat(getComputedStyle(titleEl).getPropertyValue('--bt-title-mb-pull')) || 0;
+			titleEl.setCssProps({ '--bt-title-mb-adj': `${-titlePull}px` });
+		};
 		prepareLayout = () => {
 			// Left-padding reservation (row selector + ctrl column sitting flush-left
 			// on a wide table) is shared with the ctrl-column-only, locked-table case —
@@ -2889,11 +2919,7 @@ export async function renderTable(
 			// via the contentRow flex wrapper, addRowBtn directly), fully contained
 			// within root's own box already, so nothing needs compensating for.
 			root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
-			// Cancel whatever --bt-title-mb-pull the active theme set (bridged onto titleEl in
-			// tableBlock.ts) so the title sits flush above the col-selector strip on hover
-			// instead of stacking a second gap on top of the theme's own pull-closer value.
-			const pull = titleEl ? parseFloat(getComputedStyle(titleEl).getPropertyValue('--bt-title-mb-pull')) || 0 : 0;
-			titleEl?.setCssProps({ '--bt-title-mb-adj': `${-pull}px` });
+			liftTitle();
 			// --bt-sel-pad above just changed root's own rendered height (padding-
 			// top) — the outer frame's own geometry is stale the instant that
 			// happens. viewFrameResizeObs (which watches for exactly this) won't
@@ -2970,7 +2996,10 @@ export async function renderTable(
 			positionSelectors();
 			colSel.addClass('bt-strip-visible');
 			rowSel.addClass('bt-strip-visible');
-			window.requestAnimationFrame(rebuild);
+			// Re-entering a table that has not changed (the note scrolling it under a
+			// resting cursor) finds the strips already built: rebuilding them reads every
+			// column's rect, and in a long note each read re-lays out the whole note.
+			window.requestAnimationFrame(rebuildIfResized);
 		};
 		hideSelectors = scheduleSelHide;
 
@@ -3481,20 +3510,16 @@ export async function renderTable(
 		// change — still differs and re-runs). positionSelectors() stays
 		// unconditional: it only reads rects and writes to the non-observed
 		// selector strips, so it can't feed back.
-		let lastRebuiltW = -1, lastRebuiltH = -1, selRebuildScheduled = false;
+		let selRebuildScheduled = false;
 		const selResizeObs = new ResizeObserver(() => {
 			if (!colSel.hasClass('bt-strip-visible') && !rowSel.hasClass('bt-strip-visible')) return;
 			positionSelectors();
-			const r = table.getBoundingClientRect();
-			if (Math.abs(r.width - lastRebuiltW) < 0.5 && Math.abs(r.height - lastRebuiltH) < 0.5) return;
+			if (!tableResizedSinceRebuild()) return;
 			if (selRebuildScheduled) return;
 			selRebuildScheduled = true;
 			window.requestAnimationFrame(() => {
 				selRebuildScheduled = false;
-				rebuild();
-				const r2 = table.getBoundingClientRect();
-				lastRebuiltW = r2.width;
-				lastRebuiltH = r2.height;
+				rebuildAndRecordSize();
 			});
 		});
 		selResizeObs.observe(table);
@@ -3545,37 +3570,64 @@ export async function renderTable(
 	// stay gated on onStructuralOp specifically — those exist to run editing-only
 	// actions that a locked table shouldn't offer at all.
 	if (onStructuralOp || onToggleLock) {
-		shell.addEventListener('mouseenter', () => {
-			// Runs unconditionally: needed for the ctrl column's own positioning
-			// even when nothing else in this handler applies (locked table).
-			reserveLeftPad();
-			repositionLockBtn();
-			repositionAutoFitBtn();
-			repositionCtrlCol();
-			// Same content-box-miss reasoning as prepareLayout's own call to this
-			// — reserveLeftPad above can grow root's padding-left even on a
-			// LOCKED table (no onStructuralOp, so prepareLayout below never
-			// runs), which still needs the frame to track that growth.
-			updateOuterFrame();
-			if (onStructuralOp) {
-				// prepareLayout MUST run before any position calculation so all
-				// getBoundingClientRect() calls see the final padded layout — it
-				// re-does reserveLeftPad (idempotent) plus the top/title-pull
-				// reservation the selector strips need that reserveLeftPad alone
-				// doesn't cover.
-				prepareLayout();
+		// The layout these calls prepare depends only on the table's and the pane's
+		// geometry, which every real change (resize, zoom, the view-size drag) already
+		// re-applies on its own. Re-entering an unchanged table, as when the note
+		// scrolls it under a resting cursor, only has to show the strips: in a long
+		// note every rect read below would otherwise re-lay out the whole note.
+		let preparedW = -1, preparedL = NaN, preparedTW = -1, preparedTH = -1;
+		const layoutChangedSincePrepared = () => {
+			const r = root.getBoundingClientRect();
+			const t = table.getBoundingClientRect();
+			return Math.abs(r.width - preparedW) >= 0.5 || Math.abs(r.left - preparedL) >= 0.5
+				|| Math.abs(t.width - preparedTW) >= 0.5 || Math.abs(t.height - preparedTH) >= 0.5;
+		};
+		// Root's height is left out on purpose: lifting the title on hover changes it
+		// every time, without changing anything the reserved padding or the toolbar depend on.
+		const recordPrepared = () => {
+			const r = root.getBoundingClientRect();
+			const t = table.getBoundingClientRect();
+			preparedW = r.width; preparedL = r.left; preparedTW = t.width; preparedTH = t.height;
+		};
+		const onShellEnter = () => {
+			if (layoutChangedSincePrepared()) {
+				// Runs unconditionally: needed for the ctrl column's own positioning
+				// even when nothing else in this handler applies (locked table).
+				// prepareLayout re-does reserveLeftPad and updateOuterFrame itself.
+				if (onStructuralOp) {
+					prepareLayout();
+				} else {
+					reserveLeftPad();
+					updateOuterFrame();
+				}
+				repositionLockBtn();
+				repositionAutoFitBtn();
 				repositionCtrlCol();
+				recordPrepared();
+			} else if (onStructuralOp && root.querySelector(':scope > .bt-table-title')) {
+				// The lifted title changes root's height, so the frame has to follow it.
+				liftTitle();
+				updateOuterFrame();
+			}
+			if (onStructuralOp) {
 				showEdgeStrips();
 				showSelectors();
 			}
+		};
+		// A table that only scrolled under the cursor gets its hover once the note
+		// comes to rest, if the cursor is still on it.
+		let enterSkipped = false;
+		shell.addEventListener('mouseenter', () => {
+			if (isNoteScrolling()) { enterSkipped = true; return; }
+			onShellEnter();
 		});
-		// A menu/panel we opened (Menu, cell/filter panel) always renders outside
-		// shell's own DOM subtree (appended to document.body), so moving the mouse
-		// onto it fires a real mouseleave here. While one is open, defer hiding
-		// until it actually closes (onHoverUnpinned below) instead of collapsing
-		// the strips out from under the user's cursor and re-showing them the
-		// moment the mouse comes back — that jump was the reported bad UX.
+		component?.register(onNoteScrollEnd(() => {
+			if (!enterSkipped) return;
+			enterSkipped = false;
+			if (shell.isConnected && shell.matches(':hover')) onShellEnter();
+		}));
 		shell.addEventListener('mouseleave', () => {
+			enterSkipped = false;
 			if (isHoverPinned()) return;
 			hideEdgeStrips(); hideSelectors();
 		});
@@ -3593,6 +3645,7 @@ export async function renderTable(
 		let rootRect: DOMRect | null = null;
 		root.addEventListener('mouseenter', () => { rootRect = root.getBoundingClientRect(); });
 		root.addEventListener('mousemove', (e: MouseEvent) => {
+			if (isNoteScrolling()) return;
 			// Skip while a write-back is pending on this (about-to-be-replaced) root —
 			// same reasoning as .bt-write-pending's animation pause: every write here
 			// repaints a theme's cursor-glow gradient for no visual benefit, and competes

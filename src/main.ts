@@ -13,6 +13,7 @@ import { t } from './i18n';
 import { resolveDefaultTheme } from './themes';
 import { computeCacheKey } from './blockCacheKey';
 import { setNativeEditorEnabled } from './nativeCellEditor';
+import { watchNoteScroll } from './noteScroll';
 import { addCellHighlightItems, clearCellPickOutside } from './renderEditorMenu';
 import { createRichSearchProvider } from './richSearchProvider';
 import type { RichSearchHostApi, RichSearchProvider } from './richSearchApi';
@@ -62,6 +63,14 @@ export default class BetterTablePlugin extends Plugin {
 		});
 
 		this.syncXlsxView();
+
+		// Every window has its own document: the main one now, each pop-out as it opens.
+		const stopWatching = new Map<Window, () => void>();
+		const watchWindow = (win: Window) => { if (!stopWatching.has(win)) stopWatching.set(win, watchNoteScroll(win.document)); };
+		watchWindow(window);
+		this.registerEvent(this.app.workspace.on('window-open', (_w, win) => watchWindow(win)));
+		this.registerEvent(this.app.workspace.on('window-close', (_w, win) => { stopWatching.get(win)?.(); stopWatching.delete(win); }));
+		this.register(() => { for (const stop of stopWatching.values()) stop(); stopWatching.clear(); });
 
 		this.addSettingTab(new BetterTableSettingTab(this.app, this));
 
