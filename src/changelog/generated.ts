@@ -9,6 +9,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.6.1", date: "2026-10-27", changes: [
+		"docs: list the author's other plugins in the README",
+		"fix: cells are as tight in reading view as in the editor, and the padding is a setting",
+		"fix: a cell being edited keeps its column width and stays inside the view",
+		"test: trim looped e2e variants that share code",
+		"test: share one render among read-only checks",
+		"test: drop e2e tests that others cover more strictly",
+		"test: run only geometry tests at dpr 1.5",
+	] },
 	{ version: "1.6.0", date: "2026-10-25", changes: [
 		"fix: scrolling a note with tables no longer stutters",
 		"feat: clear a selection's contents, and fix header split and header line breaks",
