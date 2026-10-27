@@ -313,6 +313,25 @@ export class ToggleComponent {
 	onChange(cb: (value: boolean) => void): this { this.onChangeCb = cb; return this; }
 }
 
+/** Real range input. Obsidian's onChange fires on every `input` event, i.e. while the thumb is dragged. */
+export class SliderComponent {
+	sliderEl = document.createElement('input');
+	private onChangeCb: ((value: number) => void) | null = null;
+	constructor() {
+		this.sliderEl.type = 'range';
+		this.sliderEl.addEventListener('input', () => this.onChangeCb?.(Number(this.sliderEl.value)));
+	}
+	setLimits(min: number | null, max: number | null, step: number | 'any'): this {
+		if (min !== null) this.sliderEl.min = String(min);
+		if (max !== null) this.sliderEl.max = String(max);
+		this.sliderEl.step = String(step);
+		return this;
+	}
+	setValue(value: number): this { this.sliderEl.value = String(value); return this; }
+	getValue(): number { return Number(this.sliderEl.value); }
+	onChange(cb: (value: number) => void): this { this.onChangeCb = cb; return this; }
+}
+
 /** Real <select>, so a test can pick an option the way a user would. */
 export class DropdownComponent {
 	selectEl = document.createElement('select');
@@ -366,6 +385,12 @@ export class Setting {
 		const c = new ToggleComponent();
 		cb(c);
 		this.controlEl.appendChild(c.toggleEl);
+		return this;
+	}
+	addSlider(cb: (c: SliderComponent) => void): this {
+		const c = new SliderComponent();
+		cb(c);
+		this.controlEl.appendChild(c.sliderEl);
 		return this;
 	}
 	addDropdown(cb: (c: DropdownComponent) => void): this {

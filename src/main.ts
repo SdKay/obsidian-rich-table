@@ -14,6 +14,7 @@ import { resolveDefaultTheme } from './themes';
 import { computeCacheKey } from './blockCacheKey';
 import { setNativeEditorEnabled } from './nativeCellEditor';
 import { watchNoteScroll } from './noteScroll';
+import { applyCellPadding } from './cellPadding';
 import { addCellHighlightItems, clearCellPickOutside } from './renderEditorMenu';
 import { createRichSearchProvider } from './richSearchProvider';
 import type { RichSearchHostApi, RichSearchProvider } from './richSearchApi';
@@ -210,11 +211,13 @@ export default class BetterTablePlugin extends Plugin {
 			(await this.loadData()) as Partial<BetterTableSettings>,
 		);
 		setNativeEditorEnabled(this.settings.nativeCellEditor);
+		applyCellPadding(this.settings.cellPaddingY);
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 		setNativeEditorEnabled(this.settings.nativeCellEditor);
+		applyCellPadding(this.settings.cellPaddingY);
 		this.syncXlsxView();
 		this.choiceRegistry = new ChoiceRegistry(this.settings.customChoices);
 		// Re-render all open reading views so allowReadingViewEdit takes effect

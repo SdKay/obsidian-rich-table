@@ -231,6 +231,8 @@ export const zh: Dict = {
 	settingNativeEditorName: '单元格使用笔记编辑器（实验性）',
 	settingNativeEditorDesc:
 		'普通文本单元格改用 Obsidian 自带的编辑器，[[ 双链、== 高亮颜色、#标签和 / 命令的补全与笔记正文完全一致。依赖 Obsidian 的内部接口，Obsidian 更新后可能失效；不可用时会自动回退到内置编辑器。公式单元格，以及选中单元格后直接打字，仍使用内置编辑器。',
+	settingCellPaddingName: '单元格内边距',
+	settingCellPaddingDesc: '单元格内文字与上下边框的距离，单位 px。默认 4，调大则行更松。',
 	settingOwnXlsxName: '用 Rich Table 打开 .xlsx 文件',
 	settingOwnXlsxDesc:
 		'在库中打开 .xlsx 文件时，以只读表格显示，便于浏览和搜索。如果希望由其他插件打开 .xlsx，请关闭此项。',

@@ -235,6 +235,8 @@ export const fr: Dict = {
 	settingNativeEditorName: 'Utiliser l\'éditeur de notes dans les cellules (expérimental)',
 	settingNativeEditorDesc:
 		'Modifie les cellules de texte simple dans l\'éditeur propre à Obsidian, de sorte que les liens [[, les couleurs de surlignage ==, les #tags et les commandes / se complètent exactement comme dans une note. S\'appuie sur des API internes d\'Obsidian et peut cesser de fonctionner après une mise à jour d\'Obsidian ; l\'éditeur intégré prend automatiquement le relais s\'il est indisponible. Les cellules de formule et la saisie par-dessus une cellule sélectionnée utilisent toujours l\'éditeur intégré.',
+	settingCellPaddingName: 'Marge interne des cellules',
+	settingCellPaddingDesc: 'Espace entre le texte d\'une cellule et ses bordures haute et basse, en px. 4 par défaut ; augmentez-le pour des lignes plus aérées.',
 	settingOwnXlsxName: 'Ouvrir les fichiers .xlsx avec Rich Table',
 	settingOwnXlsxDesc:
 		'L’ouverture d’un fichier .xlsx du coffre l’affiche comme un tableau en lecture seule, pour le parcourir et le rechercher. Désactivez-le si un autre plugin doit ouvrir les .xlsx.',

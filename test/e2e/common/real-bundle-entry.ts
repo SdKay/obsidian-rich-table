@@ -54,3 +54,4 @@ export { markSpans, markableText, SEARCH_HIT_CLASS } from '../../../src/searchHi
 export { linkAt } from '../../../src/cellLinks';
 export { SearchPanelFollower } from '../../../src/searchPanel';
 export { MarkdownRenderer as ShimMarkdownRenderer } from './obsidian-shim';
+export { applyCellPadding } from '../../../src/cellPadding';

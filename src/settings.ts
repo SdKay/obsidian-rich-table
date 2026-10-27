@@ -4,6 +4,7 @@ import { CTRL_COL_BUTTONS_BY_SCENARIO, ctrlColButtonIcon, type BetterTableSettin
 import { t, pick, ctrlColButtonLabel, ctrlColScenarioLabel } from './i18n';
 import { ChangelogModal } from './changelogModal';
 import { BUILTIN_THEMES } from './themes';
+import { CELL_PADDING_Y_RANGE, DEFAULT_CELL_PADDING_Y } from './cellPadding';
 
 export const DEFAULT_SETTINGS: BetterTableSettings = {
 	customChoices: [],
@@ -12,6 +13,7 @@ export const DEFAULT_SETTINGS: BetterTableSettings = {
 	defaultTheme: 'grid',
 	nativeCellEditor: false,
 	ownXlsxFiles: true,
+	cellPaddingY: DEFAULT_CELL_PADDING_Y,
 	ctrlColHiddenButtons: { locked: [], unlocked: [], xlsxRef: [] },
 };
 
@@ -80,6 +82,19 @@ export class BetterTableSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.nativeCellEditor)
 					.onChange(async (value) => {
 						this.plugin.settings.nativeCellEditor = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t('settingCellPaddingName'))
+			.setDesc(t('settingCellPaddingDesc'))
+			.addSlider(slider =>
+				slider
+					.setLimits(CELL_PADDING_Y_RANGE.min, CELL_PADDING_Y_RANGE.max, 1)
+					.setValue(this.plugin.settings.cellPaddingY)
+					.onChange(async (value) => {
+						this.plugin.settings.cellPaddingY = value;
 						await this.plugin.saveSettings();
 					}),
 			);

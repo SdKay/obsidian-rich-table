@@ -95,3 +95,14 @@ body {
 .markdown-preview-view th:last-child {
 	padding-inline-end: 0px;
 }
+
+/* Obsidian's own table padding in Live Preview, read off the real app's matched rules. At
+ * 2 classes + an element it out-specifies a plain `.bt-table .bt-td`, so it decides a
+ * cell's padding unless ours is stronger. `.markdown-source-view.mod-cm6` is the editor. */
+:root { --table-cell-padding: 4px 10px; }
+.markdown-source-view.mod-cm6 td,
+.markdown-source-view.mod-cm6 th,
+.markdown-preview-view td,
+.markdown-preview-view th {
+	padding: var(--table-cell-padding);
+}

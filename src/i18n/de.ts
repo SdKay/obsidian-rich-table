@@ -235,6 +235,8 @@ export const de: Dict = {
 	settingNativeEditorName: 'Notizeditor in Zellen verwenden (experimentell)',
 	settingNativeEditorDesc:
 		'Bearbeitet einfache Textzellen im Editor von Obsidian selbst, sodass [[-Links, ==-Hervorhebungsfarben, #Tags und /-Befehle genau wie in einer Notiz vervollständigt werden. Nutzt interne Obsidian-Schnittstellen und kann nach einem Obsidian-Update nicht mehr funktionieren; ist er nicht verfügbar, wird automatisch der eingebaute Editor verwendet. Formelzellen und das Überschreiben einer ausgewählten Zelle durch Tippen nutzen weiterhin den eingebauten Editor.',
+	settingCellPaddingName: 'Zellenabstand',
+	settingCellPaddingDesc: 'Abstand zwischen dem Text einer Zelle und ihrem oberen und unteren Rand in px. Standard ist 4; größere Werte machen die Zeilen luftiger.',
 	settingOwnXlsxName: 'Rich Table öffnet .xlsx-Dateien',
 	settingOwnXlsxDesc:
 		'Beim Öffnen einer .xlsx-Datei im Tresor wird sie als schreibgeschützte Tabelle angezeigt, damit sie durchsucht werden kann. Ausschalten, wenn ein anderes Plugin .xlsx-Dateien öffnen soll.',

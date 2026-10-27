@@ -392,6 +392,8 @@ export interface BetterTableSettings {
 	nativeCellEditor: boolean;
 	/** Register Rich Table's read-only view for `.xlsx` files. Read once at load. */
 	ownXlsxFiles: boolean;
+	/** Space in px between a cell's text and its top and bottom border. */
+	cellPaddingY: number;
 	/** Per-scenario left-toolbar button visibility (see CtrlColButtonId/
 	 *  CTRL_COL_BUTTONS_BY_SCENARIO above) — each array lists the ids HIDDEN
 	 *  in that scenario; absent/empty means every button for that scenario

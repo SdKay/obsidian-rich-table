@@ -234,6 +234,8 @@ export const ko: Dict = {
 	settingNativeEditorName: '셀에서 노트 편집기 사용(실험적)',
 	settingNativeEditorDesc:
 		'일반 텍스트 셀을 Obsidian 자체 편집기로 편집하므로 [[ 링크, == 강조 색상, #태그, / 명령의 자동 완성이 노트 본문과 똑같이 동작합니다. Obsidian의 내부 API에 의존하므로 Obsidian 업데이트 후 동작하지 않을 수 있으며, 사용할 수 없으면 기본 제공 편집기가 자동으로 대신합니다. 수식 셀과 선택한 셀 위에 바로 입력하는 경우에는 계속 기본 제공 편집기를 사용합니다.',
+	settingCellPaddingName: '셀 안쪽 여백',
+	settingCellPaddingDesc: '셀 안의 글자와 위·아래 테두리 사이의 간격(px)입니다. 기본값은 4이며, 키우면 행이 더 넉넉해집니다.',
 	settingOwnXlsxName: 'Rich Table로 .xlsx 파일 열기',
 	settingOwnXlsxDesc:
 		'보관함의 .xlsx 파일을 열면 읽기 전용 표로 표시하여 탐색하고 검색할 수 있습니다. 다른 플러그인이 .xlsx를 열게 하려면 끄세요.',
