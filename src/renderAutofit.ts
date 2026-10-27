@@ -1,4 +1,5 @@
 import type { StructuralOpHandler } from './renderTypes';
+import { editWidth } from './editWidth';
 import { ownCells, ownCols } from './renderOwnScope';
 import { measureZoomFactor, reserveSelectorLeftPad, applyOuterFrame } from './renderGeometry';
 
@@ -91,6 +92,7 @@ export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: 
  *  before the editor's first keystroke, and invoke the returned function
  *  from enterEditMode's own cancel/no-change paths. */
 export function captureColWidthForTextEdit(cellEl: HTMLElement): () => void {
+	delete cellEl.dataset.editRoom;
 	const table = cellEl.closest('table');
 	const colIdxAttr = cellEl.dataset.col;
 	const colEl = table && colIdxAttr !== undefined ? table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`) : null;
@@ -99,7 +101,16 @@ export function captureColWidthForTextEdit(cellEl: HTMLElement): () => void {
 	return () => {
 		if (colEl) colEl.style.width = colWidth;
 		if (table) (table as HTMLElement).style.width = tableWidth;
+		cellEl.removeClass('bt-wrap-edit');
+		delete cellEl.dataset.editRoom;
 	};
+}
+
+/** How wide the view may be. A view with a width of its own is exactly that wide; one that
+ *  follows its content (max-content, capped at 100%) can grow as far as its container. */
+function viewWidthOf(wrapper: HTMLElement): number {
+	if (wrapper.hasClass('bt-view-fixed-w')) return wrapper.clientWidth;
+	return wrapper.parentElement?.clientWidth ?? wrapper.clientWidth;
 }
 
 /** Live-preview counterpart for a plain text cell mid-edit: on every
@@ -132,9 +143,36 @@ export function growColLiveForTextEdit(cellEl: HTMLElement, editor: HTMLElement,
 	const style = view ? view.getComputedStyle(cellEl) : null;
 	const padH = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24;
 	const borderH = style ? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) : 2;
+	// A wrapped editor reports the width it was squeezed to, not the text's own,
+	// so the one-line width is measured with wrapping off.
+	cellEl.removeClass('bt-wrap-edit');
 	const needed = Math.ceil(editor.scrollWidth + padH + borderH);
-	if (needed <= currentWidth) return;
-	colEl.style.setProperty('width', `${needed}px`);
+
+	// Fixed columns carry an explicit width in a fixed-layout table; auto ones
+	// are marked, or live in a table with no widths at all.
+	const fixed = (table as HTMLElement).style.tableLayout === 'fixed' && !colEl.dataset.auto;
+	const wrapper = table.closest<HTMLElement>('.bt-table-wrapper');
+	// What the view leaves for this column once the others have their share: the
+	// table is centred, so where the cell sits on screen says nothing about it.
+	// The strip beside the table (add column) is part of the same row and takes
+	// its own width out of the view. The other columns are measured one by one, not
+	// as the table's width minus this column's: that difference moves by a few px
+	// with every key typed and the limit would creep down with it.
+	const rowEl = table.parentElement;
+	const besideTable = rowEl ? Math.max(0, rowEl.scrollWidth - (table as HTMLElement).offsetWidth) : 0;
+	let others = 0;
+	for (const other of Array.from(table.querySelectorAll<HTMLElement>('col[data-col]'))) {
+		if (other.dataset.col !== colIdxAttr) others += other.getBoundingClientRect().width / zoom;
+	}
+	// Fixed for the length of the edit once first worked out: the figure shifts by a
+	// pixel or two as the column changes, and a limit that moves would not hold.
+	const worked = wrapper ? viewWidthOf(wrapper) - others - besideTable : Number.POSITIVE_INFINITY;
+	const room = Number(cellEl.dataset.editRoom ?? worked);
+	if (Number.isFinite(room)) cellEl.dataset.editRoom = String(room);
+	const result = editWidth({ needed, current: currentWidth, fixed, room });
+	cellEl.toggleClass('bt-wrap-edit', result.wrap);
+	if (result.width === currentWidth) return;
+	colEl.style.setProperty('width', `${result.width}px`);
 	// table-layout:fixed pins the TABLE's own width too (renderer.ts's
 	// hasExplicitWidths branch) — without also growing it by this column's
 	// exact delta, the browser redistributes the extra width by squeezing
@@ -143,10 +181,10 @@ export function growColLiveForTextEdit(cellEl: HTMLElement, editor: HTMLElement,
 	// (reported: typing into a narrow column visibly narrowed the column to
 	// its LEFT). An all-auto table (table-layout:auto) sets no width on
 	// `table` at all, so there's nothing to grow there — it already expands
-	// on its own with no squeezing, hence the tableWidth guard below.
-	const tableWidth = parseFloat((table as HTMLElement).style.width);
-	if (Number.isFinite(tableWidth) && tableWidth > 0) {
-		(table as HTMLElement).style.setProperty('width', `${tableWidth + (needed - currentWidth)}px`);
+	// on its own with no squeezing, hence the pinnedWidth guard below.
+	const pinnedWidth = parseFloat((table as HTMLElement).style.width);
+	if (Number.isFinite(pinnedWidth) && pinnedWidth > 0) {
+		(table as HTMLElement).style.setProperty('width', `${pinnedWidth + (result.width - currentWidth)}px`);
 	}
 }
 

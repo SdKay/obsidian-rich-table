@@ -1588,6 +1588,11 @@
 	text-align: left;
 	white-space: pre;
 }
+/* Past the width an editing column may take (renderAutofit.ts), the text wraps. */
+.bt-table .bt-td.bt-editing.bt-wrap-edit .bt-cell-editor,
+.bt-table .bt-th.bt-editing.bt-wrap-edit .bt-cell-editor {
+	white-space: pre-wrap;
+}
 .bt-table .bt-td .bt-list-marker,
 .bt-table .bt-th .bt-list-marker {
 	user-select: none;
@@ -1668,6 +1673,13 @@
 }
 .bt-native-editor .cm-line {
 	white-space: pre;
+}
+.bt-editing.bt-wrap-edit .bt-native-editor .cm-content {
+	white-space: pre-wrap;
+	width: auto;
+}
+.bt-editing.bt-wrap-edit .bt-native-editor .cm-line {
+	white-space: pre-wrap;
 }
 
 /* Date cell */
