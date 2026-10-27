@@ -40,7 +40,31 @@
   <br/><sub>扫码关注公众号，获取更多 Obsidian 插件与效率工具资讯</sub>
 </p>
 
+<table>
+  <thead>
+    <tr><th colspan="3">我开发的其他插件</th></tr>
+    <tr><th>插件</th><th>简介</th><th>Obsidian 安装页</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://github.com/SdKay/obsidian-rich-view"><b>Rich View</b></a></td>
+      <td>在笔记中直接显示 draw.io、Visio、PowerPoint</td>
+      <td><a href="obsidian://show-plugin?id=rich-view">在 Obsidian 中打开</a></td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/SdKay/obsidian-rich-search"><b>Rich Search</b></a></td>
+      <td>
+        <b>搜索能力：</b>范围、正则、全词、大小写、历史记录<br/>
+        <b>跨文件联动：</b>联动 Rich View、Rich Table，跨文件搜索
+      </td>
+      <td><a href="obsidian://show-plugin?id=rich-search">在 Obsidian 中打开</a></td>
+    </tr>
+  </tbody>
+</table>
+
 </div>
+
+---
 
 > **仅限 Obsidian 使用。** `rich-table` 围栏代码块由插件渲染，在标准 Markdown 编辑器或 GitHub 预览中无法显示。
 

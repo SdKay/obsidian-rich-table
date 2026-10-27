@@ -40,6 +40,28 @@
   <br/><sub>Follow on WeChat for more Obsidian plugins &amp; tools</sub>
 </p>
 
+<table>
+  <thead>
+    <tr><th colspan="3">Other plugins I build</th></tr>
+    <tr><th>Plugin</th><th>Description</th><th>Install page</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://github.com/SdKay/obsidian-rich-view"><b>Rich View</b></a></td>
+      <td>Show draw.io, Visio and PowerPoint right in your notes</td>
+      <td><a href="obsidian://show-plugin?id=rich-view">Open in Obsidian</a></td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/SdKay/obsidian-rich-search"><b>Rich Search</b></a></td>
+      <td>
+        <b>Search:</b> scope, regex, whole word, case sensitivity, history<br/>
+        <b>Across files:</b> works with Rich View and Rich Table to search their content across files
+      </td>
+      <td><a href="obsidian://show-plugin?id=rich-search">Open in Obsidian</a></td>
+    </tr>
+  </tbody>
+</table>
+
 </div>
 
 > **Obsidian only.** The `rich-table` fenced code block is rendered by the plugin — it won't display in standard Markdown editors or GitHub previews.
