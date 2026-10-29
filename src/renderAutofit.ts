@@ -131,14 +131,22 @@ export function growColLiveForTextEdit(cellEl: HTMLElement, editor: HTMLElement,
 	const table = cellEl.closest('table');
 	const colIdxAttr = cellEl.dataset.col;
 	if (!table || colIdxAttr === undefined) return;
-	const colEl = table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`);
+	const startCol = Number(colIdxAttr);
+	const span = Math.max(1, (cellEl as HTMLTableCellElement).colSpan || 1);
+	// A merged cell is as wide as the columns it spans; the growth lands on the last of them.
+	const colEl = table.querySelector<HTMLElement>(`col[data-col="${startCol + span - 1}"]`);
 	if (!colEl) return;
+	let spanned = 0;
+	for (let i = 0; i < span - 1; i++) {
+		const sibling = table.querySelector<HTMLElement>(`col[data-col="${startCol + i}"]`);
+		spanned += sibling ? sibling.getBoundingClientRect().width / zoom : 0;
+	}
 
 	// getBoundingClientRect() is visual; scrollWidth (below) is logical — both
 	// need to end up in the same (logical) space before comparing, same
 	// correction as scrollContentOffset's own (renderGeometry.ts's NO_ZOOM
 	// doc comment).
-	const currentWidth = parseFloat(colEl.style.width) || cellEl.getBoundingClientRect().width / zoom;
+	const currentWidth = parseFloat(colEl.style.width) || colEl.getBoundingClientRect().width / zoom;
 	const view = activeDocument.defaultView;
 	const style = view ? view.getComputedStyle(cellEl) : null;
 	const padH = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24;
@@ -146,7 +154,7 @@ export function growColLiveForTextEdit(cellEl: HTMLElement, editor: HTMLElement,
 	// A wrapped editor reports the width it was squeezed to, not the text's own,
 	// so the one-line width is measured with wrapping off.
 	cellEl.removeClass('bt-wrap-edit');
-	const needed = Math.ceil(editor.scrollWidth + padH + borderH);
+	const needed = Math.ceil(editor.scrollWidth + padH + borderH - spanned);
 
 	// Fixed columns carry an explicit width in a fixed-layout table; auto ones
 	// are marked, or live in a table with no widths at all.
@@ -162,7 +170,7 @@ export function growColLiveForTextEdit(cellEl: HTMLElement, editor: HTMLElement,
 	const besideTable = rowEl ? Math.max(0, rowEl.scrollWidth - (table as HTMLElement).offsetWidth) : 0;
 	let others = 0;
 	for (const other of Array.from(table.querySelectorAll<HTMLElement>('col[data-col]'))) {
-		if (other.dataset.col !== colIdxAttr) others += other.getBoundingClientRect().width / zoom;
+		if (other !== colEl) others += other.getBoundingClientRect().width / zoom;
 	}
 	// Fixed for the length of the edit once first worked out: the figure shifts by a
 	// pixel or two as the column changes, and a limit that moves would not hold.
