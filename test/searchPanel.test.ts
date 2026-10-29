@@ -290,3 +290,112 @@ describe('SearchPanelFollower', () => {
 		});
 	});
 });
+
+describe('SearchPanelFollower and the search scope (contract 5.11)', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.stubGlobal('window', { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+	});
+	afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+	function scopedHost(parts: { inScope?: boolean; onScopeChange?: boolean }, covered: (path: string) => boolean = () => true) {
+		const scopeListeners = new Set<() => void>();
+		const state = { covered };
+		const over: Partial<RichSearchHostApi> = {};
+		if (parts.inScope) over.inScope = path => state.covered(path);
+		if (parts.onScopeChange) over.onScopeChange = l => { scopeListeners.add(l); return () => { scopeListeners.delete(l); }; };
+		return { ...fakeHost(over), state, scopeListeners, fireScope: () => { for (const l of [...scopeListeners]) l(); } };
+	}
+
+	it('covers every file when the host has no inScope (an older Rich Search)', () => {
+		expect(new SearchPanelFollower(() => scopedHost({}).host).covers('any.md')).toBe(true);
+		expect(new SearchPanelFollower(() => scopedHost({ onScopeChange: true }).host).covers('any.md')).toBe(true);
+	});
+
+	it('covers every file without a Rich Search or with an apiVersion it does not know', () => {
+		expect(new SearchPanelFollower(() => undefined).covers('any.md')).toBe(true);
+		const future = scopedHost({ inScope: true }, () => false);
+		future.host.apiVersion = 2 as never;
+		expect(new SearchPanelFollower(() => future.host).covers('any.md')).toBe(true);
+	});
+
+	it('asks the host with the path it was given and returns the answer', () => {
+		const seen: string[] = [];
+		const h = scopedHost({ inScope: true }, p => { seen.push(p); return p.startsWith('in/'); });
+		const f = new SearchPanelFollower(() => h.host);
+		expect(f.covers('in/a.md')).toBe(true);
+		expect(f.covers('out/b.xlsx')).toBe(false);
+		expect(seen).toEqual(['in/a.md', 'out/b.xlsx']);
+	});
+
+	it('counts a throw from inScope as covered', () => {
+		const h = scopedHost({ inScope: true }, () => { throw new Error('boom'); });
+		expect(new SearchPanelFollower(() => h.host).covers('a.md')).toBe(true);
+	});
+
+	it('tells followers at once that the scope changed, even though the query did not', () => {
+		const h = scopedHost({ inScope: true, onScopeChange: true });
+		const f = new SearchPanelFollower(() => h.host);
+		const seen: string[] = [];
+		f.follow(c => seen.push(c));
+		h.fireScope();
+		expect(seen).toEqual(['scope']);
+	});
+
+	it('stops listening to the scope when the last follower stops', () => {
+		const h = scopedHost({ inScope: true, onScopeChange: true });
+		const f = new SearchPanelFollower(() => h.host);
+		const stop = f.follow(() => undefined);
+		expect(h.scopeListeners.size).toBe(1);
+		stop();
+		expect(h.scopeListeners.size).toBe(0);
+	});
+
+	it('listens to the scope once however many follow', () => {
+		const h = scopedHost({ inScope: true, onScopeChange: true });
+		const f = new SearchPanelFollower(() => h.host);
+		f.follow(() => undefined); f.follow(() => undefined);
+		expect(h.scopeListeners.size).toBe(1);
+	});
+
+	it('ignores onScopeChange when inScope is missing: nothing is subscribed', () => {
+		const h = scopedHost({ onScopeChange: true });
+		const f = new SearchPanelFollower(() => h.host);
+		f.follow(() => undefined);
+		expect(h.scopeListeners.size).toBe(0);
+	});
+
+	it('with only inScope there is nothing to subscribe to, and the query is still followed', () => {
+		const h = scopedHost({ inScope: true });
+		const f = new SearchPanelFollower(() => h.host);
+		const seen: string[] = [];
+		expect(() => f.follow(c => seen.push(c))).not.toThrow();
+		h.type({ query: 'x' });
+		vi.advanceTimersByTime(PANEL_DEBOUNCE_MS);
+		expect(seen).toEqual(['query']);
+	});
+
+	it('a host whose onScopeChange throws does not stop the query and the opened match being followed', () => {
+		const h = scopedHost({ inScope: true });
+		h.host.onScopeChange = () => { throw new Error('no'); };
+		const f = new SearchPanelFollower(() => h.host);
+		const seen: string[] = [];
+		expect(() => f.follow(c => seen.push(c))).not.toThrow();
+		h.type({ query: 'x' });
+		vi.advanceTimersByTime(PANEL_DEBOUNCE_MS);
+		expect(seen).toEqual(['query']);
+		expect(h.listeners.size).toBe(1);
+	});
+
+	it('moves the scope subscription to a replaced host', () => {
+		const first = scopedHost({ inScope: true, onScopeChange: true });
+		const second = scopedHost({ inScope: true, onScopeChange: true });
+		let which = first;
+		const f = new SearchPanelFollower(() => which.host);
+		f.follow(() => undefined);
+		which = second;
+		f.connect();
+		expect(first.scopeListeners.size).toBe(0);
+		expect(second.scopeListeners.size).toBe(1);
+	});
+});

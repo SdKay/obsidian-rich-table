@@ -775,7 +775,7 @@ export class TableBlock extends MarkdownRenderChild {
 		this.brightCell = null;
 		const panel = this.plugin.searchPanel;
 		const host = panel.host();
-		if (!host) return;
+		if (!host || !panel.covers(this.sourcePath)) return;
 		const state = panel.state();
 		const query = state.kind === 'query' ? state.query : state.kind === 'unknown' ? this.hitQuery : null;
 		if (!query || query.query === '') return;

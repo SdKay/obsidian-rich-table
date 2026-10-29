@@ -196,7 +196,7 @@ export class XlsxFileViewer extends Component {
 		if (!this.rendered) return;
 		const panel = this.host.searchPanel;
 		const host = panel.host();
-		if (!host) return;
+		if (!host || !this.file || !panel.covers(this.file.path)) return;
 		const state = panel.state();
 		const query = state.kind === 'query' ? state.query : state.kind === 'unknown' ? this.navQuery : null;
 		if (!query || query.query === '') return;

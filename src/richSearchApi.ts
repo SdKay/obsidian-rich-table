@@ -68,6 +68,8 @@ export interface RichSearchHostApi {
 	 */
 	currentHit?(): OpenedHit | null;
 	onHitChange?(listener: (hit: OpenedHit | null) => void): () => void;
+	inScope?(path: string): boolean;
+	onScopeChange?(listener: () => void): () => void;
 }
 export interface OpenedHit {
 	path: string;

@@ -3,8 +3,11 @@ import type { MatchOptions, OpenedHit, RichSearchHostApi } from './richSearchApi
 /** Quick typing in the search box changes the query on every key; marking a big table takes 100 ms or more. */
 export const PANEL_DEBOUNCE_MS = 80;
 
-/** What changed: the search itself (re-mark; waits for typing to pause), or only which match is opened (move the bright one; at once). */
-export type PanelChange = 'query' | 'hit';
+/**
+ * What changed: the search itself (re-mark; waits for typing to pause), only which match is opened (move the bright one; at once),
+ * or which files the search covers (re-mark at once; the query may be the same).
+ */
+export type PanelChange = 'query' | 'hit' | 'scope';
 
 export type PanelState =
 	| { kind: 'none' }
@@ -62,6 +65,20 @@ export class SearchPanelFollower {
 		}
 	}
 
+	/**
+	 * Whether the search covers this file (contract 5.11), asked with the path a view would give to `extract`.
+	 * A missing Rich Search, one without `inScope` and a check that throws all count as covered.
+	 */
+	covers(path: string): boolean {
+		const host = this.panelHost();
+		if (typeof host?.inScope !== 'function') return true;
+		try {
+			return host.inScope(path) !== false;
+		} catch {
+			return true;
+		}
+	}
+
 	/** Calls `listener` after the panel's query changes (once typing pauses) or the opened match changes (at once). Returns the function that stops it. */
 	follow(listener: (change: PanelChange) => void): () => void {
 		this.followers.add(listener);
@@ -85,7 +102,12 @@ export class SearchPanelFollower {
 			this.subscribedTo = host;
 		} catch {
 			this.drop();
+			return;
 		}
+		// Without inScope a scope change has nothing new to read, so onScopeChange alone is ignored.
+		try {
+			if (host.inScope && host.onScopeChange) this.unsubscribers.push(host.onScopeChange(() => this.tell('scope')));
+		} catch { /* the query and the opened match are still followed */ }
 	}
 
 	private schedule(): void {

@@ -14,7 +14,7 @@ window.__btMakeSearchHost = function (name, initialQuery) {
 		}
 		return out;
 	};
-	const panel = { query: initialQuery ?? null, listeners: new Set(), hit: null, hitListeners: new Set() };
+	const panel = { query: initialQuery ?? null, listeners: new Set(), hit: null, hitListeners: new Set(), scopeFolder: null, scopeListeners: new Set() };
 	const withPanel = (apiVersion, withHit = true) => ({
 		apiVersion, matchLine,
 		currentQuery: () => panel.query,
@@ -24,6 +24,9 @@ window.__btMakeSearchHost = function (name, initialQuery) {
 			onHitChange: (fn) => { panel.hitListeners.add(fn); return () => { panel.hitListeners.delete(fn); }; },
 		} : {}),
 	});
+	// The scope is "everything" until a test limits it to a folder with __btPanel.scopeFolder.
+	const inScope = (path) => panel.scopeFolder === null || path.startsWith(panel.scopeFolder);
+	const onScopeChange = (fn) => { panel.scopeListeners.add(fn); return () => { panel.scopeListeners.delete(fn); }; };
 	const apis = {
 		none: undefined,
 		panel: withPanel(1),
@@ -32,6 +35,10 @@ window.__btMakeSearchHost = function (name, initialQuery) {
 		throws: { apiVersion: 1, matchLine: () => { throw new Error('host failed'); } },
 		hitThrows: { ...withPanel(1), currentHit: () => { throw new Error('host failed'); } },
 		future: withPanel(2),
+		scoped: { ...withPanel(1), inScope, onScopeChange },
+		scopeOnly: { ...withPanel(1), inScope },
+		scopeListenerOnly: { ...withPanel(1), onScopeChange },
+		scopeThrows: { ...withPanel(1), inScope: () => { throw new Error('host failed'); }, onScopeChange },
 	};
 	const state = { name: name ?? 'none' };
 	window.__btPanel = panel;

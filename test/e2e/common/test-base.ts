@@ -62,6 +62,10 @@ export interface RenderBlockResult {
 	setQuery: (query: { query: string; caseSensitive?: boolean; wholeWord?: boolean } | null) => Promise<void>;
 	/** Text of every highlighted fragment on the page, in document order. */
 	hits: () => Promise<string[]>;
+	/** Limits the fake search to files under this folder prefix (null = every file) and, when the host has onScopeChange, tells it. The query does not change. */
+	setScope: (folder: string | null) => Promise<void>;
+	/** How many scope listeners the fake panel has. */
+	scopeListeners: () => Promise<number>;
 	/** How many listeners the fake panel has. */
 	panelListeners: () => Promise<number>;
 	/** Opens a match in the fake panel (null = none) and notifies the followers, as a click on a result does. */
@@ -116,14 +120,18 @@ export interface LinkOpening {
 	where?: string | boolean;
 }
 
-/** panel: a full Rich Search; noHit: one with the search but not the opened match; hitThrows: currentHit fails; legacy: one that predates currentQuery; throws: matchLine fails; future: an apiVersion this plugin does not know; none: not installed. */
-export type FakeSearchHost = 'none' | 'panel' | 'noHit' | 'legacy' | 'throws' | 'hitThrows' | 'future';
+/** panel: a full Rich Search; noHit: one with the search but not the opened match; hitThrows: currentHit fails; legacy: one that predates currentQuery; throws: matchLine fails; future: an apiVersion this plugin does not know; none: not installed; scoped: a full one with inScope and onScopeChange; scopeOnly: inScope without onScopeChange; scopeListenerOnly: onScopeChange without inScope; scopeThrows: inScope fails. */
+export type FakeSearchHost = 'none' | 'panel' | 'noHit' | 'legacy' | 'throws' | 'hitThrows' | 'future' | 'scoped' | 'scopeOnly' | 'scopeListenerOnly' | 'scopeThrows';
 
 export interface RenderXlsxFileResult {
 	/** Hands the viewer a search hit, the way setEphemeralState does. */
 	reveal: (request: unknown) => Promise<void>;
 	/** Types a query into the fake search panel (null = panel closed or query empty) and notifies the view. */
 	setQuery: (query: { query: string; caseSensitive?: boolean; wholeWord?: boolean } | null) => Promise<void>;
+	/** Limits the fake search to files under this folder prefix (null = every file) and, when the host has onScopeChange, tells it. The query does not change. */
+	setScope: (folder: string | null) => Promise<void>;
+	/** How many scope listeners the fake panel has. */
+	scopeListeners: () => Promise<number>;
 	/** How many listeners the fake panel currently has. */
 	panelListeners: () => Promise<number>;
 	/** Opens a match in the fake panel (null = none) and notifies the followers, as a click on a result does. */
@@ -369,6 +377,12 @@ export const test = base.extend<{
 					w.__btPanel.query = query;
 					for (const fn of [...w.__btPanel.listeners]) fn(query);
 				}, query),
+				setScope: (folder) => page.evaluate((folder) => {
+					const w = window as unknown as { __btPanel: { scopeFolder: string | null; scopeListeners: Set<() => void> } };
+					w.__btPanel.scopeFolder = folder;
+					for (const fn of [...w.__btPanel.scopeListeners]) fn();
+				}, folder),
+				scopeListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { scopeListeners: Set<unknown> } }).__btPanel.scopeListeners.size),
 				panelListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { listeners: Set<unknown> } }).__btPanel.listeners.size),
 				openHit: (hit) => page.evaluate((hit) => {
 					const w = window as unknown as { __btPanel: { hit: unknown; hitListeners: Set<(h: unknown) => void> } };
@@ -508,6 +522,12 @@ export const test = base.extend<{
 					for (const fn of [...w.__btPanel.listeners]) fn(query);
 				}, query),
 				hits: () => page.evaluate(() => Array.from(document.querySelectorAll('mark.bt-search-hit')).map(m => m.textContent ?? '')),
+				setScope: (folder) => page.evaluate((folder) => {
+					const w = window as unknown as { __btPanel: { scopeFolder: string | null; scopeListeners: Set<() => void> } };
+					w.__btPanel.scopeFolder = folder;
+					for (const fn of [...w.__btPanel.scopeListeners]) fn();
+				}, folder),
+				scopeListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { scopeListeners: Set<unknown> } }).__btPanel.scopeListeners.size),
 				panelListeners: () => page.evaluate(() => (window as unknown as { __btPanel: { listeners: Set<unknown> } }).__btPanel.listeners.size),
 				openHit: (hit) => page.evaluate((hit) => {
 					const w = window as unknown as { __btPanel: { hit: unknown; hitListeners: Set<(h: unknown) => void> } };
