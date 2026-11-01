@@ -4,8 +4,6 @@
 // matter (used as the button label).
 import demo_en from './demo-en.yaml';
 import demo_zh from './demo-zh.yaml';
-import cornell_en from './cornell-en.yaml';
-import cornell_zh from './cornell-zh.yaml';
 
 export interface TemplateMeta {
 	id: string;
@@ -17,5 +15,4 @@ export interface TemplateMeta {
 
 export const BUILTIN_TEMPLATES: readonly TemplateMeta[] = [
 	{ id: "demo", labels: {"en":"Rich Table Demo","zh":"Rich Table 示例"}, content: { en: demo_en, zh: demo_zh } },
-	{ id: "cornell", labels: {"en":"Cornell Notes","zh":"康奈尔笔记"}, content: { en: cornell_en, zh: cornell_zh } },
 ] as const;

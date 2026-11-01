@@ -172,7 +172,7 @@ Type `` ```rich-table `` yourself, or skip typing it: run **Insert rich-table bl
 
 Already have a plain Markdown table? Run **Convert to rich-table** from the command palette (bind your own hotkey the same way) with the cursor on it — it's replaced in place, header row becoming column names and the rest becoming data. Also on the editor right-click menu, though Live Preview's own table-editing widget intercepts right-clicks made directly on the table itself; switch to Source Mode, or use the command palette, if the menu item doesn't show up there.
 
-An empty `rich-table` code block shows one button per built-in template (currently a full-featured **Demo** and a **Cornell Notes** layout) plus **Insert blank table**, which opens a Word/Sheets-style size picker — hover an 8×6 grid to preview and click to confirm a row/column count, or type exact numbers for anything past the visible grid. Hovering any button live-previews that option below; with nothing hovered, the default template previews. Templates are auto-discovered from `src/templates/*.yaml` (same pattern as themes) — no code changes needed to add one.
+An empty `rich-table` code block shows one button per built-in template (currently a full-featured **Demo**) plus **Insert blank table**, which opens a Word/Sheets-style size picker — hover an 8×6 grid to preview and click to confirm a row/column count, or type exact numbers for anything past the visible grid. Hovering any button live-previews that option below; with nothing hovered, the default template previews. Templates are auto-discovered from `src/templates/*.yaml` (same pattern as themes) — no code changes needed to add one.
 
 ![Quick start demo](docs/demo-01-template.gif)
 

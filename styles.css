@@ -536,9 +536,12 @@
 /* ── Empty-state template banner ─────────────────────────────────────────── */
 .bt-template-banner {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
-	gap: var(--size-4-3);
+	gap: var(--size-4-2) var(--size-4-3);
+	box-sizing: border-box;
+	max-width: 100%;
 	padding: var(--size-4-2) var(--size-4-3);
 	margin-bottom: var(--size-4-2);
 	background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
@@ -579,7 +582,8 @@
 .bt-template-btns {
 	display: flex;
 	gap: var(--size-4-2);
-	flex-shrink: 0;
+	flex: 0 1 auto;
+	min-width: 0;
 	flex-wrap: wrap;
 	justify-content: flex-end;
 }
