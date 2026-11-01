@@ -3279,6 +3279,14 @@ mark.bt-search-hit.bt-search-hit.bt-search-hit.bt-search-hit-active {
 	box-shadow: 0 0 0 1px var(--rs-match-fg, #000000);
 }
 
+/* ── .xlsx file tab ───────────────────────────────────────────────────────── */
+/* Obsidian's interface is not selectable unless a view asks; this one shows
+ * content meant to be selected and copied. */
+.bt-xlsx-file-view,
+.bt-xlsx-file-view .bt-table {
+	user-select: text;
+}
+
 /* ── Built-in themes (auto-generated — do not edit below) ──── */
 /* @theme-label-en: Academic 📐 */
 /* @theme-label-zh: 学术 📐 */

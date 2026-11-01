@@ -106,3 +106,6 @@ body {
 .markdown-preview-view th {
 	padding: var(--table-cell-padding);
 }
+
+/* Obsidian's interface is not selectable unless a view opts in; a custom FileView has to ask for it. */
+.bt-xlsx-file-view { user-select: none; }

@@ -56,6 +56,7 @@ export class XlsxFileViewer extends Component {
 	}
 
 	onload(): void {
+		this.containerEl.addClass('bt-xlsx-file-view');
 		const unbind = bindCellLinks(this.containerEl, () => this.file?.path ?? '', {
 			openInternal: (href, sourcePath, newLeaf) => { void this.host.app.workspace.openLinkText(href, sourcePath, newLeaf as PaneType | boolean); },
 			openExternal: (href) => { window.open(href, '_blank'); },

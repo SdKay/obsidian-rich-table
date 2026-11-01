@@ -11,7 +11,6 @@ export class XlsxFileView extends FileView {
 	constructor(leaf: WorkspaceLeaf, plugin: BetterTablePlugin) {
 		super(leaf);
 		this.navigation = true;
-		this.contentEl.addClass('bt-xlsx-file-view');
 		this.viewer = new XlsxFileViewer(plugin, this.contentEl);
 		this.addChild(this.viewer);
 	}
