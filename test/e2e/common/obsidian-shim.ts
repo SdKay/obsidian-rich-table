@@ -119,10 +119,50 @@ export class MarkdownRenderChild extends Component {
  */
 export const MarkdownRenderer = {
 	render(_app: unknown, markdown: string, el: HTMLElement, _sourcePath: string, _component: unknown): Promise<void> {
-		if (markdown !== '') el.createEl('p', { text: markdown });
+		if (markdown !== '' && !renderList(markdown, el)) el.createEl('p', { text: markdown });
 		return Promise.resolve();
 	},
 };
+
+/**
+ * A text made only of list lines comes out as nested <ul>/<ol> like the real one. An item nests
+ * under the nearest earlier item only when it is indented to that item's content (its marker and
+ * the space after it), so `2. b` takes a child at three spaces, not two; a different kind of list
+ * at the same indent is a new list. An ordered list carries `start` when it does not begin at 1.
+ * Anything else is left to the plain paragraph above.
+ */
+function renderList(markdown: string, el: HTMLElement): boolean {
+	const lines = markdown.split('\n');
+	const parsed = lines.map(l => /^( *)(?:([-*+])|(\d+)\.) (.*)$/.exec(l));
+	if (parsed.some(m => !m)) return false;
+	type Open = { indent: number; content: number; ordered: boolean; list: HTMLElement; item: HTMLElement | null };
+	const stack: Open[] = [];
+	for (const m of parsed as RegExpExecArray[]) {
+		const indent = m[1]!.length;
+		const ordered = m[3] !== undefined;
+		const width = (ordered ? m[3]!.length + 1 : 1) + 1;
+		while (stack.length > 0) {
+			const top = stack[stack.length - 1]!;
+			if (indent >= top.indent + top.content) break;
+			if (indent === top.indent && top.ordered === ordered) break;
+			stack.pop();
+		}
+		let top = stack[stack.length - 1];
+		if (!top || indent >= top.indent + top.content || top.ordered !== ordered) {
+			const list = document.createElement(ordered ? 'ol' : 'ul');
+			if (ordered && Number(m[3]) !== 1) list.setAttribute('start', m[3]!);
+			const parent = top && indent >= top.indent + top.content ? top.item : null;
+			(parent ?? el).appendChild(list);
+			top = { indent, content: width, ordered, list, item: null };
+			stack.push(top);
+		}
+		const li = document.createElement('li');
+		li.textContent = m[4]!;
+		top.list.appendChild(li);
+		top.item = li;
+	}
+	return true;
+}
 
 export class MenuItem {
 	title = '';

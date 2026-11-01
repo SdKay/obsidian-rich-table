@@ -394,6 +394,8 @@ export interface BetterTableSettings {
 	ownXlsxFiles: boolean;
 	/** Space in px between a cell's text and its top and bottom border. */
 	cellPaddingY: number;
+	/** An ordered list in a cell counts on from the number its first item is written with, and a line break while editing continues the numbering. */
+	listStartAnyNumber: boolean;
 	/** Per-scenario left-toolbar button visibility (see CtrlColButtonId/
 	 *  CTRL_COL_BUTTONS_BY_SCENARIO above) — each array lists the ids HIDDEN
 	 *  in that scenario; absent/empty means every button for that scenario

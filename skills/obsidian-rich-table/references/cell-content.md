@@ -17,7 +17,7 @@ Cell values are plain strings rendered by Obsidian's `MarkdownRenderer`. Support
 | Local image | `![[image.png]]` |
 | Inline math (KaTeX) | `$E=mc^2$` |
 | Line break | `Line 1<br>Line 2` |
-| List items | Use YAML block scalar `\|-` with `- ` prefix lines |
+| List items | Use YAML block scalar `\|-` with `- ` prefix lines; a sub-item is indented to where its parent's text starts (two spaces under `-`, three under `1.`) |
 | Nested rich-table | A whole ` ```rich-table ` fenced block, itself in v2 format, inside the cell's own block scalar — see below |
 
 **List example** (the `- ` prefix lines render as a compact bulleted list):

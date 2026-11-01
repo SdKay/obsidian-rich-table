@@ -8,6 +8,10 @@ import { decidePaste, insertPlainText, payloadOf, takePlainPaste, type Clipboard
 import { trackCellContextMenu } from './renderEditorMenu';
 import { mountNativeCellEditor } from './nativeCellEditor';
 import { growColLiveForTextEdit, captureColWidthForTextEdit } from './renderAutofit';
+import { backspaceInList, continueList, listStartAnyNumber, renumberLists } from './cellList';
+
+/** The text with its numbered lists numbered the way they are shown, so what is stored and what is seen agree. */
+const numberedAsShown = (text: string): string => renumberLists(text, listStartAnyNumber());
 
 /** A leading `==` is a highlight, not a formula. */
 const isFormulaText = (s: string) => s.startsWith('=') && !s.startsWith('==');
@@ -279,7 +283,7 @@ export function enterNativeEditMode(
 		editor?.destroy();
 		el.removeClass('bt-editing');
 		if (move) onEditNavigate?.(rowIdx, colIdx, move);
-		if (commit && value !== rawValue) { void onCellChange(rowIdx, colIdx, value); return; }
+		if (commit && value !== rawValue) { void onCellChange(rowIdx, colIdx, numberedAsShown(value)); return; }
 		el.empty();
 		for (const n of savedNodes) el.appendChild(n);
 		restoreColWidth();
@@ -477,7 +481,7 @@ export function enterEditMode(
 					else restoreNodes();
 				}
 			} else if (newValue !== rawValue) {
-				void onCellChange(rowIdx, colIdx, newValue);
+				void onCellChange(rowIdx, colIdx, numberedAsShown(newValue));
 			} else {
 				restoreNodes();
 			}
@@ -539,6 +543,51 @@ export function enterEditMode(
 		return { atStart: offset === 0, atEnd: offset >= (editor.textContent ?? '').length };
 	};
 
+	/** The caret's line and the lines above it, when the caret is collapsed inside the editor. */
+	const caretLines = (): { line: string; above: string[]; lineStart: number; offset: number } | null => {
+		const s = activeWindow.getSelection();
+		if (!s || s.rangeCount === 0 || !s.isCollapsed) return null;
+		const r = s.getRangeAt(0);
+		if (!editor.contains(r.startContainer)) return null;
+		const before = activeDocument.createRange();
+		before.selectNodeContents(editor);
+		before.setEnd(r.startContainer, r.startOffset);
+		const text = editor.textContent ?? '';
+		const offset = before.toString().length;
+		const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+		const above = lineStart === 0 ? [] : text.slice(0, lineStart - 1).split('\n');
+		return { line: text.slice(lineStart, offset), above, lineStart, offset };
+	};
+
+	/** A line break after a list item starts the next item on the same level. False when the caret is not in one. */
+	const continueListItem = (): boolean => {
+		const at = caretLines();
+		const prefix = at ? continueList(at.line) : null;
+		if (prefix === null) return false;
+		insertTextAtCaret(`\n${prefix}`);
+		return true;
+	};
+
+	/** Backspace at the end of an empty item takes its marker away, then goes up a level. False leaves the key alone. */
+	const backspaceListItem = (): boolean => {
+		const at = caretLines();
+		const result = at ? backspaceInList(at.line, at.above) : null;
+		if (!at || !result) return false;
+		const text = editor.textContent ?? '';
+		editor.textContent = text.slice(0, at.lineStart) + result.replaceWith + text.slice(at.offset);
+		const node = editor.firstChild;
+		const caret = at.lineStart + result.replaceWith.length;
+		if (node) {
+			const range = activeDocument.createRange();
+			range.setStart(node, caret);
+			range.collapse(true);
+			const sel = activeWindow.getSelection();
+			sel?.removeAllRanges();
+			sel?.addRange(range);
+		}
+		return true;
+	};
+
 	editor.addEventListener('keydown', (evt: KeyboardEvent) => {
 		// Stop Ctrl/Meta combos from bubbling to Obsidian's CodeMirror handlers.
 		// The browser handles Ctrl+V / Ctrl+Z / Ctrl+A natively for contenteditable,
@@ -564,6 +613,13 @@ export function enterEditMode(
 			evt.preventDefault();
 			save(evt.key === 'ArrowLeft' ? 'prev' : 'next');
 			editor.blur();
+			return;
+		}
+
+		if ((evt.key === 'Enter' && evt.shiftKey && continueListItem())
+			|| (evt.key === 'Backspace' && !evt.ctrlKey && !evt.metaKey && !evt.altKey && backspaceListItem())) {
+			evt.preventDefault();
+			editor.dispatchEvent(new Event('input', { bubbles: true }));
 			return;
 		}
 

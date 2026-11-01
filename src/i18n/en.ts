@@ -264,6 +264,8 @@ export const en = {
 		'Edit plain text cells in Obsidian\'s own editor, so [[ links, == highlight colors, #tags and / commands complete exactly as in a note. Relies on internal Obsidian APIs and may stop working after an Obsidian update; the built-in editor is used automatically if it is unavailable. Formula cells and typing over a selected cell still use the built-in editor.',
 	settingCellPaddingName: 'Cell padding',
 	settingCellPaddingDesc: 'Space between a cell\'s text and its top and bottom border, in px. 4 is the default; raise it for roomier rows.',
+	settingListStartName: 'Numbered lists start anywhere',
+	settingListStartDesc: 'A numbered list in a cell counts on from the number its first line is written with (3. a, 4. b …). Off: lists always start at 1.',
 	settingOwnXlsxName: 'Open .xlsx files in Rich Table',
 	settingOwnXlsxDesc:
 		'Opening an .xlsx file in the vault shows it as a read-only table, so it can be browsed and searched. Turn this off if another plugin should open .xlsx files.',

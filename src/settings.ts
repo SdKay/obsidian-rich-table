@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: BetterTableSettings = {
 	nativeCellEditor: false,
 	ownXlsxFiles: true,
 	cellPaddingY: DEFAULT_CELL_PADDING_Y,
+	listStartAnyNumber: false,
 	ctrlColHiddenButtons: { locked: [], unlocked: [], xlsxRef: [] },
 };
 
@@ -95,6 +96,18 @@ export class BetterTableSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.cellPaddingY)
 					.onChange(async (value) => {
 						this.plugin.settings.cellPaddingY = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t('settingListStartName'))
+			.setDesc(t('settingListStartDesc'))
+			.addToggle(toggle =>
+				toggle
+					.setValue(this.plugin.settings.listStartAnyNumber)
+					.onChange(async (value) => {
+						this.plugin.settings.listStartAnyNumber = value;
 						await this.plugin.saveSettings();
 					}),
 			);

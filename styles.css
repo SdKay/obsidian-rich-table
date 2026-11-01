@@ -1604,6 +1604,11 @@
 .bt-table .bt-th .bt-list-marker {
 	user-select: none;
 }
+/* A nested item is pushed in by its depth; the marker carries the indent so items stay on one line. */
+.bt-table .bt-td .bt-list-marker[style*="--bt-list-depth"],
+.bt-table .bt-th .bt-list-marker[style*="--bt-list-depth"] {
+	margin-left: calc(var(--bt-list-depth) * 1.5em);
+}
 /* Temporary class applied during autoFitColWidth measurement to get single-line width */
 .bt-nowrap-measure { white-space: nowrap !important; }
 

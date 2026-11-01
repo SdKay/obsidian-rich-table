@@ -18,6 +18,7 @@ import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
 import { growColForChoiceValue } from './renderAutofit';
 import { isInsideNestedTable } from './renderOwnScope';
+import { listLines, listStartAnyNumber } from './cellList';
 import { measureZoomFactor } from './renderGeometry';
 
 /**
@@ -683,19 +684,22 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		// Convert <ul>/<ol> to <br>-separated inline content — the only reliable way
 		// to match <br> line spacing regardless of which theme variables are in use.
 		el.querySelectorAll<HTMLElement>('ul, ol').forEach(list => {
-			if (isInsideNestedTable(list, el)) return;
-			const items = Array.from(list.querySelectorAll<HTMLElement>(':scope > li'));
-			if (items.length === 0) return;
-			const isOrdered = list.tagName === 'OL';
+			// Lists inside another list are read with it, as indented lines.
+			if (list.parentElement?.closest('ul, ol') || isInsideNestedTable(list, el)) return;
+			const lines = listLines(list, 0, listStartAnyNumber());
+			if (lines.length === 0) return;
 			// Wrap in inline-block so the block centers as a unit while items stay left-aligned.
 			// Built inside a detached fragment (not activeDocument itself, which only ever
 			// allows one root child) then moved into place below via replaceChild.
 			const wrapper = createFragment().createDiv({ cls: 'bt-list-block' });
-			items.forEach((item, i) => {
+			lines.forEach((line, i) => {
 				if (i > 0) wrapper.createEl('br');
-				wrapper.createSpan({ cls: 'bt-list-marker', text: isOrdered ? (i + 1) + '. ' : '• ' });
-				Array.from(item.childNodes).forEach(n => wrapper.appendChild(n));
+				const marker = wrapper.createSpan({ cls: 'bt-list-marker', text: `${line.marker} ` });
+				if (line.depth > 0) marker.setCssProps({ '--bt-list-depth': String(line.depth) });
+				line.body.forEach(n => wrapper.appendChild(n));
 			});
+			// Inline-block lists that follow one another would sit side by side on one line.
+			if (list.previousElementSibling?.classList.contains('bt-list-block')) list.before(createEl('br'));
 			list.parentNode?.replaceChild(wrapper, list);
 		});
 	} else {

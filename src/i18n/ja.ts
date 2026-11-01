@@ -236,6 +236,8 @@ export const ja: Dict = {
 		'通常のテキストセルを Obsidian 自身のエディターで編集します。[[ リンク、== のハイライト色、#タグ、/ コマンドの補完がノート本文とまったく同じになります。Obsidian の内部 API に依存するため、Obsidian の更新後に動かなくなる場合があります。利用できないときは自動的に組み込みエディターを使います。数式セル、および選択したセルへそのまま入力する場合は、引き続き組み込みエディターを使います。',
 	settingCellPaddingName: 'セルの内側の余白',
 	settingCellPaddingDesc: 'セル内の文字と上下の枠線との間隔（px）。初期値は 4。大きくすると行がゆったりします。',
+	settingListStartName: '番号付きリストを任意の数字から開始',
+	settingListStartDesc: 'セル内の番号付きリストは、最初の行に書いた数字から数え続けます（3. a、4. b …）。オフの場合は常に 1 から始まります。',
 	settingOwnXlsxName: 'Rich Table で .xlsx ファイルを開く',
 	settingOwnXlsxDesc:
 		'保管庫内の .xlsx ファイルを開くと、閲覧・検索できる読み取り専用の表として表示します。別のプラグインで .xlsx を開きたい場合はオフにしてください。',
