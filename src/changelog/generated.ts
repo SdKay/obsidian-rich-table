@@ -9,6 +9,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.6.2", date: "2026-11-01", changes: [
+		"feat: lists in a cell keep their levels, continue and step back while editing, and can start at any number",
+		"fix: the text in an .xlsx tab can be selected with the mouse and copied",
+		"fix: the empty-block guide fits narrow containers, and the Cornell Notes template is removed",
+		"fix: a merged header being edited grows by its text, not by a column per keystroke",
+		"feat: search marks stay inside the folders and file types Rich Search covers",
+	] },
 	{ version: "1.6.1", date: "2026-10-27", changes: [
 		"docs: list the author's other plugins in the README",
 		"fix: cells are as tight in reading view as in the editor, and the padding is a setting",
