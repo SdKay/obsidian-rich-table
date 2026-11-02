@@ -1644,8 +1644,11 @@
 }
 
 /* Active edit state. The editor box brings the padding, so the cell gives up its own; it has to
- * outrank the doubled cell rule above, or the two would stack and the row would jump. */
-.bt-table.bt-table .bt-editing {
+ * outrank the doubled cell rule above, or the two would stack and the row would jump. A cell that has
+ * stopped being edited keeps the editor until the saved note is drawn again, and gives up its padding
+ * for as long as the editor is there, or the two would stack for that moment and the columns would move. */
+.bt-table.bt-table .bt-editing,
+.bt-table.bt-table :is(.bt-td, .bt-th):has(> .bt-cell-editor) {
 	padding: 0;
 }
 

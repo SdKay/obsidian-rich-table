@@ -92,7 +92,7 @@ export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: 
  *  before the editor's first keystroke, and invoke the returned function
  *  from enterEditMode's own cancel/no-change paths. */
 export function captureColWidthForTextEdit(cellEl: HTMLElement): () => void {
-	delete cellEl.dataset.editRoom;
+	delete cellEl.dataset.editReserved;
 	const table = cellEl.closest('table');
 	const colIdxAttr = cellEl.dataset.col;
 	const colEl = table && colIdxAttr !== undefined ? table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`) : null;
@@ -102,7 +102,7 @@ export function captureColWidthForTextEdit(cellEl: HTMLElement): () => void {
 		if (colEl) colEl.style.width = colWidth;
 		if (table) (table as HTMLElement).style.width = tableWidth;
 		cellEl.removeClass('bt-wrap-edit');
-		delete cellEl.dataset.editRoom;
+		delete cellEl.dataset.editReserved;
 	};
 }
 
@@ -166,17 +166,21 @@ export function growColLiveForTextEdit(cellEl: HTMLElement, editor: HTMLElement,
 	// its own width out of the view. The other columns are measured one by one, not
 	// as the table's width minus this column's: that difference moves by a few px
 	// with every key typed and the limit would creep down with it.
-	const rowEl = table.parentElement;
-	const besideTable = rowEl ? Math.max(0, rowEl.scrollWidth - (table as HTMLElement).offsetWidth) : 0;
-	let others = 0;
-	for (const other of Array.from(table.querySelectorAll<HTMLElement>('col[data-col]'))) {
-		if (other !== colEl) others += other.getBoundingClientRect().width / zoom;
+	// What the others and the strip take is fixed for the length of the edit once first worked out:
+	// the figure shifts by a pixel or two as the column changes, and a limit that moves would not
+	// hold. The view is read every time: a pane that narrows or widens mid-edit moves the limit with it.
+	let reserved = Number(cellEl.dataset.editReserved);
+	if (!Number.isFinite(reserved)) {
+		const rowEl = table.parentElement;
+		const besideTable = rowEl ? Math.max(0, rowEl.scrollWidth - (table as HTMLElement).offsetWidth) : 0;
+		let others = 0;
+		for (const other of Array.from(table.querySelectorAll<HTMLElement>('col[data-col]'))) {
+			if (other !== colEl) others += other.getBoundingClientRect().width / zoom;
+		}
+		reserved = others + besideTable;
+		cellEl.dataset.editReserved = String(reserved);
 	}
-	// Fixed for the length of the edit once first worked out: the figure shifts by a
-	// pixel or two as the column changes, and a limit that moves would not hold.
-	const worked = wrapper ? viewWidthOf(wrapper) - others - besideTable : Number.POSITIVE_INFINITY;
-	const room = Number(cellEl.dataset.editRoom ?? worked);
-	if (Number.isFinite(room)) cellEl.dataset.editRoom = String(room);
+	const room = wrapper ? viewWidthOf(wrapper) - reserved : Number.POSITIVE_INFINITY;
 	const result = editWidth({ needed, current: currentWidth, fixed, room });
 	cellEl.toggleClass('bt-wrap-edit', result.wrap);
 	if (result.width === currentWidth) return;

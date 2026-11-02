@@ -106,6 +106,7 @@ A block is user content in people's notes; breaking it is data loss.
 
 - **Evaluate requests before building them.** Is the need met more simply? Does it fit the ID model, the reducer pattern and the write-back cycle? Is it breaking for existing notes (version bump)? Does it match how Excel/Notion users expect it to behave? Raise concerns before implementing.
 - **Fix the pattern, not the instance.** When a bug shows a cross-cutting invariant enforced by convention, enforce it in the shared code path rather than patching each variant.
+- **Refactor when the architecture is in the way.** While fixing a bug or adding a feature, if the structure is unsound and there is a clearer alternative that lowers complexity, improves performance or makes it more robust, do it, unless it has a serious side effect (much more code, clearly slower, or less robust).
 - **Derive edge cases fully.** When a feature has a symmetry or invertibility property, derive every case from it instead of defaulting to "drop it", and check against a concrete example from the user.
 - **Diagnose with evidence.** After two failed fixes for timing or event-order bugs, stop theorising and add temporary logging; do not stack unverified fixes on unverified fixes.
 - **Verify before claiming.** For anything that cannot be exercised in the test harness (real Obsidian behaviour), say so and ask for confirmation. Do not record a fix's outcome in docs until it is confirmed.

@@ -183,3 +183,30 @@ viewWidth: 736
 	expect(g.lines[0]!, 'the first line is much longer than the others').toBeLessThanOrEqual(g.lines[1]! * 1.3);
 });
 
+
+// The room a column may take follows the pane: when the pane gets narrower while a cell is being edited
+// (a scrollbar appears, the sidebar opens), the column comes back inside it instead of keeping the width
+// worked out for the wider pane.
+test('a pane that narrows during an edit brings the edited column back inside it', { tag: '@geometry' }, async ({ page, renderFull }) => {
+	await page.setViewportSize({ width: 1100, height: 600 });
+	await renderFull(tableSource({ widths: [undefined, undefined, undefined], rows: [{ 0: 'a', 1: 'b', 2: 'some text here' }] }));
+	const CELL1 = 'td[data-row="1"][data-col="1"]';
+	await page.locator(CELL1).click();
+	await page.locator(`${CELL1} .bt-cell-editor`).waitFor();
+	await page.keyboard.press('Control+a');
+	await page.keyboard.type(LONG, { delay: 0 });
+	const read = () => page.evaluate(() => {
+		const w = document.querySelector('.bt-table-wrapper') as HTMLElement;
+		const c = document.querySelector('td[data-row="1"][data-col="1"]') as HTMLElement;
+		return { viewW: w.clientWidth, cellRight: c.getBoundingClientRect().right - w.getBoundingClientRect().left, scrollW: w.scrollWidth };
+	});
+	const wide = await read();
+	expect(wide.cellRight).toBeLessThanOrEqual(wide.viewW + 1);
+
+	await page.evaluate(() => { const p = document.querySelector('.markdown-preview-view') as HTMLElement; p.style.width = `${p.clientWidth - 300}px`; });
+	await page.keyboard.type('x', { delay: 0 });
+	const narrow = await read();
+	expect(narrow.viewW).toBeLessThan(wide.viewW);
+	expect(narrow.cellRight, 'the edited cell stayed as wide as the pane used to allow').toBeLessThanOrEqual(narrow.viewW + 1);
+	expect(narrow.scrollW, 'the table is wider than the narrower pane').toBeLessThanOrEqual(narrow.viewW + 1);
+});

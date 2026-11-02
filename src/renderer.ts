@@ -484,16 +484,21 @@ export async function renderTable(
 	// max-width for one more real resize (table/`resizeObs` already elsewhere
 	// in this file, or the next genuine hover) — a minor cosmetic gap, not
 	// worth reintroducing a hang to close.
-	let viewFrameScheduled = false;
+	// Runs in the observer callback itself, in the frame whose layout it reacts to, so the
+	// strips, the frame and the status bar move together with the table. What stops it
+	// from feeding itself is the signature: the callback does nothing when the boxes it
+	// reads are where they were the last time it ran.
+	let viewFrameSignature = '';
 	const viewFrameResizeObs = new ResizeObserver(() => {
-		if (viewFrameScheduled) return;
-		viewFrameScheduled = true;
-		window.requestAnimationFrame(() => {
-			viewFrameScheduled = false;
-			repositionSelectorStrips();
-			repositionCtrlCol();
-			updateOuterFrame();
-		});
+		const signature = [root, wrapper, table, shell].map(el => {
+			const r = el.getBoundingClientRect();
+			return `${Math.round(r.left * 2)},${Math.round(r.top * 2)},${Math.round(r.width * 2)},${Math.round(r.height * 2)}`;
+		}).join('|');
+		if (signature === viewFrameSignature) return;
+		viewFrameSignature = signature;
+		repositionSelectorStrips();
+		repositionCtrlCol();
+		updateOuterFrame();
 	});
 	// box:'border-box', not the default content-box — root's rendered size
 	// (what getBoundingClientRect(), and therefore updateOuterFrame, actually
@@ -1607,7 +1612,7 @@ export async function renderTable(
 		wrapper.addEventListener('scroll', scheduleSyncScrollThumb);
 		// Content width (columns resized/added) and track width (window/pane
 		// resized, or the divider — Task 7 — moved) both invalidate the mapping.
-		const scrollThumbResizeObs = new ResizeObserver(scheduleSyncScrollThumb);
+		const scrollThumbResizeObs = new ResizeObserver(() => syncScrollThumb());
 		scrollThumbResizeObs.observe(table);
 		scrollThumbResizeObs.observe(statusScrollTrack);
 		component?.register(() => scrollThumbResizeObs.disconnect());
@@ -1819,14 +1824,18 @@ export async function renderTable(
 		applyFreeze(table, thead, tbody, model, zoom);
 	};
 
-	let freezeApplyScheduled = false;
+	// In the callback, like the strips: the frozen cells are placed in the frame whose layout
+	// they match. The sizes it reacts to are the signature, so a re-apply that changes nothing
+	// does not start another.
+	let freezeSignature = '';
 	const freezeResizeObs = new ResizeObserver(() => {
-		if (freezeApplyScheduled) return;
-		freezeApplyScheduled = true;
-		window.requestAnimationFrame(() => {
-			freezeApplyScheduled = false;
-			reapplyFreezeNow();
-		});
+		const signature = [table, wrapper].map(el => {
+			const r = el.getBoundingClientRect();
+			return `${Math.round(r.width * 2)},${Math.round(r.height * 2)}`;
+		}).join('|') + `|${wrapper.scrollWidth},${wrapper.scrollHeight},${wrapper.clientWidth},${wrapper.clientHeight}`;
+		if (signature === freezeSignature) return;
+		freezeSignature = signature;
+		reapplyFreezeNow();
 	});
 	freezeResizeObs.observe(table);
 	// Also watch wrapper: applyFreeze's sticky offsets depend on whether an
@@ -2099,7 +2108,7 @@ export async function renderTable(
 			window.requestAnimationFrame(() => { vScrollThumbSyncScheduled = false; syncVScrollThumb(); });
 		};
 		wrapper.addEventListener('scroll', scheduleSyncVScrollThumb);
-		const vScrollThumbResizeObs = new ResizeObserver(scheduleSyncVScrollThumb);
+		const vScrollThumbResizeObs = new ResizeObserver(() => syncVScrollThumb());
 		vScrollThumbResizeObs.observe(table);
 		vScrollThumbResizeObs.observe(viewScrollTrack);
 		component?.register(() => vScrollThumbResizeObs.disconnect());
@@ -2661,6 +2670,39 @@ export async function renderTable(
 				if (pinnedTotal > 0) table.style.setProperty('width', `${pinnedTotal + chrome}px`);
 			}
 
+			// Every layout read the strips need, taken before the first write below: a read
+			// after a write re-lays the table out, and once per column and row that is the
+			// cost of this whole function.
+			const freezeColsAt = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
+			const freezeRowsAt = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
+			const colOffset = new Map<HTMLElement, number>();
+			for (const c of ownCols(table)) {
+				const ci = c.dataset.col;
+				if (ci === undefined) continue;
+				const frozen = freezeColsAt !== undefined && parseInt(ci) < freezeColsAt;
+				colOffset.set(c, selectorAxisOffset(c, 'x', zoom, frozen));
+			}
+			const rowGeom = new Map<HTMLElement, { top: number; height: number }>();
+			const tableTop = table.getBoundingClientRect().top;
+			const allTrs = [
+				...ownRows(thead),
+				...ownRows(tbody),
+			];
+			for (const tr of allTrs) {
+				if (!tr) continue;
+				const trRect = tr.getBoundingClientRect();
+				rowGeom.set(tr, { top: (trRect.top - tableTop) / zoom, height: trRect.height / zoom });
+			}
+			const handleRow = new Map<number, { frozen: boolean; offset: number; height: number }>();
+			for (const [ri] of rowResizeHandles) {
+				// data-row is 1-based (header=0, data rows=1,2,3…); ri is 0-based model index.
+				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri + 1}"]`);
+				const tr = firstCell?.closest<HTMLElement>('tr');
+				if (!tr) continue;
+				const frozen = freezeRowsAt !== undefined && ri + 1 <= freezeRowsAt;
+				handleRow.set(ri, { frozen, offset: selectorAxisOffset(tr, 'y', zoom, frozen), height: tr.getBoundingClientRect().height / zoom });
+			}
+
 			// Column selector — cells positioned by --cl/--cw relative to the selector's
 			// own left edge, which CSS Grid aligns with the table wrapper automatically.
 			colSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
@@ -2696,7 +2738,7 @@ export async function renderTable(
 					// (see styles.css's .bt-sel-track comment) — see selectorAxisOffset
 					// for which coordinate space --cl needs as a result.
 					const frozen = freezeCols !== undefined && ci < freezeCols;
-					const colX = selectorAxisOffset(c, 'x', zoom, frozen);
+					const colX = colOffset.get(c) ?? 0;
 					const cell = (frozen ? colSel : colTrack).createDiv({ cls: 'bt-sel-cell', attr: { 'aria-label': t('dragReorderCol') } });
 					cell.dataset.idx = String(ci);
 					cell.setText(colIndexToLetter(ci));
@@ -2715,25 +2757,21 @@ export async function renderTable(
 			// Row selector — cells positioned by --rt/--rh relative to the selector's
 			// own top edge, which CSS Grid aligns with the table wrapper automatically.
 			rowSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
-			const allTrs = [
-				...ownRows(thead),
-				...ownRows(tbody),
-			];
 			// Row selector — one cell per physical row, independent of rowspan merges.
 			// Use getBoundingClientRect() for row positions: tr.offsetTop is relative to
 			// tr.offsetParent which can be tbody (not table), causing all tbody rows to
 			// report offsetTop=0. getBoundingClientRect() always gives viewport coords
 			// so subtracting table's top gives the correct table-relative offset.
-			const tableTop = table.getBoundingClientRect().top;
 			for (const tr of allTrs) {
 				if (!tr) continue;
-				const trRect = tr.getBoundingClientRect();
+				const g = rowGeom.get(tr);
+				if (!g) continue;
 				// Both operands are visual (getBoundingClientRect); rowTop/rowH feed
 				// --rt/--rh below, consumed as logical top/height — divide the
 				// difference/size by zoom, same correction shape as
 				// scrollContentOffset's own (NO_ZOOM's doc comment).
-				const rowTop = (trRect.top - tableTop) / zoom;
-				const rowH   = trRect.height / zoom;
+				const rowTop = g.top;
+				const rowH   = g.height;
 				if (tr.hasClass('bt-row-indicator')) {
 					// Hidden row groups get no selector-strip cell — the in-table
 					// row itself is the single "click to show" entry point.
@@ -2801,21 +2839,18 @@ export async function renderTable(
 				// extension of that line.
 				const colFrozen = freezeCols !== undefined && parseInt(dc) < freezeCols;
 				// Seam sits on the column's RIGHT edge; same frozen/non-frozen split as --cl above.
-				h.setCssProps({ '--rx': `${selectorAxisOffset(c, 'x', zoom, colFrozen) + (parseFloat(c.style.width) || 0)}px` });
+				h.setCssProps({ '--rx': `${(colOffset.get(c) ?? 0) + (parseFloat(c.style.width) || 0)}px` });
 				h.toggleClass('bt-sel-cell-frozen', colFrozen);
 				const colDesiredParent = colFrozen ? colSel : colTrack;
 				if (h.parentElement !== colDesiredParent) colDesiredParent.appendChild(h);
 			}
 			for (const [ri, h] of rowResizeHandles) {
-				// data-row is 1-based (header=0, data rows=1,2,3…); ri is 0-based model index.
-				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri + 1}"]`);
-				const tr = firstCell?.closest<HTMLElement>('tr');
-				if (tr) {
-					const rowResizeFrozen = freezeRows !== undefined && ri + 1 <= freezeRows;
+				const g = handleRow.get(ri);
+				if (g) {
 					// Row's BOTTOM edge — vertical mirror of the column seams above.
-					h.setCssProps({ '--ry': `${selectorAxisOffset(tr, 'y', zoom, rowResizeFrozen) + tr.getBoundingClientRect().height / zoom}px` });
-					h.toggleClass('bt-sel-cell-frozen', rowResizeFrozen);
-					const rowDesiredParent = rowResizeFrozen ? rowSel : rowTrack;
+					h.setCssProps({ '--ry': `${g.offset + g.height}px` });
+					h.toggleClass('bt-sel-cell-frozen', g.frozen);
+					const rowDesiredParent = g.frozen ? rowSel : rowTrack;
 					if (h.parentElement !== rowDesiredParent) rowDesiredParent.appendChild(h);
 					h.removeClass('bt-sel-resize-hidden');
 				} else {
@@ -3510,6 +3545,8 @@ export async function renderTable(
 		// change — still differs and re-runs). positionSelectors() stays
 		// unconditional: it only reads rects and writes to the non-observed
 		// selector strips, so it can't feed back.
+		// Not rebuilt in the callback: a rebuild replaces every label cell, and one that runs while
+		// a strip cell is being dragged takes the cell away from under the pointer.
 		let selRebuildScheduled = false;
 		const selResizeObs = new ResizeObserver(() => {
 			if (!colSel.hasClass('bt-strip-visible') && !rowSel.hasClass('bt-strip-visible')) return;
