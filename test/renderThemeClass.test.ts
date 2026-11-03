@@ -34,10 +34,10 @@ describe('applyThemeClass', () => {
 
 	it('replaces an existing theme class instead of stacking a second one', () => {
 		const el = fakeEl(['bt-render-root', 'bt-has-strips', 'bt-theme-academic']);
-		applyThemeClass(el, 'plain');
+		applyThemeClass(el, 'grid');
 		const classes = el.classList as string[];
 		expect(classes).not.toContain('bt-theme-academic');
-		expect(classes).toContain('bt-theme-plain');
+		expect(classes).toContain('bt-theme-grid');
 		expect(classes).toContain('bt-has-strips'); // survives the swap
 	});
 

@@ -349,7 +349,8 @@ export const test = base.extend<{
 				await viewer.open(vault.getAbstractFileByPath(open));
 			}, { files, open, searchHost: opts?.searchHost, pendingReveal: opts?.pendingReveal, initialQuery: opts?.initialQuery });
 			await Promise.race([
-				page.locator('.bt-table').first().waitFor(),
+				// Attached, not visible: a table stays hidden until the plugin's stylesheet is there.
+				page.locator('.bt-table').first().waitFor({ state: 'attached' }),
 				page.locator('.bt-error').first().waitFor(),
 				page.locator('.bt-empty-workbook').first().waitFor(),
 			]);
@@ -511,7 +512,8 @@ export const test = base.extend<{
 			// outcome — a rendered table, or (an xlsx-backed block whose file
 			// can't be resolved/read) the error banner render() falls back to.
 			await Promise.race([
-				page.locator('.bt-table').first().waitFor(),
+				// Attached, not visible: a table stays hidden until the plugin's stylesheet is there.
+				page.locator('.bt-table').first().waitFor({ state: 'attached' }),
 				page.locator('.bt-error').first().waitFor(),
 			]);
 

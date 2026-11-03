@@ -22,24 +22,24 @@ test.describe('ui-language', () => {
 
 	test('English is the default', async ({ page, renderFull }) => {
 		await renderFull(SOURCE);
-		expect(await themeMenuTitles(page)).toEqual(['Default', 'Academic 📐', 'Grid 🔲', 'Plain 🙂']);
+		expect(await themeMenuTitles(page)).toEqual(['Default', 'Academic 📐', 'Grid 🔲']);
 	});
 
 	test('Chinese keeps its theme names', async ({ page, renderFull }) => {
 		await useLanguage(page, 'zh');
 		await renderFull(SOURCE);
-		expect(await themeMenuTitles(page)).toEqual(['默认', '学术 📐', '网格 🔲', '朴素 🙂']);
+		expect(await themeMenuTitles(page)).toEqual(['默认', '学术 📐', '网格 🔲']);
 	});
 
 	test('Japanese translates the UI but themes fall back to English', async ({ page, renderFull }) => {
 		await useLanguage(page, 'ja');
 		await renderFull(SOURCE);
-		expect(await themeMenuTitles(page)).toEqual(['デフォルト', 'Academic 📐', 'Grid 🔲', 'Plain 🙂']);
+		expect(await themeMenuTitles(page)).toEqual(['デフォルト', 'Academic 📐', 'Grid 🔲']);
 	});
 
 	test('an unsupported language falls back to English everywhere', async ({ page, renderFull }) => {
 		await useLanguage(page, 'ru');
 		await renderFull(SOURCE);
-		expect(await themeMenuTitles(page)).toEqual(['Default', 'Academic 📐', 'Grid 🔲', 'Plain 🙂']);
+		expect(await themeMenuTitles(page)).toEqual(['Default', 'Academic 📐', 'Grid 🔲']);
 	});
 });

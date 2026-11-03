@@ -167,7 +167,7 @@ export interface TableModelV2 {
 	styles: StyleRuleV2[];
 	footer?: string | string[];
 	locked?: boolean;
-	theme?: string;   // e.g. 'academic' | 'plain' — absent = default (see src/themes/)
+	theme?: string;   // e.g. 'academic' | 'grid' — absent = default (see src/themes/)
 	/** When true, only the title (if any) and header row render; body and footer are hidden. */
 	collapsed?: boolean;
 	/** Display-only row sort — never reorders `rows[]` itself, applied at render time. */

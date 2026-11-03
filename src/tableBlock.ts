@@ -18,7 +18,7 @@ import { clearAllLiveEdits } from './renderEditHandoff';
 import { buildBlankTable } from './blankTable';
 import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
-import { resolveDefaultTheme } from './themes';
+import { displayTheme, resolveDefaultTheme } from './themes';
 import { readXlsxAsModel, writeXlsxOps, isXlsxWritableOp, type XlsxWritableOp } from './xlsxSource';
 import { settleRenderedTables } from './renderAutofit';
 import { markSpans, markableText, stripSearchMarks, type Marked } from './searchHighlight';
@@ -499,8 +499,11 @@ export class TableBlock extends MarkdownRenderChild {
 			// render entirely rather than showing the default template as if it
 			// were the block's real (about-to-be-overwritten) content.
 			if (active && !isEmpty) {
+				// A theme that no longer exists is drawn as the one new tables get. Only for drawing: the model
+				// written back keeps the theme the note names.
+				const shown = displayTheme(active.theme, this.plugin.settings.defaultTheme);
 				await renderTable(
-					active,
+					shown === active.theme ? active : { ...active, theme: shown },
 					() => this.plugin.choiceRegistry,
 					tmp,
 					this.plugin.app,
@@ -1482,11 +1485,6 @@ export class TableBlock extends MarkdownRenderChild {
 		const snapshot = this.containerEl.cloneNode(true) as HTMLElement;
 		stripSearchMarks(snapshot);
 		renderCache.set(this.cacheKey, snapshot);
-		// Freeze any running theme animations now — this root is about to be replaced by
-		// the re-render this write triggers, so there's nothing to lose visually, and the
-		// main thread is freed up to resolve the write promptly instead of competing with
-		// continuous repaints (see .bt-write-pending in styles.css).
-		this.renderedRoot?.addClass('bt-write-pending');
 
 		await new Promise<void>(resolve => { window.setTimeout(resolve, 0); });
 		this.writeBackScheduled = false;

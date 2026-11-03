@@ -273,6 +273,16 @@ export function viewSpan(
  * shell's box on its own — see renderer.ts's own updateOuterFrame for the
  * full reasoning). Also mirrors the status bar's own --sb-pinned-l/-w.
  */
+/**
+ * Writes the frame's box on the elements that are laid out from it: the frame and the resize handles, all
+ * children of the shell. Not on the shell itself, whose every descendant (the whole table) would inherit
+ * the values and recompute its style each time they change.
+ */
+export function setFrameBox(shell: HTMLElement, box: { l: number; t: number; w: number; h: number }): void {
+	const props = { '--of-l': `${box.l}px`, '--of-t': `${box.t}px`, '--of-w': `${box.w}px`, '--of-h': `${box.h}px` };
+	for (const el of Array.from(shell.querySelectorAll<HTMLElement>(':scope > .bt-outer-frame, :scope > .bt-view-resize'))) el.setCssProps(props);
+}
+
 export function applyOuterFrame(root: HTMLElement): void {
 	const shell = root.closest<HTMLElement>('.bt-render-root-shell');
 	const frame = shell?.querySelector<HTMLElement>(':scope > .bt-outer-frame');
@@ -305,10 +315,5 @@ export function applyOuterFrame(root: HTMLElement): void {
 	// Raw visual px, no zoom division — `.bt-outer-frame` lives in `shell`,
 	// which is never zoomed (see renderer.ts's own `shell` doc comment), same
 	// treatment as the status bar's own --sb-* properties.
-	shell.setCssProps({
-		'--of-l': `${left - shellRect.left}px`,
-		'--of-t': `${rr.top - shellRect.top}px`,
-		'--of-w': `${right - left}px`,
-		'--of-h': `${bottom - rr.top}px`,
-	});
+	setFrameBox(shell, { l: left - shellRect.left, t: rr.top - shellRect.top, w: right - left, h: bottom - rr.top });
 }

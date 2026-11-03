@@ -487,7 +487,6 @@ Add `theme:` to the YAML front-matter to apply a built-in visual theme:
 ```yaml
 theme: academic   # LaTeX booktabs style — three horizontal rules, no grid lines
 theme: grid       # Excel "All Borders" style — full grid, bold outer frame + header rule
-theme: plain      # Colorful gradient header + animated border
 ```
 
 | Theme | Description |
@@ -495,9 +494,8 @@ theme: plain      # Colorful gradient header + animated border
 | *(none)* | Default — no special styling |
 | `academic 📐` | Inspired by LaTeX's booktabs package: toprule / midrule / bottomrule, no vertical lines, no cell backgrounds |
 | `grid 🔲` | Full grid on every cell, a bolder outer frame, and a bolder rule separating the header from the data |
-| `plain 🙂` | Animated rainbow border, gradient header with breathing effect, cursor-reactive row glow |
 
-Themes are purely visual — they never affect data or layout.
+Themes are purely visual — they never affect data or layout. A table naming a theme that no longer exists (such as the removed `plain`) is drawn with the theme new tables get; its note keeps the name it has.
 
 **Quick customization without a theme:** for a small tweak (not a full theme), set one of these CSS variables on `.bt-render-root` in an Obsidian CSS snippet — no selectors needed:
 

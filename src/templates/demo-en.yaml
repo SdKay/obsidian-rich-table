@@ -98,7 +98,7 @@ rows:
         - Hover left/top selector strip: select row/col, apply style to all
         - Drag ⠿ to reorder · dbl-click handle to auto-fit · ⊞ to fit all columns
         - 🔒 Lock (top-left): prevent editing · click title or footer to edit them
-        - 🎨 Theme picker (left of row strip): try `academic 📐` or `plain 🙂`
+        - 🎨 Theme picker (left of row strip): try `academic 📐` or `grid 🔲`
         - 🗂️ Views icon (left column): switch to a Kanban board (choice columns) or Calendar (date columns)
 merges:
   - anchor: r_000002.c_000002

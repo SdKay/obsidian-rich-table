@@ -22,7 +22,9 @@ import { copyRangeToClipboard, copyRangeAsMarkdown, parseHtmlTableWithMerges, pa
 import { enterLineEdit } from './renderEditMode';
 import { colMinWidth } from './renderAutofit';
 import { setupColResize, bindResizeHandle } from './renderResize';
-import { selectorAxisOffset, computeVisibleGeom as computeVisibleGeomPure, viewSpan, type VisibleGeom } from './renderGeometry';
+import { createLayoutSync } from './layoutSync';
+import { shellStyled, whenStylesReady } from './stylesReady';
+import { selectorAxisOffset, computeVisibleGeom as computeVisibleGeomPure, viewSpan, setFrameBox, type VisibleGeom } from './renderGeometry';
 import { applyZoom, zoomFactor, renderZoomControl } from './renderZoom';
 import { bindScrollSync } from './renderScrollSync';
 import { type CellOpEntry, openCellPanel, buildAlignCellOp } from './renderPanel';
@@ -317,6 +319,16 @@ export async function renderTable(
 	// also the more intuitive behaviour (Excel's own status bar never scales
 	// itself along with the sheet).
 	const shell = container.createDiv({ cls: 'bt-render-root-shell' });
+	// Hidden until the plugin's stylesheet shows it: Obsidian reads styles.css only after onload, and a note
+	// already open has its tables drawn in between. Set inline, so it holds while there is no stylesheet; a
+	// CSS variable would need that stylesheet to mean anything.
+	shell.setCssProps({ visibility: 'hidden' });
+	// Lets the parts of the table transition from the frame after the stylesheet showed it; see styles.css.
+	// Asked from the next frame: the shell is built off-screen and attached after this function returns.
+	window.requestAnimationFrame(() => whenStylesReady(
+		() => window.requestAnimationFrame(() => shell.addClass('bt-settled')),
+		{ isReady: () => shellStyled(shell), nextFrame: fn => { window.requestAnimationFrame(fn); } },
+	));
 	// Root container with position:relative so all overlay elements (selectors,
 	// edge-add strips) can use position:absolute and stay naturally inside
 	// Obsidian's content pane — no viewport coordinate math needed.
@@ -484,33 +496,6 @@ export async function renderTable(
 	// max-width for one more real resize (table/`resizeObs` already elsewhere
 	// in this file, or the next genuine hover) — a minor cosmetic gap, not
 	// worth reintroducing a hang to close.
-	// Runs in the observer callback itself, in the frame whose layout it reacts to, so the
-	// strips, the frame and the status bar move together with the table. What stops it
-	// from feeding itself is the signature: the callback does nothing when the boxes it
-	// reads are where they were the last time it ran.
-	let viewFrameSignature = '';
-	const viewFrameResizeObs = new ResizeObserver(() => {
-		const signature = [root, wrapper, table, shell].map(el => {
-			const r = el.getBoundingClientRect();
-			return `${Math.round(r.left * 2)},${Math.round(r.top * 2)},${Math.round(r.width * 2)},${Math.round(r.height * 2)}`;
-		}).join('|');
-		if (signature === viewFrameSignature) return;
-		viewFrameSignature = signature;
-		repositionSelectorStrips();
-		repositionCtrlCol();
-		updateOuterFrame();
-	});
-	// box:'border-box', not the default content-box — root's rendered size
-	// (what getBoundingClientRect(), and therefore updateOuterFrame, actually
-	// reads) changes on a padding-only update too (hover adds --bt-sel-pad),
-	// which never touches the content box and so never fires a content-box
-	// observer at all. prepareLayout/restoreLayout already call
-	// updateOuterFrame() directly for that exact case (synchronous, no need to
-	// wait on this observer) — border-box mode here is the general backstop,
-	// for any size-affecting change neither of those two functions caused.
-	viewFrameResizeObs.observe(root, { box: 'border-box' });
-	viewFrameResizeObs.observe(wrapper, { box: 'border-box' });
-	component?.register(() => viewFrameResizeObs.disconnect());
 
 	// Drag-resize handles (edit mode only) — dragging the view's OUTER edge
 	// (bottom = height, right = width, corner = both), like resizing the whole
@@ -621,6 +606,41 @@ export async function renderTable(
 	// every one of THOSE call sites gets the correction for free without
 	// individually knowing zoom exists.
 	const computeVisibleGeom = () => computeVisibleGeomPure(table, root, wrapper, zoom);
+
+	// Everything that follows the table's layout is registered here and runs in one fixed order; see
+	// layoutSync.ts. A strip cell being dragged or held makes the rebuild of the cells wait.
+	let stripCellBusy = () => false;
+	let markStripsStale = () => { /* assigned in the selector block */ };
+	const watchedBoxes: HTMLElement[] = [];
+	const layoutSync = createLayoutSync({
+		// A watched track counts by its size only: the round itself moves it (with the status bar), and its
+		// thumb depends on its size alone.
+		signature: () => [root, wrapper, table, shell, ...watchedBoxes].map((el, i) => {
+			const r = el.getBoundingClientRect();
+			const size = `${Math.round(r.width * 2)},${Math.round(r.height * 2)}`;
+			return i < 4 ? `${Math.round(r.left * 2)},${Math.round(r.top * 2)},${size}` : size;
+		}).join('|') + `|${wrapper.scrollWidth},${wrapper.scrollHeight},${wrapper.clientWidth},${wrapper.clientHeight}`,
+		isBusy: () => stripCellBusy(),
+		nextFrame: fn => { window.requestAnimationFrame(fn); },
+	});
+
+	// The one observer for the layout: the boxes below are the ones every consumer reads. box:'border-box'
+	// on root and wrapper, not the default content-box: their rendered size (what getBoundingClientRect(),
+	// and therefore updateOuterFrame, reads) changes on a padding-only update too (hover adds --bt-sel-pad),
+	// which never touches the content box. prepareLayout/restoreLayout call updateOuterFrame() directly
+	// for that case; this is the backstop for any size-affecting change neither of them caused.
+	layoutSync.register('place', () => repositionCtrlCol());
+	layoutSync.register('place', () => updateOuterFrame());
+	const layoutObserver = new ResizeObserver(() => layoutSync.run());
+	layoutObserver.observe(root, { box: 'border-box' });
+	layoutObserver.observe(wrapper, { box: 'border-box' });
+	layoutObserver.observe(table);
+	component?.register(() => layoutObserver.disconnect());
+	/** A box only one consumer cares about (a scrollbar track) is watched by the same observer. */
+	const watchLayout = (el: HTMLElement) => { watchedBoxes.push(el); layoutObserver.observe(el); };
+
+	// A resize the browser has no way of reporting (a column dragged, the page zoomed) says so itself.
+	table.addEventListener('bt-layout-changed', () => { markStripsStale(); layoutSync.schedule(); });
 
 	// How far left of the table's visible edge the ctrl column needs to clear.
 	// The full SEL_UNIT+AUTOFIT_OFFSET amount is sized to sit just left of the
@@ -1503,7 +1523,7 @@ export async function renderTable(
 			footerEl.setCssProps({ '--bt-footer-max-width': `${contentRow.getBoundingClientRect().width / zoom}px` });
 		};
 		positionFooter();
-		new ResizeObserver(positionFooter).observe(table);
+		layoutSync.register('place', positionFooter);
 	}
 
 	// ── Status bar ────────────────────────────────────────────────────────────
@@ -1612,10 +1632,8 @@ export async function renderTable(
 		wrapper.addEventListener('scroll', scheduleSyncScrollThumb);
 		// Content width (columns resized/added) and track width (window/pane
 		// resized, or the divider — Task 7 — moved) both invalidate the mapping.
-		const scrollThumbResizeObs = new ResizeObserver(() => syncScrollThumb());
-		scrollThumbResizeObs.observe(table);
-		scrollThumbResizeObs.observe(statusScrollTrack);
-		component?.register(() => scrollThumbResizeObs.disconnect());
+		watchLayout(statusScrollTrack);
+		layoutSync.register('place', syncScrollThumb);
 
 		// Dragging the thumb sets wrapper.scrollLeft directly — this is pure local
 		// UI state (like scroll position itself), never written back to the model.
@@ -1743,12 +1761,7 @@ export async function renderTable(
 		// visual px with no `/ zoom` correction, same treatment as --sb-* just
 		// above (that comment has the full reasoning for why dividing here
 		// would double-correct an already-correctly-scaled distance).
-		shell.setCssProps({
-			'--of-l': `${left - shellRect.left}px`,
-			'--of-t': `${rr.top - shellRect.top}px`,
-			'--of-w': `${right - left}px`,
-			'--of-h': `${bottom - rr.top}px`,
-		});
+		setFrameBox(shell, { l: left - shellRect.left, t: rr.top - shellRect.top, w: right - left, h: bottom - rr.top });
 		// Center the title over <table>'s own box, not the wider box
 		// text-align:center actually centers it in: an editable table's
 		// contentRow permanently reserves addColBtn's width alongside
@@ -1824,27 +1837,10 @@ export async function renderTable(
 		applyFreeze(table, thead, tbody, model, zoom);
 	};
 
-	// In the callback, like the strips: the frozen cells are placed in the frame whose layout
-	// they match. The sizes it reacts to are the signature, so a re-apply that changes nothing
-	// does not start another.
-	let freezeSignature = '';
-	const freezeResizeObs = new ResizeObserver(() => {
-		const signature = [table, wrapper].map(el => {
-			const r = el.getBoundingClientRect();
-			return `${Math.round(r.width * 2)},${Math.round(r.height * 2)}`;
-		}).join('|') + `|${wrapper.scrollWidth},${wrapper.scrollHeight},${wrapper.clientWidth},${wrapper.clientHeight}`;
-		if (signature === freezeSignature) return;
-		freezeSignature = signature;
-		reapplyFreezeNow();
-	});
-	freezeResizeObs.observe(table);
-	// Also watch wrapper: applyFreeze's sticky offsets depend on whether an
-	// axis actually scrolls (wrapper vs table size), which a manual
-	// viewWidth/viewHeight drag can flip without table itself ever resizing —
-	// reported as a frozen column staying at its pre-drag position (never
-	// re-measured) while narrowing the view past the point scroll engages.
-	freezeResizeObs.observe(wrapper);
-	component?.register(() => freezeResizeObs.disconnect());
+	// The frozen cells are placed in the frame whose layout they match. It reads whether an axis scrolls
+	// (wrapper against table), which a drag of the view's size can flip without the table resizing, so
+	// the wrapper's own boxes are part of what the layout signature watches.
+	layoutSync.register('reflow', () => reapplyFreezeNow());
 
 	// Mark root to activate the padding-reservation + resting-state clip-path
 	// CSS that every left/top/right strip (row/col selectors, edge-add "+"
@@ -1974,17 +1970,7 @@ export async function renderTable(
 			// viewport (wide table, horizontal scroll), since the cap then
 			// exceeds what left:0/right:0 would render anyway.
 			addRowBtn.setCssProps({ '--strip-max-width': `${contentRow.getBoundingClientRect().width / zoom}px` });
-			// Expose full table geometry so themes can compute table-local cursor coordinates.
-			// Themes subtract these from --bt-mx/--bt-my to get cursor position within
-			// the table's own coordinate space (e.g. for cursor-glow on row hover) — this
-			// stays the ACTUAL table rect (not the clamped visible region) so the math is
-			// correct even while scrolled.
-			root.setCssProps({
-				'--bt-tbl-l': `${tr.left - rr.left}px`,
-				'--bt-tbl-t': `${g.tt}px`,
-				'--bt-tbl-w': `${tr.width}px`,
-				'--bt-tbl-h': `${g.th}px`,
-			});
+
 			return true;
 		};
 		repositionEdgeStrips = (geom) => { positionEdgeStrips(geom); };
@@ -2016,26 +2002,10 @@ export async function renderTable(
 		hideEdgeStrips = scheduleHide;
 
 		// Reposition when table geometry changes (column resize, row height change).
-		table.addEventListener('bt-layout-changed', () => {
-			if (addRowBtn.hasClass('bt-strip-visible')) positionEdgeStrips();
-		});
-
-		// Also reposition when the table naturally grows/shrinks (e.g. cell editing
-		// adds lines via Shift+Enter) — bt-layout-changed is only fired by explicit
-		// resize ops, not by the browser's natural reflow.
-		//
-		// Called directly, not deferred another frame via requestAnimationFrame —
-		// see the matching selResizeObs comment (below, for the row/column
-		// selector strips) for why: deferring here produced the exact same
-		// visible "table resizes, then the +add strip catches up a beat later"
-		// during zoom, and calling synchronously is equally safe (only sets CSS
-		// custom properties on addRowBtn/addColBtn/root, none of which is the
-		// observed table, so no ResizeObserver-loop risk).
-		const resizeObs = new ResizeObserver(() => {
-			if (addRowBtn.hasClass('bt-strip-visible')) positionEdgeStrips();
-		});
-		resizeObs.observe(table);
-		component?.register(() => resizeObs.disconnect());
+		// Follows the table when it grows or shrinks by itself (cell editing adds a line) as well as when a
+		// resize says so. It sets the add column's height and the add row's max-width, which can change
+		// the layout, so it runs in the phase for that.
+		layoutSync.register('reflow', () => { if (addRowBtn.hasClass('bt-strip-visible')) positionEdgeStrips(); });
 
 		// Horizontal scroll inside the wrapper doesn't move the wrapper (only the table
 		// content within it), so no resize/layout event fires — reposition the edge
@@ -2072,9 +2042,7 @@ export async function renderTable(
 			viewScroll.setCssProps({ '--strip-height': `${geom.vh}px` });
 		};
 		window.requestAnimationFrame(() => positionViewScroll());
-		table.addEventListener('bt-layout-changed', () => positionViewScroll());
-		new ResizeObserver(() => positionViewScroll()).observe(table);
-		new ResizeObserver(() => positionViewScroll()).observe(wrapper);
+		layoutSync.register('place', () => positionViewScroll());
 		wrapper.addEventListener('scroll', () => positionViewScroll());
 
 		// Custom scrollbar synced to wrapper's real scrollTop/scrollHeight/
@@ -2108,10 +2076,8 @@ export async function renderTable(
 			window.requestAnimationFrame(() => { vScrollThumbSyncScheduled = false; syncVScrollThumb(); });
 		};
 		wrapper.addEventListener('scroll', scheduleSyncVScrollThumb);
-		const vScrollThumbResizeObs = new ResizeObserver(() => syncVScrollThumb());
-		vScrollThumbResizeObs.observe(table);
-		vScrollThumbResizeObs.observe(viewScrollTrack);
-		component?.register(() => vScrollThumbResizeObs.disconnect());
+		watchLayout(viewScrollTrack);
+		layoutSync.register('place', syncVScrollThumb);
 
 		// Dragging the thumb sets wrapper.scrollTop directly — pure local UI
 		// state, never written back to the model, mirroring the horizontal
@@ -2481,8 +2447,6 @@ export async function renderTable(
 		// the arg lets that parameter's default (a fresh computeVisibleGeom())
 		// take over, exactly as before this parameter existed.
 		window.requestAnimationFrame(() => positionCtrlCol());
-		table.addEventListener('bt-layout-changed', () => positionCtrlCol());
-		new ResizeObserver(() => positionCtrlCol()).observe(table);
 		// A wide table shifted right by --bt-sel-pad-left on hover doesn't change the
 		// table's own size (it just overflows less/more), so ResizeObserver won't fire
 		// — the mouseenter handler calls this explicitly after prepareLayout instead.
@@ -3494,73 +3458,24 @@ export async function renderTable(
 		rowSel.addEventListener('pointerup', () => { if (endPress('row')) return; endDrag('row'); endReorder('row'); endReorderAgg(); });
 		rowSel.addEventListener('pointercancel', () => cancelPress('row'));
 
-		// Column/row resize changes cell geometry → reposition + rebuild selector strips
-		table.addEventListener('bt-layout-changed', () => {
-			if (colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible')) {
-				positionSelectors();
-				rebuild();
-			}
+		// The strips follow the layout like everything else. The cells are rebuilt only when the table is not
+		// the size they were last built for, and not while one of them is being dragged or held (a rebuild
+		// replaces every cell, which would take the one under the pointer away). A resize that says so
+		// (a column dragged, the page zoomed) makes the cells stale even when the table's size is the same.
+		const stripsShown = () => colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible');
+		layoutSync.register('place', () => { if (stripsShown()) positionSelectors(); });
+		layoutSync.register('rebuild', () => { if (stripsShown() && tableResizedSinceRebuild()) rebuildAndRecordSize(); });
+		markStripsStale = () => { lastRebuiltW = -1; lastRebuiltH = -1; };
+		stripCellBusy = () => selDragging || reorderAxis !== null || pressed !== null;
+		// Every way of holding a strip cell ends with the pointer coming up or being cancelled, and the
+		// state is cleared by the handlers on the cell first, so the rebuild that waited is done after them.
+		const settleAfterPointer = () => window.setTimeout(() => layoutSync.settle(), 0);
+		activeDocument.addEventListener('pointerup', settleAfterPointer, true);
+		activeDocument.addEventListener('pointercancel', settleAfterPointer, true);
+		component?.register(() => {
+			activeDocument.removeEventListener('pointerup', settleAfterPointer, true);
+			activeDocument.removeEventListener('pointercancel', settleAfterPointer, true);
 		});
-
-		// Also reposition when the table's rendered box changes for a reason that
-		// never fires bt-layout-changed — page zoom (Ctrl+/Ctrl-) chief among them,
-		// same gap already fixed for positionEdgeStrips/positionCtrlCol above.
-		// Without this, the strips stayed at their pre-zoom screen position until
-		// some unrelated click happened to trigger a full rebuild — reported as the
-		// row selector visibly sinking into the table at higher zoom levels.
-		//
-		// positionSelectors() is called directly, not deferred via
-		// requestAnimationFrame: ResizeObserver notifications already run after
-		// layout but before that frame's paint, so calling synchronously lands
-		// the corrected position in the SAME frame the table itself resized —
-		// deferring it was reported as a visible two-step "table resizes, then
-		// the selector visibly catches up a beat later" during continuous
-		// zooming (same fix applied to positionEdgeStrips' own observer above,
-		// for the same symptom on the +add strips). Safe to call synchronously
-		// (no ResizeObserver-loop risk): it only sets CSS custom properties on
-		// colSel/rowSel, which aren't observed and don't feed back into table's
-		// own size — same reasoning as positionCtrlCol's observer, which has
-		// always called its handler directly.
-		//
-		// rebuild(), unlike positionSelectors(), IS deferred via
-		// requestAnimationFrame — it re-measures and re-pins auto-layout column
-		// widths onto <col> elements that are themselves children of the
-		// observed table (see rebuild()'s !hasExplicitWidths branch), and
-		// writing a layout-affecting style from inside this same ResizeObserver
-		// callback risks a "loop completed with undelivered notifications"
-		// warning if that write itself changes table's box. Without calling
-		// rebuild() here at all, a table with no explicit column widths (its
-		// rendered widths depend on the available container width, unlike a
-		// fixed-px table) went stale on any resize that isn't an explicit
-		// column-drag — reported as the selector's per-column boundaries
-		// visibly drifting out of alignment with the table's own columns.
-		// Guard against a self-induced ResizeObserver loop: rebuild() re-pins
-		// <col> widths, which resizes the table and re-fires THIS observer. When
-		// both row+col freeze add sticky positioning, the re-measured widths can
-		// come back a hair different each pass and never settle, so rebuild()
-		// keeps running every frame and pins the main thread — reported as
-		// Obsidian hanging when adding row-freeze to an already-column-frozen
-		// table. Skipping the rebuild when the table's size matches what the LAST
-		// rebuild produced breaks that loop (a genuine resize — zoom, container
-		// change — still differs and re-runs). positionSelectors() stays
-		// unconditional: it only reads rects and writes to the non-observed
-		// selector strips, so it can't feed back.
-		// Not rebuilt in the callback: a rebuild replaces every label cell, and one that runs while
-		// a strip cell is being dragged takes the cell away from under the pointer.
-		let selRebuildScheduled = false;
-		const selResizeObs = new ResizeObserver(() => {
-			if (!colSel.hasClass('bt-strip-visible') && !rowSel.hasClass('bt-strip-visible')) return;
-			positionSelectors();
-			if (!tableResizedSinceRebuild()) return;
-			if (selRebuildScheduled) return;
-			selRebuildScheduled = true;
-			window.requestAnimationFrame(() => {
-				selRebuildScheduled = false;
-				rebuildAndRecordSize();
-			});
-		});
-		selResizeObs.observe(table);
-		component?.register(() => selResizeObs.disconnect());
 
 		// Scroll: repositions the selector strips, the edge-add strips, and the
 		// ctrl column — three former independent listeners, each spending 3
@@ -3674,36 +3589,6 @@ export async function renderTable(
 		updateOuterFrame();
 	}
 
-	// ── Cursor-position CSS variables (base layer, usable by any theme) ────────
-	// Themes can read --bt-mx/--bt-my to create cursor-reactive visual effects
-	// (e.g. cursor glow, gradient follow). Rect is cached on enter to avoid
-	// forced-layout on every mousemove.
-	{
-		let rootRect: DOMRect | null = null;
-		root.addEventListener('mouseenter', () => { rootRect = root.getBoundingClientRect(); });
-		root.addEventListener('mousemove', (e: MouseEvent) => {
-			if (isNoteScrolling()) return;
-			// Skip while a write-back is pending on this (about-to-be-replaced) root —
-			// same reasoning as .bt-write-pending's animation pause: every write here
-			// repaints a theme's cursor-glow gradient for no visual benefit, and competes
-			// with the main thread for the time it needs to resolve the vault write.
-			if (root.hasClass('bt-write-pending')) return;
-			if (!rootRect) rootRect = root.getBoundingClientRect();
-			// e.clientX/Y and rootRect are both visual; --bt-mx/-my are consumed by
-			// theme CSS as logical px (e.g. `left`/`background-position` inside this
-			// same zoomed subtree) — same correction shape as scrollContentOffset's
-			// own (NO_ZOOM's doc comment).
-			root.setCssProps({
-				'--bt-mx': `${Math.round((e.clientX - rootRect.left) / zoom)}px`,
-				'--bt-my': `${Math.round((e.clientY - rootRect.top ) / zoom)}px`,
-			});
-		});
-		root.addEventListener('mouseleave', () => {
-			rootRect = null;
-			root.setCssProps({ '--bt-mx': '-9999px', '--bt-my': '-9999px' });
-		});
-		component?.register(() => { rootRect = null; });
-	}
 }
 
 

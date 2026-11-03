@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildBlankTable } from '../src/blankTable';
 import { planMarkdownTableConversion } from '../src/convertMarkdownTable';
-import { resolveDefaultTheme } from '../src/themes';
+import { displayTheme, resolveDefaultTheme } from '../src/themes';
 import { DEFAULT_SETTINGS } from '../src/settings';
 import { parseTable } from '../src/parser';
 import { serializeTable } from '../src/serializer';
@@ -36,9 +36,9 @@ describe('default theme for new tables', () => {
 	});
 
 	it('survives the round trip a real insert performs', () => {
-		const written = serializeTable(buildBlankTable(2, 2, 'plain'));
-		expect(written).toContain('theme: plain');
-		expect(parseTable(written).theme).toBe('plain');
+		const written = serializeTable(buildBlankTable(2, 2, 'academic'));
+		expect(written).toContain('theme: academic');
+		expect(parseTable(written).theme).toBe('academic');
 		expect(serializeTable(buildBlankTable(2, 2))).not.toContain('theme:');
 	});
 
@@ -47,5 +47,25 @@ describe('default theme for new tables', () => {
 		expect(withTheme?.blockText).toContain('theme: grid');
 		const without = planMarkdownTableConversion(TABLE, 0);
 		expect(without?.blockText).not.toContain('theme:');
+	});
+});
+
+describe('the theme a table is shown with', () => {
+	it('is its own when that theme exists', () => {
+		expect(displayTheme('academic', 'grid')).toBe('academic');
+	});
+
+	it('is none when the table has none: that was chosen, it is not a missing theme', () => {
+		expect(displayTheme(undefined, 'grid')).toBeUndefined();
+	});
+
+	it('falls back to the theme new tables get when its own no longer exists', () => {
+		expect(displayTheme('plain', 'grid')).toBe('grid');
+		expect(displayTheme('plain', 'academic')).toBe('academic');
+	});
+
+	it('is none when the theme new tables get is missing too', () => {
+		expect(displayTheme('plain', '')).toBeUndefined();
+		expect(displayTheme('plain', 'also-gone')).toBeUndefined();
 	});
 });

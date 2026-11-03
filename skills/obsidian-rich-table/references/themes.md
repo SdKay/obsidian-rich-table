@@ -16,15 +16,16 @@ Set the `theme` field in the YAML front-matter to apply a built-in visual theme.
 theme: academic
 ```
 
-**`plain`** — Colorful and animated
-- Rainbow gradient header that slowly cycles hue, rounded corners with an animated
-  outline border and comet-flash effect
-- Row hover highlight with a cursor-following glow
-- Table centered in the reading pane
+**`grid`** — Excel "All Borders" style
+- Every cell boundary visible, a bolder outer frame, and a bolder rule between the header and the data
 
 ```yaml
-theme: plain
+theme: grid
 ```
+
+Only `academic` and `grid` exist. Leave the field out for the default look. A value that is not one of
+these (for example `plain`, which was removed) is drawn with the theme the user set for new tables, so do
+not write it.
 
 ### Applying a theme
 

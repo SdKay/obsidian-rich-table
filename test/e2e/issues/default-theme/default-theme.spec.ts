@@ -36,14 +36,14 @@ test.describe('default theme setting', () => {
 
 	test('offers "no theme" plus every built-in theme, and starts on grid', async ({ page }) => {
 		const select = await openTab(page);
-		await expect(select.locator('option')).toHaveText(['Default', 'Academic 📐', 'Grid 🔲', 'Plain 🙂']);
+		await expect(select.locator('option')).toHaveText(['Default', 'Academic 📐', 'Grid 🔲']);
 		expect(await select.inputValue()).toBe('grid');
 	});
 
 	test('choosing a theme saves it', async ({ page }) => {
 		const select = await openTab(page);
-		await select.selectOption('plain');
-		expect(await page.evaluate(() => (window as unknown as { __btPlugin: { settings: { defaultTheme: string } } }).__btPlugin.settings.defaultTheme)).toBe('plain');
+		await select.selectOption('academic');
+		expect(await page.evaluate(() => (window as unknown as { __btPlugin: { settings: { defaultTheme: string } } }).__btPlugin.settings.defaultTheme)).toBe('academic');
 		expect(await page.evaluate(() => (window as unknown as { __btSaved?: number }).__btSaved)).toBe(1);
 	});
 
@@ -84,5 +84,46 @@ test.describe('default theme on a new blank table', () => {
 		await insertBlank(page);
 		await expect.poll(() => block.noteText()).toContain('version: 2');
 		expect(await block.noteText()).not.toContain('theme:');
+	});
+});
+
+// A table naming a theme that no longer exists is drawn with the theme new tables get, and keeps naming
+// its own: the note is the user's, and only drawing falls back.
+test.describe('a table whose theme no longer exists', () => {
+	const GONE = `---
+version: 2
+columns:
+  - { id: c_0, name: A }
+rows:
+  - id: r_0
+    cells: { c_0: x }
+theme: plain
+---
+`;
+	const themeClass = (page: import('@playwright/test').Page) => page.locator('.bt-render-root-shell > .bt-render-root').first().evaluate(el =>
+		Array.from(el.classList).filter(c => c.startsWith('bt-theme-')));
+
+	test('is drawn with the theme new tables get', async ({ renderBlock, page }) => {
+		await renderBlock(GONE, { settings: { defaultTheme: 'academic' } });
+		expect(await themeClass(page)).toEqual(['bt-theme-academic']);
+	});
+
+	test('is drawn without a theme when new tables get none', async ({ renderBlock, page }) => {
+		await renderBlock(GONE, { settings: { defaultTheme: '' } });
+		expect(await themeClass(page)).toEqual([]);
+	});
+
+	test('still names its own theme after an edit is written back', async ({ renderBlock, page }) => {
+		const block = await renderBlock(GONE, { settings: { defaultTheme: 'grid' } });
+		const cell = page.locator('td[data-row="1"][data-col="0"]');
+		await cell.click();
+		await page.locator('td[data-row="1"][data-col="0"] .bt-cell-editor').waitFor();
+		await page.keyboard.press('Control+a');
+		await page.keyboard.type('changed');
+		await page.keyboard.press('Enter');
+		await expect.poll(() => block.noteText()).toContain('changed');
+		const note = await block.noteText();
+		expect(note).toContain('theme: plain');
+		expect(note).not.toContain('theme: grid');
 	});
 });

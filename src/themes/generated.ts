@@ -11,7 +11,6 @@ export interface ThemeMeta {
 export const BUILTIN_THEMES: readonly ThemeMeta[] = [
 	{ id: "academic", labels: {"en":"Academic 📐","zh":"学术 📐"} },
 	{ id: "grid", labels: {"en":"Grid 🔲","zh":"网格 🔲"} },
-	{ id: "plain", labels: {"en":"Plain 🙂","zh":"朴素 🙂"} },
 ] as const;
 
 export const BUILTIN_THEME_IDS = BUILTIN_THEMES.map(t => t.id);
