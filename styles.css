@@ -469,12 +469,13 @@
 	color: var(--text-normal);
 	margin: 0 0 calc(var(--bt-title-mb-pull, -20px) + var(--bt-title-mb-adj, 0px) + var(--bt-title-sel-pad, 0px));
 	line-height: 1.4;
-	/* --bt-title-center-adj (renderer.ts's updateOuterFrame): re-centers the
-	 * title over <table>'s own box instead of the wider box text-align:center
-	 * centers it in by default — see that function's own comment for why the
-	 * two can differ. transform, not margin — a translate never affects any
-	 * OTHER element's layout, so this can't reopen the title/table-gap issue
-	 * margin-bottom is otherwise responsible for. */
+	overflow-wrap: anywhere;
+}
+/* --bt-title-center-adj (renderer.ts's updateOuterFrame) centers the text over the visible table.
+ * A transform moves no other element, so it cannot change the title/table gap. */
+.bt-table-title > span {
+	display: inline-block;
+	max-width: 100%;
 	transform: translateX(var(--bt-title-center-adj, 0px));
 }
 

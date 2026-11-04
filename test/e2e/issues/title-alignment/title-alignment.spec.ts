@@ -12,7 +12,7 @@ import { tableSource } from '../../common/fixtures';
 // rather than centering in whatever box happens to contain it.
 test.describe('title centers over the table, not the wider box containing addColBtn', () => {
 	const centers = async (page: import('@playwright/test').Page) => page.evaluate(() => {
-		const title = document.querySelector('.bt-table-title') as HTMLElement;
+		const title = document.querySelector('.bt-table-title > span') as HTMLElement;
 		const table = document.querySelector('table.bt-table') as HTMLElement;
 		const t = title.getBoundingClientRect();
 		const tb = table.getBoundingClientRect();
@@ -43,6 +43,44 @@ test.describe('title centers over the table, not the wider box containing addCol
 		const { titleCenter, tableCenter } = await centers(page);
 		expect(Math.abs(titleCenter - tableCenter)).toBeLessThanOrEqual(1);
 	});
+});
+
+// Reported: with a table wider than the note, its title was centered over the whole table, out past
+// the note's edge, and the note had to be scrolled sideways to read it.
+test.describe('a title stays readable over a table wider than the view', () => {
+	const LONG = 'A rather long table title that keeps going well past the width of this table';
+	const place = async (page: import('@playwright/test').Page) => page.evaluate(() => {
+		const r = (s: string) => (document.querySelector(s) as HTMLElement).getBoundingClientRect();
+		const t = r('.bt-table-title > span');
+		const table = r('table.bt-table');
+		const view = r('.bt-render-root-shell .bt-table-wrapper');
+		const root = r('.bt-render-root-shell > .bt-render-root');
+		return {
+			title: { l: t.left, r: t.right, c: t.left + t.width / 2 },
+			shownCenter: (Math.max(table.left, view.left) + Math.min(table.right, view.right)) / 2,
+			root: { l: root.left, r: root.right },
+			pageScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+		};
+	});
+
+	for (const locked of [false, true]) {
+		test(`${locked ? 'locked' : 'editable'}: centered over the part of the table on screen`, { tag: '@geometry' }, async ({ page, renderBlock }) => {
+			await page.setViewportSize({ width: 420, height: 700 });
+			await renderBlock(tableSource({ widths: [200, 200, 200, 200], rows: [{ 0: 'a', 1: 'b' }], title: 'Short', locked }));
+			await expect.poll(async () => Math.abs((await place(page)).title.c - (await place(page)).shownCenter)).toBeLessThanOrEqual(1);
+			expect((await place(page)).pageScrolls).toBe(false);
+		});
+
+		test(`${locked ? 'locked' : 'editable'}: a long title wraps inside the view`, { tag: '@geometry' }, async ({ page, renderBlock }) => {
+			await page.setViewportSize({ width: 420, height: 700 });
+			await renderBlock(tableSource({ widths: [200, 200, 200, 200], rows: [{ 0: 'a', 1: 'b' }], title: LONG, locked }));
+			await page.waitForTimeout(100);
+			const p = await place(page);
+			expect(p.title.l).toBeGreaterThanOrEqual(p.root.l - 0.5);
+			expect(p.title.r).toBeLessThanOrEqual(p.root.r + 0.5);
+			expect(p.pageScrolls).toBe(false);
+		});
+	}
 });
 
 // Reported: the gap between an untitled... no — a TITLED table's title and

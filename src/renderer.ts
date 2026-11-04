@@ -244,6 +244,8 @@ export async function renderTable(
 	// creation comment for why this can't just read `shell`'s own rect).
 	let updateStatusBarStats     = () => { /* assigned in status-bar block */ };
 	let updateOuterFrame = () => { /* assigned once statusBar exists */ };
+	/** Visual px the title's text is currently shifted by (updateOuterFrame). */
+	let titleShift = 0;
 	// Assigned in the frozen-rows/columns block, once thead/tbody exist — lets
 	// the drag-resize handle (defined earlier) keep frozen offsets exactly in
 	// step with the geometry it just wrote live, instead of waiting on
@@ -1762,27 +1764,22 @@ export async function renderTable(
 		// above (that comment has the full reasoning for why dividing here
 		// would double-correct an already-correctly-scaled distance).
 		setFrameBox(shell, { l: left - shellRect.left, t: rr.top - shellRect.top, w: right - left, h: bottom - rr.top });
-		// Center the title over <table>'s own box, not the wider box
-		// text-align:center actually centers it in: an editable table's
-		// contentRow permanently reserves addColBtn's width alongside
-		// <table> (flex-shrink:0, occupying its layout box even while
-		// invisible — see .bt-edge-add-col's own comment), and wrapper's
-		// max-content sizing follows that WHOLE row — so the title (centered
-		// in root, which spans that same width) landed visibly right of the
-		// table it names, by half of addColBtn's width. Locked tables have
-		// no addColBtn and were never off (reported: only on editable
-		// tables). Measured, not derived from padding math: reset any prior
-		// adjustment first so this frame's measurement reads the title's
-		// true unadjusted (text-align:center) position, matching this
-		// file's own "measure geometry, don't recompute it analytically"
-		// approach elsewhere (e.g. reserveLeftPad's read-then-write).
-		const titleEl = root.querySelector<HTMLElement>(':scope > .bt-table-title');
-		if (titleEl) {
-			titleEl.setCssProps({ '--bt-title-center-adj': '0px' });
-			const naturalRect = titleEl.getBoundingClientRect();
-			const naturalCenter = naturalRect.left + naturalRect.width / 2;
-			const tableCenter = tableRect.left + tableRect.width / 2;
-			titleEl.setCssProps({ '--bt-title-center-adj': `${(tableCenter - naturalCenter) / zoom}px` });
+		// Center the title's text over the part of <table> that is on screen: an editable table's
+		// row also reserves addColBtn's width, so centering in root lands it off by half of that,
+		// and a table wider than the view would carry the title out of sight. The shift stays
+		// within root, so the title never makes the note scroll sideways. A transform does not
+		// move layout, so the unshifted position is the measured one minus the shift applied.
+		const titleText = root.querySelector<HTMLElement>(':scope > .bt-table-title > span');
+		if (titleText) {
+			const tr = titleText.getBoundingClientRect();
+			const left = tr.left - titleShift;
+			const right = tr.right - titleShift;
+			const target = (Math.max(tableRect.left, wr.left) + Math.min(tableRect.right, wr.right)) / 2;
+			const shift = Math.min(Math.max(target - (left + right) / 2, rr.left - left), rr.right - right);
+			if (Math.abs(shift - titleShift) > 0.25) {
+				titleShift = shift;
+				titleText.setCssProps({ '--bt-title-center-adj': `${shift / zoom}px` });
+			}
 		}
 	};
 	window.requestAnimationFrame(updateOuterFrame);
