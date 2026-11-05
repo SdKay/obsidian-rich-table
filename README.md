@@ -55,7 +55,7 @@
       <td><a href="https://github.com/SdKay/obsidian-rich-search"><b>Rich Search</b></a></td>
       <td>
         <b>Search:</b> scope, regex, whole word, case sensitivity, history<br/>
-        <b>Across files:</b> works with Rich View and Rich Table to search their content across files
+        <b>Across files:</b> searches PowerPoint, Excel, Draw.io, Visio, Excalidraw and PDF files across the vault
       </td>
       <td><a href="obsidian://show-plugin?id=rich-search">Open in Obsidian</a></td>
     </tr>

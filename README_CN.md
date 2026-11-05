@@ -55,7 +55,7 @@
       <td><a href="https://github.com/SdKay/obsidian-rich-search"><b>Rich Search</b></a></td>
       <td>
         <b>搜索能力：</b>范围、正则、全词、大小写、历史记录<br/>
-        <b>跨文件联动：</b>联动 Rich View、Rich Table，跨文件搜索
+        <b>跨文件联动：</b>跨文件搜索PPT, Excel, Draw.io, Visio, Excalidraw, pdf
       </td>
       <td><a href="obsidian://show-plugin?id=rich-search">在 Obsidian 中打开</a></td>
     </tr>
