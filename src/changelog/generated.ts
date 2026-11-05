@@ -9,6 +9,12 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.6.3", date: "2026-11-05", changes: [
+		"docs: describe what Rich Search can search across files",
+		"fix: a long table title stays inside the view and no longer makes the note scroll sideways",
+		"refactor: lay out each table once per frame, and drop the plain theme",
+		"fix: leaving an edited cell no longer moves the table twice, and the strips follow the table in the same frame",
+	] },
 	{ version: "1.6.2", date: "2026-11-01", changes: [
 		"feat: lists in a cell keep their levels, continue and step back while editing, and can start at any number",
 		"fix: the text in an .xlsx tab can be selected with the mouse and copied",
