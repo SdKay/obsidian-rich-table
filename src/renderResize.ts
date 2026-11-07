@@ -18,8 +18,9 @@ export function setupColResize(
 	getRegistry: () => ChoiceRegistry,
 	model: TableModelV2,
 	onStructuralOp: StructuralOpHandler,
-	component?: Component,
-	zoom = 1,
+	component: Component | undefined,
+	/** Read on every event: the zoom slider changes the zoom live, without a re-render. */
+	getZoom: () => number,
 ): void {
 	const col = model.columns[colIdx];
 	const allCols = ownCols(tbl).filter(c => c.dataset.col !== undefined);
@@ -55,9 +56,9 @@ export function setupColResize(
 		const tblRect = tbl.getBoundingClientRect();
 		const line = parent.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-col' });
 		line.setCssProps({
-			'--ri-x':      `${(tblRect.left - parentRect.left) / zoom + colRightX(tbl, colIdx)}px`,
-			'--ri-top':    `${(tblRect.top - parentRect.top) / zoom}px`,
-			'--ri-height': `${tblRect.height / zoom}px`,
+			'--ri-x':      `${(tblRect.left - parentRect.left) / getZoom() + colRightX(tbl, colIdx)}px`,
+			'--ri-top':    `${(tblRect.top - parentRect.top) / getZoom()}px`,
+			'--ri-height': `${tblRect.height / getZoom()}px`,
 		});
 		return line;
 	};
@@ -111,7 +112,7 @@ export function setupColResize(
 			// clientX deltas are visual; startW/MIN/newW are all logical (style.width) —
 			// divide the delta by zoom before adding it to a logical size, same
 			// correction shape used throughout renderer.ts (NO_ZOOM's doc comment).
-			const delta = Math.round((ev.clientX - startX) / zoom);
+			const delta = Math.round((ev.clientX - startX) / getZoom());
 			const newW  = Math.max(MIN, startW + delta);
 			thisCol.style.setProperty('width', `${newW}px`);
 			// Only this column's own width changes — every other column (and the
@@ -128,7 +129,7 @@ export function setupColResize(
 
 			if (colLine) {
 				const parentLeft = tbl.parentElement!.getBoundingClientRect().left;
-				colLine.setCssProps({ '--ri-x': `${(tbl.getBoundingClientRect().left - parentLeft) / zoom + colRightX(tbl, colIdx)}px` });
+				colLine.setCssProps({ '--ri-x': `${(tbl.getBoundingClientRect().left - parentLeft) / getZoom() + colRightX(tbl, colIdx)}px` });
 			}
 			// Grid auto-updates edge-add strip sizes — no manual repositioning needed.
 			tbl.dispatchEvent(new CustomEvent('bt-layout-changed'));
@@ -138,7 +139,7 @@ export function setupColResize(
 			handle.removeEventListener('pointermove', onMove);
 			colDragging = false;
 			hideColLine();
-			const delta = Math.round((ev.clientX - startX) / zoom);
+			const delta = Math.round((ev.clientX - startX) / getZoom());
 			if (delta === 0) return;
 			const newW = Math.max(MIN, startW + delta);
 			void onStructuralOp({ type: 'set-col-width', colId: col.id, width: newW });
@@ -157,8 +158,9 @@ export function bindResizeHandle(
 	minSize: number,
 	onCommit: (size: number) => void,
 	component: Component,
-	onDrag?: () => void,
-	zoom = 1,
+	onDrag: (() => void) | undefined,
+	/** Read on every event: the zoom slider changes the zoom live, without a re-render. */
+	getZoom: () => number,
 ): void {
 	// Shared hover+drag indicator line
 	let rowLine: HTMLElement | null = null;
@@ -196,11 +198,11 @@ export function bindResizeHandle(
 		const parentRect = parent.getBoundingClientRect();
 		const tblRect = table.getBoundingClientRect();
 		const line = parent.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-row' });
-		const borderY = ((anchor ? anchor.getBoundingClientRect().bottom : tblRect.bottom) - parentRect.top) / zoom;
+		const borderY = ((anchor ? anchor.getBoundingClientRect().bottom : tblRect.bottom) - parentRect.top) / getZoom();
 		line.setCssProps({
 			'--ri-y':     `${borderY}px`,
-			'--ri-left':  `${(tblRect.left - parentRect.left) / zoom}px`,
-			'--ri-width': `${tblRect.width / zoom}px`,
+			'--ri-left':  `${(tblRect.left - parentRect.left) / getZoom()}px`,
+			'--ri-width': `${tblRect.width / getZoom()}px`,
 		});
 		return line;
 	};
@@ -244,13 +246,13 @@ export function bindResizeHandle(
 			// clientY delta is visual; actualStart/lastSize are logical (offsetHeight/
 			// cssVar) — divide the delta by zoom, same correction as setupColResize's
 			// own onMove above.
-			const delta = (ev.clientY - startCoord) / zoom;
+			const delta = (ev.clientY - startCoord) / getZoom();
 			lastSize = Math.max(minSize, Math.round(actualStart + delta));
 			for (const cell of targets) cell.style.setProperty(cssVar, `${lastSize}px`);
 			// Track actual cell bottom edge live — handles content min-height correctly
 			if (rowLine && anchor) {
 				const parentTop = table.parentElement!.getBoundingClientRect().top;
-				rowLine.setCssProps({ '--ri-y': `${(anchor.getBoundingClientRect().bottom - parentTop) / zoom}px` });
+				rowLine.setCssProps({ '--ri-y': `${(anchor.getBoundingClientRect().bottom - parentTop) / getZoom()}px` });
 			}
 			onDrag?.();
 			// Row height change shifts cell geometry → rebuild selector strips to follow

@@ -1,4 +1,5 @@
 import type { StructuralOpV2 } from './operations';
+import type { CtrlColButtonId } from './model';
 
 // Shared adapter types used across the split renderer modules (renderer.ts,
 // renderCell.ts, renderCellStyle.ts, renderPanel.ts, renderResize.ts, ...).
@@ -29,7 +30,20 @@ export type EditNavigateHandler = (rowIdx: number, colIdx: number, move: EditNav
 /** Special column types handled with dedicated editors (not choice dropdowns). */
 export const SPECIAL_TYPES = new Set(['date']);
 
-/** The three snapshot actions (renderer.ts's onSnapshot / tableBlock.ts's
- *  captureSnapshot) — SVG has no clipboard counterpart, since the OS
- *  clipboard's image slot is raster-only; SVG is save-to-vault only. */
+/** The three snapshot actions (tableBlock.ts's captureSnapshot) — SVG has no
+ *  clipboard counterpart, since the OS clipboard's image slot is raster-only;
+ *  SVG is save-to-vault only. */
 export type SnapshotKind = 'copy-png' | 'save-png' | 'save-svg';
+
+/**
+ * A toolbar button that does something outside the table (open its file, take a picture of it) rather than change
+ * it, offered by the kind of table. Its id names it in the settings, where it can be hidden.
+ */
+export interface TableAction {
+	id: CtrlColButtonId;
+	label: string;
+	/** Ahead of the table's own buttons, or after them. */
+	place: 'first' | 'last';
+	/** One action, or a menu of them. */
+	run: (() => void) | { label: string; icon: string; run: () => void }[];
+}

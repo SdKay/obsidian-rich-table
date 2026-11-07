@@ -7,7 +7,7 @@ import { parseTable, parseSource } from './parser';
 import { serializeTable, serializeWorkbook } from './serializer';
 import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
-import { applyWorkbookOp, type WorkbookOpV2 } from './workbookOperations';
+import { applyWorkbookOp, isWorkbookOp, type WorkbookOpV2 } from './workbookOperations';
 import { renderSheetTabBar } from './renderSheetTabs';
 import { applyThemeClass } from './renderThemeClass';
 import { genId } from './idGen';
@@ -20,6 +20,7 @@ import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
 import { displayTheme, resolveDefaultTheme } from './themes';
 import { readXlsxAsModel, writeXlsxOps, isXlsxWritableOp, type XlsxWritableOp } from './xlsxSource';
+import { editPolicy } from './editPolicy';
 import { settleRenderedTables } from './renderAutofit';
 import { markSpans, markableText, stripSearchMarks, type Marked } from './searchHighlight';
 import { matchText } from './searchMatch';
@@ -32,7 +33,8 @@ import { electronShell, fsPromises } from './nodeBridge';
 import { watchXlsxFile, type XlsxFileWatch } from './xlsxFileWatch';
 import { openXlsxFilePicker } from './xlsxFilePicker';
 import { captureTablePng, captureTableSvg } from './tableSnapshot';
-import type { SnapshotKind } from './renderTypes';
+import type { SnapshotKind, TableAction } from './renderTypes';
+import { tableEdits, type TableOp } from './tableEdits';
 import { exportModelToXlsx, exportWorkbookToXlsx } from './xlsxExport';
 import { XlsxSaveModal, ConfirmOverwriteModal, vaultFileExists } from './xlsxSaveModal';
 
@@ -175,6 +177,10 @@ function hasUpgradeSuppressed(source: string): boolean {
 type PendingOp =
 	| { kind: 'cell';     op: StructuralOpV2 }
 	| { kind: 'workbook'; op: WorkbookOpV2 };
+
+/** What a table backed by an .xlsx file takes besides what its file can hold: choosing a sheet and the view's size,
+ *  which are the block's own state and are kept in the note. */
+const XLSX_ACCEPTED_OPS: ReadonlySet<string> = new Set(['set-active-sheet', 'set-view-width', 'set-view-height']);
 
 export class TableBlock extends MarkdownRenderChild {
 	// Exactly one of these two is non-null at a time (mutually exclusive
@@ -371,7 +377,6 @@ export class TableBlock extends MarkdownRenderChild {
 
 		// .markdown-reading-view is the correct selector — same as v1, works after rAF.
 		const isReadingView = !!(this.containerEl.closest('.markdown-reading-view'));
-		const editAllowed   = (!isReadingView || this.plugin.settings.allowReadingViewEdit);
 		if (!this.containerEl.isConnected) this.recheckViewModeOnAttach(isReadingView);
 
 		const source     = isEmpty ? getEmptyTemplate() : this.source;
@@ -379,8 +384,6 @@ export class TableBlock extends MarkdownRenderChild {
 		// isOldFormat: v1 tables are read-only until the user explicitly upgrades.
 		// Also prevents the lock button from accidentally triggering a v1→v2 write-back.
 		const isOldFormat   = !isEmpty && tableV < MIN_STABLE_VERSION;
-		// lockAvailable: only for current-format tables in live-preview mode.
-		const lockAvailable = !isReadingView && !isEmpty && !isOldFormat;
 
 		try {
 			if (tableV >= MIN_STABLE_VERSION) {
@@ -464,34 +467,38 @@ export class TableBlock extends MarkdownRenderChild {
 			// guard, so the UI doesn't even offer an action that would silently
 			// no-op (e.g. a lock toggle that "locks" a table with nothing to lock).
 			const locked = !this.isXlsxBacked && (active?.locked ?? false);
-			const onWorkbookOp = (isEmpty || !editAllowed || locked || isOldFormat || this.isXlsxBacked) ? undefined : (op: WorkbookOpV2) => void this.handleWorkbookOp(op);
-			// Deliberately NOT gated by editAllowed/locked, unlike onWorkbookOp
-			// above — switching which sheet is active doesn't touch any sheet's
-			// content, so a locked (or read-only-reading-view) table should still
-			// let a user look at its other sheets. Only isEmpty/isOldFormat drop
-			// this too, since neither has a real workbook to switch within.
-			// For an xlsx-backed workbook, switching sheets can't route through
-			// handleWorkbookOp/queueOp — there's no file content to write back to
-			// (queueOp's isXlsxBacked guard would just drop it) — so it goes
-			// through switchXlsxSheet, a local in-place re-render instead.
-			const onSwitchSheet = (isEmpty || isOldFormat)
-				? undefined
-				: this.isXlsxBacked
-					? (sheetId: string) => void this.switchXlsxSheet(sheetId)
-					: (sheetId: string) => void this.handleWorkbookOp({ type: 'set-active-sheet', sheetId });
-			// Left-toolbar "add sheet" button — kept visible regardless of
-			// whether the table already has its own bottom sheet-tab-bar (which
-			// has its own "+" too); both dispatch the exact same create-sheet op,
-			// this one just stays reachable without needing the tab bar in view.
-			const onCreateSheet = onWorkbookOp ? () => onWorkbookOp({ type: 'create-sheet' }) : undefined;
+			// What the user may do right now: the surface, the lock and the format decide, the source does not.
+			const policy = editPolicy({
+				surface: isReadingView ? 'reading' : 'live',
+				readingEdit: this.plugin.settings.allowReadingViewEdit,
+				locked,
+				legacy: isOldFormat,
+				empty: isEmpty,
+			});
+			// What the table accepts depends on its kind: a table written in the note takes every operation; one backed
+			// by an .xlsx file takes the ones its file can hold, plus choosing a sheet. The user's situation (policy)
+			// narrows that further.
+			const accepts = (type: TableOp['type']) => !this.isXlsxBacked || XLSX_ACCEPTED_OPS.has(type) || isXlsxWritableOp({ type });
+			const edits = tableEdits(accepts, (effect) => policy.permits(effect), (op) => {
+				if (isWorkbookOp(op)) {
+					if (op.type === 'set-active-sheet' && this.isXlsxBacked) void this.switchXlsxSheet(op.sheetId);
+					else void this.handleWorkbookOp(op);
+				} else if (this.isXlsxBacked && op.type === 'set-view-width') {
+					void this.setXlsxViewWidth(op.width);
+				} else if (this.isXlsxBacked && op.type === 'set-view-height') {
+					void this.setXlsxViewHeight(op.height);
+				} else {
+					void this.handleStructuralOp(op);
+				}
+			});
+			const actions = this.tableActions(isEmpty, isOldFormat);
 
-			// Which of settings.ts's three ctrlCol scenarios this table currently is —
-			// same precedence renderTable()'s own button gates already imply (an
-			// xlsx-backed table has neither onStructuralOp nor onToggleLock at all,
-			// so it's never "locked"/"unlocked" in this sense regardless of `locked`
-			// on its shell model).
+			// Which of settings.ts's three ctrlCol scenarios this table currently is.
 			const ctrlColScenario: 'locked' | 'unlocked' | 'xlsxRef' = this.isXlsxBacked ? 'xlsxRef' : locked ? 'locked' : 'unlocked';
 			const hiddenCtrlColButtons = new Set<CtrlColButtonId>(this.plugin.settings.ctrlColHiddenButtons[ctrlColScenario]);
+			const onWorkbookOp = edits.can('rename-sheet') ? (op: WorkbookOpV2) => edits.run(op) : undefined;
+			const onSwitchSheet = edits.can('set-active-sheet') ? (sheetId: string) => edits.run({ type: 'set-active-sheet', sheetId }) : undefined;
+			const onCreateSheet = edits.can('create-sheet') ? () => edits.run({ type: 'create-sheet' }) : undefined;
 
 			// isEmpty's "active" is a stand-in default-template model purely for
 			// version-detection plumbing (see getEmptyTemplate) — the empty-block
@@ -509,40 +516,17 @@ export class TableBlock extends MarkdownRenderChild {
 					this.plugin.app,
 					this.sourcePath,
 					this,
-					(isEmpty || !editAllowed || locked || isOldFormat || this.isXlsxBacked) ? undefined : (op) => this.handleStructuralOp(op),
-					(lockAvailable && !this.isXlsxBacked) ? () => this.handleStructuralOp({ type: 'toggle-lock' }) : undefined,
-					(root) => { this.renderedRoot = root; },
-					() => this.isRendering,
-					this.cacheKey,
-					() => this.plugin.settings.singleClickEdit,
-					onCreateSheet,
-					this.isXlsxBacked ? () => void this.openXlsxFileExternally() : undefined,
-					this.isXlsxBacked ? () => void this.detachFromXlsx() : undefined,
-					this.isXlsxBacked ? (width: number) => void this.setXlsxViewWidth(width) : undefined,
-					this.isXlsxBacked ? (height: number) => void this.setXlsxViewHeight(height) : undefined,
-					(kind) => void this.captureSnapshot(kind),
-					// Phase 1 of xlsx WRITE support (see CLAUDE.md's "xlsx write support"
-					// section) — the SAME handler as the normal onOp callback above
-					// (queueOp's isXlsxBacked branch is what actually filters this down
-					// to the writable op subset), just reachable under its own prop so
-					// onOp itself stays undefined and every other editing affordance
-					// stays off for this table.
-					(this.isXlsxBacked && editAllowed && !isOldFormat) ? (op) => this.handleStructuralOp(op) : undefined,
-					// Export-to-xlsx — the mirror-image gate of onOpenExternalFile/
-					// onDetachFromXlsx above: THIS table is exactly the ones those two
-					// are absent for (a native table, never xlsx-backed) — exporting
-					// a table that's already backed by a real .xlsx file would just be
-					// writing that same file's content back out under a new name,
-					// which the existing "open in default app"/"convert to plain table"
-					// buttons already cover more directly.
-					(!this.isXlsxBacked && !isEmpty && !isOldFormat) ? () => void this.exportToXlsx() : undefined,
-					hiddenCtrlColButtons,
-					// A 2+-sheet workbook's sheet tabs live INSIDE the status bar (see
-					// the .bt-status-tabs mount below) — the only way to switch sheets
-					// at all, so this sheet's own statusBarMode preference is
-					// overridden to always show it (see forceStatusBarPinned's own doc
-					// comment on renderTable).
-					!!(this.workbook && this.workbook.sheets.length > 1),
+					{
+						edits, actions, hiddenCtrlColButtons,
+						onRootReady: (root) => { this.renderedRoot = root; },
+						isSwapping: () => this.isRendering,
+						cacheKey: this.cacheKey,
+						getSingleClickEdit: () => this.plugin.settings.singleClickEdit,
+						// A 2+-sheet workbook's sheet tabs live INSIDE the status bar (see the .bt-status-tabs
+						// mount below) — the only way to switch sheets at all, so this sheet's own statusBarMode
+						// preference is overridden to always show it.
+						forceStatusBarPinned: !!(this.workbook && this.workbook.sheets.length > 1),
+					},
 				);
 			}
 
@@ -604,7 +588,7 @@ export class TableBlock extends MarkdownRenderChild {
 					component: this,
 					onOp: onWorkbookOp,
 					onSwitchSheet,
-					onCreateSheet: onWorkbookOp ? () => onWorkbookOp({ type: 'create-sheet' }) : undefined,
+					onCreateSheet,
 				});
 			}
 		} catch (err) {
@@ -1186,6 +1170,30 @@ export class TableBlock extends MarkdownRenderChild {
 		await this.insertBlock(serializeTable(this.xlsxShell));
 	}
 
+	/** The toolbar buttons the kind of table offers that do not change it. */
+	private tableActions(isEmpty: boolean, isOldFormat: boolean): TableAction[] {
+		const actions: TableAction[] = [];
+		if (this.isXlsxBacked) {
+			actions.push(
+				{ id: 'openExternal', label: t('openInDefaultApp'), place: 'first', run: () => void this.openXlsxFileExternally() },
+				{ id: 'detachXlsx', label: t('detachFromXlsx'), place: 'first', run: () => void this.detachFromXlsx() },
+			);
+		}
+		actions.push({
+			id: 'snapshot', label: t('snapshotButton'), place: 'last',
+			run: [
+				{ label: t('snapshotCopyPng'), icon: 'copy', run: () => void this.captureSnapshot('copy-png') },
+				{ label: t('snapshotSavePng'), icon: 'image', run: () => void this.captureSnapshot('save-png') },
+				{ label: t('snapshotSaveSvg'), icon: 'file-code', run: () => void this.captureSnapshot('save-svg') },
+			],
+		});
+		// A table already backed by an .xlsx file has "open" and "detach" for the same purpose.
+		if (!this.isXlsxBacked && !isEmpty && !isOldFormat) {
+			actions.push({ id: 'exportXlsx', label: t('exportToXlsx'), place: 'last', run: () => void this.exportToXlsx() });
+		}
+		return actions;
+	}
+
 	/** The left-toolbar "open in default app" button for an xlsx-backed table
 	 *  (renderer.ts's onOpenExternalFile) — hands the file straight to
 	 *  whatever the OS associates with .xlsx (real Excel, LibreOffice, …)
@@ -1375,15 +1383,17 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  mutate xlsxShell (the block's own real front-matter), never
 	 *  this.model/this.workbook (the loaded xlsx content — see xlsxShell's own
 	 *  doc comment for why that distinction matters here). */
-	private async setXlsxViewWidth(width: number): Promise<void> {
+	private async setXlsxViewWidth(width: number | null): Promise<void> {
 		if (!this.isXlsxBacked || !this.xlsxShell) return;
-		this.xlsxShell.viewWidth = width;
+		if (width === null) delete this.xlsxShell.viewWidth;
+		else this.xlsxShell.viewWidth = width;
 		await this.insertBlock(serializeTable(this.xlsxShell));
 	}
 
-	private async setXlsxViewHeight(height: number): Promise<void> {
+	private async setXlsxViewHeight(height: number | null): Promise<void> {
 		if (!this.isXlsxBacked || !this.xlsxShell) return;
-		this.xlsxShell.viewHeight = height;
+		if (height === null) delete this.xlsxShell.viewHeight;
+		else this.xlsxShell.viewHeight = height;
 		await this.insertBlock(serializeTable(this.xlsxShell));
 	}
 

@@ -2,7 +2,7 @@ import { Menu, setIcon } from 'obsidian';
 import { t, calendarMoreEventsLabel } from './i18n';
 import type { TableModelV2, ColumnDefV2, ViewDefV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
-import type { StructuralOpHandler } from './renderTypes';
+import type { TableEdits } from './tableEdits';
 import { isRowFiltered, resolveCellValue } from './renderGridHelpers';
 import { showMenuPinned } from './renderHoverPin';
 import { createHandoff } from './renderStateHandoff';
@@ -22,7 +22,7 @@ const MAX_EVENTS_PER_DAY = 3;
 
 /**
  * Cross-rebuild memory of which month a Calendar view is currently showing.
- * Navigating months is a purely local DOM change (no onStructuralOp call, see
+ * Navigating months is a purely local DOM change (no write-back, see
  * renderCalendarBoard) — but an UNRELATED structural op (e.g. editing some
  * other cell) still rebuilds the whole table from scratch, and a brand-new
  * TableBlock instance has no way to know what the old one had navigated to.
@@ -117,7 +117,7 @@ export interface RenderCalendarBoardOptions {
 	root: HTMLElement; // the .bt-render-root — displayed-month bookkeeping lives on its dataset
 	view: ViewDefV2;
 	registry: ChoiceRegistry;
-	onStructuralOp?: StructuralOpHandler;
+	edits: TableEdits;
 	cacheKey: string;
 }
 
@@ -129,7 +129,7 @@ export interface RenderCalendarBoardOptions {
  * renderTable() would otherwise hand to the plain table body.
  */
 export function renderCalendarBoard(opts: RenderCalendarBoardOptions): void {
-	const { model, wrapper, root, view, registry, onStructuralOp, cacheKey } = opts;
+	const { model, wrapper, root, view, registry, edits, cacheKey } = opts;
 	const dateColId = view.calendar?.dateColId;
 	const dateCol = dateColId ? model.columns.find(c => c.id === dateColId) : undefined;
 	if (!dateColId || !dateCol || dateCol.type !== 'date') {
@@ -137,7 +137,8 @@ export function renderCalendarBoard(opts: RenderCalendarBoardOptions): void {
 		return;
 	}
 
-	const locked = !!model.locked;
+	// Moving an event rewrites its date cell; the lock and the table's kind are both in this one answer.
+	const movable = edits.can('set-cell-content');
 	// Event fields: every visible column except the date one — same "除日期列
 	// 外的所有可见列" idea Kanban's card fields use, so an event chip shows the
 	// same amount of information a kanban card would for the same row.
@@ -175,7 +176,7 @@ export function renderCalendarBoard(opts: RenderCalendarBoardOptions): void {
 	stampMonth();
 
 	const setDropTarget = (el: HTMLElement, onDrop: (rowId: string) => void) => {
-		if (locked || !onStructuralOp) return;
+		if (!movable) return;
 		el.addEventListener('dragover', (evt: DragEvent) => {
 			if (!evt.dataTransfer?.types.includes(DRAG_TYPE)) return;
 			evt.preventDefault();
@@ -203,7 +204,7 @@ export function renderCalendarBoard(opts: RenderCalendarBoardOptions): void {
 				renderTypedFieldValue(valueEl, f.colType, f.value, registry);
 			}
 		}
-		if (!locked) {
+		if (movable) {
 			chip.setAttribute('draggable', 'true');
 			chip.addEventListener('dragstart', (evt: DragEvent) => {
 				evt.dataTransfer?.setData(DRAG_TYPE, ev.rowId);
@@ -215,7 +216,7 @@ export function renderCalendarBoard(opts: RenderCalendarBoardOptions): void {
 	};
 
 	// ── Nav (prev / label / today / next) — a pure local DOM update, no
-	// onStructuralOp: navigating months doesn't change the model at all. ──
+	// write-back: navigating months doesn't change the model at all. ──
 	const nav = wrapper.createDiv({ cls: 'bt-cal-nav' });
 	const prevBtn = nav.createDiv({ cls: 'bt-ctrl-btn', attr: { 'aria-label': t('calendarPrevMonth') } });
 	setIcon(prevBtn, 'chevron-left');
@@ -258,8 +259,7 @@ export function renderCalendarBoard(opts: RenderCalendarBoardOptions): void {
 					});
 				}
 				setDropTarget(cell, (rowId) => {
-					if (!onStructuralOp) return;
-					onStructuralOp({
+					edits.run({
 						type: 'set-cell-content', rowId, colId: dateColId,
 						value: formatDateCell(day.getFullYear(), day.getMonth(), day.getDate()),
 					});
@@ -274,8 +274,7 @@ export function renderCalendarBoard(opts: RenderCalendarBoardOptions): void {
 		const trayBody = tray.createDiv({ cls: 'bt-cal-unscheduled-body' });
 		for (const ev of unscheduled) makeChip(trayBody, ev);
 		setDropTarget(tray, (rowId) => {
-			if (!onStructuralOp) return;
-			onStructuralOp({ type: 'set-cell-content', rowId, colId: dateColId, value: '' });
+			edits.run({ type: 'set-cell-content', rowId, colId: dateColId, value: '' });
 		});
 	};
 

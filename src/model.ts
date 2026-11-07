@@ -331,14 +331,8 @@ export const CTRL_COL_BUTTONS_BY_SCENARIO: { [K in 'locked' | 'unlocked' | 'xlsx
 	xlsxRef:  ['openExternal', 'detachXlsx', 'snapshot'],
 };
 
-/** The exact Lucide icon name each button's own `setIcon()` call uses in
- *  renderer.ts, so the settings tab's toggle for a button can show the same
- *  icon next to it — kept here (not settings.ts) since it's a property of
- *  the button id itself, same as CTRL_COL_BUTTONS_BY_SCENARIO above.
- *  `lock`'s two icons (renderer.ts swaps between them based on
- *  `model.locked`) are both listed since which one applies depends on which
- *  scenario the settings tab is currently rendering — see
- *  ctrlColButtonIcon() below, the only place that reads this map. */
+/** Each toolbar button's Lucide icon. The toolbar and the settings tab both draw it from here, so the two cannot
+ *  show different icons for one button. Lock and collapse change with the table's state; see ctrlColButtonIcon. */
 const CTRL_COL_BUTTON_ICON: Record<CtrlColButtonId, string> = {
 	openExternal: 'external-link',
 	detachXlsx:   'unlink',
@@ -361,8 +355,9 @@ const CTRL_COL_BUTTON_ICON: Record<CtrlColButtonId, string> = {
  *  `model.locked` (renderer.ts), which the settings tab has a direct stand-in
  *  for: the `locked` scenario group always means "shows the locked-padlock
  *  icon here", `unlocked` always means "shows the open-padlock icon here". */
-export function ctrlColButtonIcon(id: CtrlColButtonId, scenario: 'locked' | 'unlocked' | 'xlsxRef'): string {
+export function ctrlColButtonIcon(id: CtrlColButtonId, scenario: 'locked' | 'unlocked' | 'xlsxRef', collapsed = false): string {
 	if (id === 'lock') return scenario === 'locked' ? 'lock' : 'lock-open';
+	if (id === 'collapse' && collapsed) return 'unfold-vertical';
 	return CTRL_COL_BUTTON_ICON[id];
 }
 

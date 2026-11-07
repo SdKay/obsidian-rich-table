@@ -268,27 +268,18 @@ export const test = base.extend<{
 				const component = new R.ShimComponent();
 				component.load();
 				window.__btComponent = component;
-				await R.renderTable(
-					active,
-					() => registry,
-					root,
-					{},                       // app — only ever passed through
-					'test.md',
-					component,
-					// A locked table has no onStructuralOp in the real app (tableBlock.ts's
-					// render() ternary) — matching that here matters for anything asserting
-					// on locked-table behaviour, not just for realism in general.
-					active.locked ? undefined : (op) => { window.__btOps.push(op); },
-					// onToggleLock, unlike onOp, stays available while locked — you need a
-					// way to unlock a locked table. Pushes the same {type:'toggle-lock'}
-					// shape onOp would have dispatched, so a test can assert on __btOps
-					// either way.
-					() => { window.__btOps.push({ type: 'toggle-lock' }); return Promise.resolve(); },
-					undefined,                // onRootReady
-					undefined,                // isSwapping
-					cacheKey ?? 'test-cache-key', // cacheKey — needed by the cross-rebuild handoffs
-					() => !!singleClickEdit,
-				);
+				// Same rule as tableBlock.ts: a locked table can only unlock; an unlocked one takes every operation.
+				const can = (type) => !active.locked || type === 'toggle-lock' || type === 'set-active-sheet';
+				const edits = {
+					can,
+					canAny: (types) => types.some(can),
+					run: (op) => { if (can(op.type)) window.__btOps.push(op); },
+				};
+				await R.renderTable(active, () => registry, root, {}, 'test.md', component, {
+					edits,
+					cacheKey: cacheKey ?? 'test-cache-key', // needed by the cross-rebuild handoffs
+					getSingleClickEdit: () => !!singleClickEdit,
+				});
 				// Mirrors tableBlock.ts's own post-swap step: renderTable() leaves any
 				// column with no width of its own (alongside a sibling that has one)
 				// unmeasured — root is already live here (unlike tableBlock.ts's

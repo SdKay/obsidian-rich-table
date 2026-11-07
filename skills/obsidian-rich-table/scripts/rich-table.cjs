@@ -9198,6 +9198,17 @@ function serializeModelFields(m) {
 }
 
 // src/workbookOperations.ts
+var WORKBOOK_OP_TYPE_MAP = {
+  "create-sheet": true,
+  "delete-sheet": true,
+  "rename-sheet": true,
+  "reorder-sheets": true,
+  "set-active-sheet": true,
+  "set-sheet-tab-style": true,
+  "set-sheet-content": true
+};
+var WORKBOOK_OP_TYPES = new Set(Object.keys(WORKBOOK_OP_TYPE_MAP));
+var isWorkbookOp = (op) => WORKBOOK_OP_TYPES.has(op.type);
 function applyWorkbookOp(workbook, op) {
   switch (op.type) {
     case "create-sheet": {
@@ -9291,17 +9302,8 @@ var isWorkbook = (doc) => "sheets" in doc;
 function serialize(doc) {
   return isWorkbook(doc) ? serializeWorkbook(doc) : serializeTable(doc);
 }
-var WORKBOOK_OPS = /* @__PURE__ */ new Set([
-  "create-sheet",
-  "delete-sheet",
-  "rename-sheet",
-  "reorder-sheets",
-  "set-active-sheet",
-  "set-sheet-tab-style",
-  "set-sheet-content"
-]);
 function applyOp(doc, op) {
-  if (WORKBOOK_OPS.has(op.type)) {
+  if (isWorkbookOp(op)) {
     if (!isWorkbook(doc)) throw new Error(`"${op.type}" needs a multi-sheet table`);
     applyWorkbookOp(doc, op);
     return;

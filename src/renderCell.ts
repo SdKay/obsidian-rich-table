@@ -3,7 +3,8 @@ import { t, sortActiveLabel, typeLabel } from './i18n';
 import type { ColumnDefV2, TableModelV2 } from './model';
 import type { FormulaErrorCode } from './formula';
 import type { ChoiceRegistry } from './choiceRegistry';
-import type { CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler } from './renderTypes';
+import type { CellChangeHandler, ColTypeChangeHandler, EditNavigateHandler } from './renderTypes';
+import type { TableEdits } from './tableEdits';
 import { rowId, colId, getMergeOrigin, isRowFiltered } from './renderGridHelpers';
 import {
 	cellEffectiveStyle, cellInheritedStyle, buildCellStyleContext,
@@ -13,7 +14,7 @@ import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { enterDateEditMode, enterEditMode, enterNativeEditMode, type FormulaEditHooks } from './renderEditMode';
 import { nativeEditorEnabled } from './nativeCellEditor';
 import { idFormulaToLabel } from './formulaLabel';
-import { type CellOpEntry, dataCellOps, openFilterPanel, openCellPanel, buildAlignCellOp } from './renderPanel';
+import { type CellOpEntry, DATA_CELL_PANEL_OPS, dataCellOps, openFilterPanel, openCellPanel, buildAlignCellOp, withEdits } from './renderPanel';
 import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
 import { growColForChoiceValue } from './renderAutofit';
@@ -88,8 +89,8 @@ export function bindCellActivation(el: HTMLElement, opts: {
  * `seedChar` reaches whichever primaryAction takes it — currently text and
  * header cells, which forward it to enterEditMode's `initialText` so typing on a
  * Selected cell replaces the content with that character instead of keeping it.
- * Returns false when the cell has no primary action bound (a read-only cell, or
- * one whose column has no onCellChange).
+ * Returns false when the cell has no primary action bound (a cell the table
+ * cannot change).
  */
 export function triggerPrimaryAction(el: HTMLElement, seedChar?: string): boolean {
 	const fn = primaryActions.get(el);
@@ -110,14 +111,10 @@ export interface RenderRowOptions {
 	sourcePath:      string;
 	component:       Component;
 	isHeader:        boolean;
-	onCellChange?:    CellChangeHandler;
-	onColTypeChange?: ColTypeChangeHandler;
-	onStructuralOp?:  StructuralOpHandler;
-	/** Merge/unmerge only — see renderer.ts's own doc comment on its onMergeOp
-	 *  derivation for why this is separate from onStructuralOp (phase 1 of
-	 *  xlsx WRITE support: lets an xlsx-backed table's cell panels offer JUST
-	 *  "Unmerge" without lighting up every other onStructuralOp-gated entry). */
-	onMergeOp?:       StructuralOpHandler;
+	/** What the table can change; every control in a cell asks it about the operation it would emit. */
+	edits:           TableEdits;
+	onCellChange:    CellChangeHandler;
+	onColTypeChange: ColTypeChangeHandler;
 	/** Table identity for renderEditHandoff.ts's cross-rebuild edit resume — see that
 	 *  file for why a write-back-triggered rebuild needs this instead of just DOM refs. */
 	cacheKey?:       string;
@@ -136,7 +133,7 @@ export interface RenderRowOptions {
 export async function renderRow(options: RenderRowOptions): Promise<void> {
 	const {
 		tr, rowIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader,
-		onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
 		onEnterFormulaMode, onExitFormulaMode,
 	} = options;
 	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
@@ -172,9 +169,9 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 				indicator.setAttribute('aria-label',
 					`${groupIds.length} hidden column${groupIds.length > 1 ? 's' : ''}. Click to show.`);
 				indicator.setAttribute('data-tooltip-position', 'top');
-				if (onStructuralOp) {
+				if (edits.can('show-col-group')) {
 					indicator.addEventListener('click', () =>
-						void onStructuralOp({ type: 'show-col-group', colIds: groupIds }));
+						edits.run({ type: 'show-col-group', colIds: groupIds }));
 				}
 			}
 			continue;
@@ -226,12 +223,12 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		if (isHeader) {
 			renderHeaderCell({
 				el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-				onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
+				edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
 			});
 		} else {
 			await renderDataCell({
 				el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model,
-				onCellChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
+				edits, onCellChange, cacheKey, getSingleClickEdit, onEditNavigate,
 				onEnterFormulaMode, onExitFormulaMode,
 			});
 		}
@@ -249,20 +246,26 @@ export interface RenderHeaderCellOptions {
 	sourcePath:      string;
 	model:           TableModelV2;
 	component:       Component;
-	onCellChange?:    CellChangeHandler;
-	onColTypeChange?: ColTypeChangeHandler;
-	onStructuralOp?:  StructuralOpHandler;
-	onMergeOp?:       StructuralOpHandler;
+	edits:           TableEdits;
+	onCellChange:    CellChangeHandler;
+	onColTypeChange: ColTypeChangeHandler;
 	cacheKey?:       string;
 	getSingleClickEdit?: () => boolean;
 	onEditNavigate?: EditNavigateHandler;
 }
 
+/** Every operation a header cell's panel can lead to; the panel opens when the table can do one of them. */
+const HEADER_PANEL_OPS = [
+	'unmerge-cells', 'insert-row', 'insert-col', 'hide-col', 'delete-col', 'split-cell-row', 'split-cell-col', 'set-align',
+	'set-col-type', 'set-range-style',
+] as const;
+
 function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	const {
 		el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-		onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
 	} = options;
+	const run = edits.run;
 	// An empty header name renders an empty <span>, which — same as an empty data
 	// cell's missing <p> — has no line box and collapses to just its padding,
 	// making the header row visibly shorter than data rows. Most tables never hit
@@ -286,66 +289,47 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	}
 	textSpan.appendText(value || ' ');
 
-	const openPanel = (evt: MouseEvent) => {
-		if (!onStructuralOp && !onColTypeChange && !onMergeOp) return;
-		const ops: CellOpEntry[] = [];
-		// Merge/unmerge is offered whenever EITHER the full onStructuralOp or the
-		// narrower xlsx-phase-1 onMergeOp is present (see renderer.ts's onMergeOp
-		// doc comment) — a header cell can itself be a merge anchor — either a
-		// header-only column-range merge (e.g. from split-cell-col preserving the
-		// header's shape) or, now that a header cell can merge downward into data
-		// rows, a vertical/rectangular one too — offer the same unmerge action
-		// dataCellOps gives data cells for either shape, or a merge could never
-		// be undone.
-		const mergeHandler = onStructuralOp ?? onMergeOp;
-		if (mergeHandler) {
-			const merge = getMergeOrigin(0, colIdx, model);
-			if (merge && (merge.endCol > merge.startCol || merge.endRow > merge.startRow)) {
-				ops.push({ icon: 'table-2', label: t('unmergeCells'),
-					action: () => void mergeHandler({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
-			}
-		}
-		if (onStructuralOp) {
-			const merge = getMergeOrigin(0, colIdx, model);
-			ops.push(
-				// Insert first data row: afterRowId = null (insert before all data rows)
-				{ icon: 'arrow-down',  label: t('insertRowBelow'),  action: () => void onStructuralOp({ type: 'insert-row', afterRowId: null }) },
-				{ icon: 'arrow-left',  label: t('insertColBefore'), action: () => void onStructuralOp({ type: 'insert-col', afterColId: colIdx > 0 ? (model.columns[colIdx - 1]?.id ?? null) : null }) },
-				{ icon: 'arrow-right', label: t('insertColAfter'),  action: () => void onStructuralOp({ type: 'insert-col', afterColId: col.id }) },
-				{ icon: 'eye-off',     label: t('hideColumn'),      action: () => void onStructuralOp({ type: 'hide-col', colId: col.id }) },
-				{ icon: 'trash',       label: t('deleteColumn'), danger: true, action: () => void onStructuralOp({ type: 'delete-col', colId: col.id }) },
-				{ divider: true },
-				// Same gating as dataCellOps: a vertical-only merge can only split
-				// into columns (each keeping its own copy of the row-span), a
-				// horizontal-only merge only into rows, and a plain cell either way.
-				...((!merge || (merge.endRow === merge.startRow && merge.endCol > merge.startCol)) ? [
-					{ icon: 'rows-2', label: t('splitCellRow'),
-						action: () => void onStructuralOp({ type: 'split-cell-row', rowId: 'header', colId: col.id }) },
-				] as CellOpEntry[] : []),
-				...((!merge || (merge.endCol === merge.startCol && merge.endRow > merge.startRow)) ? [
-					{ icon: 'columns-2', label: t('splitCellCol'),
-						action: () => void onStructuralOp({ type: 'split-cell-col', rowId: 'header', colId: col.id }) },
-				] as CellOpEntry[] : []),
-				{ divider: true },
-				// The header's own align only ever affects the header cell — the
-				// column-wide default (which also covers the header, as a
-				// fallback) lives on the column-selector strip's menu instead
-				// (renderer.ts's endDrag('col')), via set-col-align.
-				buildAlignCellOp(
-					cellEffectiveStyle(model, 0, colIdx).align,
-					(align) => void onStructuralOp({ type: 'set-align', target: `header.${col.id}`, align }),
-				),
-			);
-		}
-		if (onStructuralOp || onMergeOp) {
-			ops.push(
-				{ divider: true },
-				{ icon: 'copy', label: t('copyToExcel'),
-					action: () => copyRangeToClipboard(model, 0, 0, colIdx, colIdx) },
-				{ icon: 'file-text', label: t('copyToMarkdown'),
-					action: () => copyRangeAsMarkdown(model, 0, 0, colIdx, colIdx) },
-			);
-		}
+	const openPanel = (_evt: MouseEvent) => {
+		if (!edits.canAny(HEADER_PANEL_OPS)) return;
+		// A header cell can itself anchor a merge (across columns, or down into the data rows), so it offers the
+		// same unmerge a data cell does, or the merge could never be undone.
+		const merge = getMergeOrigin(0, colIdx, model);
+		const ops = withEdits([
+			...(merge && (merge.endCol > merge.startCol || merge.endRow > merge.startRow) ? [{ icon: 'table-2', label: t('unmergeCells'), emits: ['unmerge-cells'],
+				action: () => run({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) }] as CellOpEntry[] : []),
+			// Insert first data row: afterRowId = null (insert before all data rows)
+			{ icon: 'arrow-down',  label: t('insertRowBelow'),  emits: ['insert-row'], action: () => run({ type: 'insert-row', afterRowId: null }) },
+			{ icon: 'arrow-left',  label: t('insertColBefore'), emits: ['insert-col'], action: () => run({ type: 'insert-col', afterColId: colIdx > 0 ? (model.columns[colIdx - 1]?.id ?? null) : null }) },
+			{ icon: 'arrow-right', label: t('insertColAfter'),  emits: ['insert-col'], action: () => run({ type: 'insert-col', afterColId: col.id }) },
+			{ icon: 'eye-off',     label: t('hideColumn'),      emits: ['hide-col'],   action: () => run({ type: 'hide-col', colId: col.id }) },
+			{ icon: 'trash',       label: t('deleteColumn'), danger: true, emits: ['delete-col'], action: () => run({ type: 'delete-col', colId: col.id }) },
+			{ divider: true },
+			// Same gating as dataCellOps: a vertical-only merge can only split
+			// into columns (each keeping its own copy of the row-span), a
+			// horizontal-only merge only into rows, and a plain cell either way.
+			...((!merge || (merge.endRow === merge.startRow && merge.endCol > merge.startCol)) ? [
+				{ icon: 'rows-2', label: t('splitCellRow'), emits: ['split-cell-row'],
+					action: () => run({ type: 'split-cell-row', rowId: 'header', colId: col.id }) },
+			] as CellOpEntry[] : []),
+			...((!merge || (merge.endCol === merge.startCol && merge.endRow > merge.startRow)) ? [
+				{ icon: 'columns-2', label: t('splitCellCol'), emits: ['split-cell-col'],
+					action: () => run({ type: 'split-cell-col', rowId: 'header', colId: col.id }) },
+			] as CellOpEntry[] : []),
+			{ divider: true },
+			// The header's own align only ever affects the header cell — the
+			// column-wide default (which also covers the header, as a
+			// fallback) lives on the column-selector strip's menu instead
+			// (renderSelectorStrips.ts), via set-col-align.
+			{ ...buildAlignCellOp(
+				cellEffectiveStyle(model, 0, colIdx).align,
+				(align) => run({ type: 'set-align', target: `header.${col.id}`, align }),
+			), emits: ['set-align'] },
+			{ divider: true },
+			{ icon: 'copy', label: t('copyToExcel'),
+				action: () => copyRangeToClipboard(model, 0, 0, colIdx, colIdx) },
+			{ icon: 'file-text', label: t('copyToMarkdown'),
+				action: () => copyRangeAsMarkdown(model, 0, 0, colIdx, colIdx) },
+		], edits);
 		openCellPanel({
 			component,
 			anchor: el,
@@ -354,17 +338,15 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 			existingStyle: cellEffectiveStyle(model, 0, colIdx),
 			inheritedStyle: cellInheritedStyle(model, 0, colIdx),
 			showTextColor: true,
-			styleEditable: !!onStructuralOp,
+			styleEditable: edits.can('set-range-style'),
 			cellOps: ops,
-			typeSection: onColTypeChange ? {
+			typeSection: edits.can('set-col-type') ? {
 				colIdx,
 				currentType: col.type,
 				getRegistry,
 				onColTypeChange,
 			} : undefined,
-			onApplyStyle: onStructuralOp
-				? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: `header.${col.id}`, bg, color, size, bold, italic })
-				: () => { /* no-op */ },
+			onApplyStyle: (bg, color, size, bold, italic) => run({ type: 'set-range-style', target: `header.${col.id}`, bg, color, size, bold, italic }),
 		});
 	};
 
@@ -391,12 +373,12 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// table-format conversion, not a header rename — instead of the plain
 	// data-cell paste's "fill starting at this exact row", which has no
 	// concept of renaming a column at all.
-	const onPasteGridHeader = onStructuralOp ? (values: string[][]) => {
-		const anchorColId = col.id;
-		void onStructuralOp({ type: 'paste-values-with-header', anchorColId, values });
+	const onPasteGridHeader = edits.can('paste-values-with-header') ? (values: string[][]) => {
+		run({ type: 'paste-values-with-header', anchorColId: col.id, values });
 	} : undefined;
 
-	if (onCellChange) {
+	const renamable = edits.can('set-col-name');
+	if (renamable) {
 		el.addClass('bt-th-editable');
 		// Caret placement when clicking *inside* the active editor — the th would
 		// otherwise intercept the click and reset the selection. Kept as its own
@@ -429,7 +411,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// rebuilt this table while THIS header cell's name was mid-edit — see
 	// renderEditHandoff.ts. If so, re-enter edit mode immediately with whatever
 	// draft text was typed, instead of silently reverting to the column's stored name.
-	if (onCellChange && cacheKey) {
+	if (renamable && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, 0, colIdx);
 		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, resume.getDraftText(), onEditNavigate, undefined, measureZoomFactor(el));
 	}
@@ -441,7 +423,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// header icon — filter is used more often and keeps the hover-reveal spot.
 	// A live sort's ACTIVE-state indicator still surfaces in the header too,
 	// in its own bottom-left corner, so it's never silently forgotten — see below.)
-	if (onStructuralOp) {
+	if (edits.can('set-filter')) {
 		const activeValues = col.filter;
 		const filterBtn = el.createDiv({
 			cls: 'bt-filter-btn' + (activeValues ? ' bt-filter-active' : ''),
@@ -451,7 +433,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		filterBtn.addEventListener('click', (e: MouseEvent) => {
 			e.stopPropagation();
 			e.preventDefault();
-			openFilterPanel(el, colIdx, model, getRegistry(), onStructuralOp, component);
+			openFilterPanel(el, colIdx, model, getRegistry(), run, component);
 		});
 	}
 
@@ -466,7 +448,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// belongs). Only rendered for the one column currently driving a live
 	// sort. Click opens a small menu (same pattern as the filter button
 	// opening its panel) to switch direction or clear.
-	if (onStructuralOp && model.sort?.colId === col.id) {
+	if (edits.can('set-sort') && model.sort?.colId === col.id) {
 		const dir = model.sort.dir;
 		el.addClass('bt-th-tall-icons');
 		const sortIndicatorBtn = el.createDiv({
@@ -484,17 +466,17 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 			menu.addItem(item => {
 				item.setTitle(t('keepSortedAscending')).setIcon('arrow-up');
 				if (dir === 'asc') item.setChecked(true);
-				item.onClick(() => void onStructuralOp({ type: 'set-sort', sort: { colId: col.id, dir: 'asc' } }));
+				item.onClick(() => run({ type: 'set-sort', sort: { colId: col.id, dir: 'asc' } }));
 			});
 			menu.addItem(item => {
 				item.setTitle(t('keepSortedDescending')).setIcon('arrow-down');
 				if (dir === 'desc') item.setChecked(true);
-				item.onClick(() => void onStructuralOp({ type: 'set-sort', sort: { colId: col.id, dir: 'desc' } }));
+				item.onClick(() => run({ type: 'set-sort', sort: { colId: col.id, dir: 'desc' } }));
 			});
 			menu.addSeparator();
 			menu.addItem(item => {
 				item.setTitle(t('clearLiveSort')).setIcon('x');
-				item.onClick(() => void onStructuralOp({ type: 'set-sort', sort: null }));
+				item.onClick(() => run({ type: 'set-sort', sort: null }));
 			});
 			showMenuPinned(menu, e);
 		});
@@ -514,11 +496,8 @@ export interface RenderDataCellOptions {
 	sourcePath:      string;
 	component:       Component;
 	model:           TableModelV2;
-	onCellChange?:   CellChangeHandler;
-	onStructuralOp?: StructuralOpHandler;
-	/** Merge/unmerge only — see renderer.ts's onMergeOp doc comment (phase 1
-	 *  of xlsx WRITE support). */
-	onMergeOp?:      StructuralOpHandler;
+	edits:           TableEdits;
+	onCellChange:    CellChangeHandler;
 	cacheKey?:       string;
 	getSingleClickEdit?: () => boolean;
 	onEditNavigate?: EditNavigateHandler;
@@ -529,14 +508,17 @@ export interface RenderDataCellOptions {
 async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	const {
 		el, value, col, rowIdx, colIdx, registry, app, sourcePath, component, model,
-		onCellChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, onCellChange, cacheKey, getSingleClickEdit, onEditNavigate,
 		onEnterFormulaMode, onExitFormulaMode,
 	} = options;
 	const trimmed = value.trim();
+	const editable = edits.can('set-cell-content');
+	const openPanel = (style: { showTextColor: boolean; showBoldItalic?: boolean }) =>
+		openDataCellPanel(el, rowIdx, colIdx, model, component, edits, style);
 
 	// Special type: date picker
 	if (col.type === 'date') {
-		renderDateCell(el, trimmed, rowIdx, colIdx, model, component, onCellChange, onStructuralOp, cacheKey, getSingleClickEdit, onEditNavigate);
+		renderDateCell(el, trimmed, rowIdx, colIdx, model, component, edits, onCellChange, cacheKey, getSingleClickEdit, onEditNavigate);
 		return;
 	}
 
@@ -561,7 +543,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 			pill.setAttribute('data-tooltip-position', 'top');
 		}
 
-		if (onCellChange && choiceType) {
+		if (editable && choiceType) {
 			pill.addClass('bt-choice-interactive');
 			pill.setAttribute('role', 'button');
 			pill.setAttribute('tabindex', '0');
@@ -589,30 +571,15 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 						// no access to renderer.ts's closure-local `zoom`) — safe here
 						// since the cell the user just clicked is, by definition, laid
 						// out and visible.
-						if (onStructuralOp) growColForChoiceValue(el, col.id, pill, onStructuralOp, measureZoomFactor(el));
+						if (edits.can('set-col-width')) growColForChoiceValue(el, col.id, pill, edits.run, measureZoomFactor(el));
 								});
 					});
 				}
 				showMenuPinned(menu, evt, { row: rowIdx, col: colIdx });
 			};
 
-			const openTypedPanel = () => {
-				if (!onStructuralOp) return;
-				const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
-				const { sTarget, exactTarget, isMerge, rangeRule, applyStyle } =
-					buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
-				openCellPanel({
-					component,
-					anchor: el, els: [el],
-					styleTarget: sTarget,
-					existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
-					inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
-					showTextColor: isMerge || !!rangeRule,
-					showBoldItalic: false,
-					cellOps: ops,
-					onApplyStyle: applyStyle,
-				});
-			};
+			// A typed cell's pill sets its own colour and weight, so the panel offers neither.
+			const openTypedPanel = () => openPanel({ showTextColor: false, showBoldItalic: false });
 
 			// Primary action = open the value menu (classic: 100ms to allow double-click
 			// detection; singleClickEdit: immediate). Style panel = double-click (classic)
@@ -629,24 +596,9 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 					el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 				}
 			});
-		} else if (onStructuralOp) {
-			// Non-interactive-value typed cell (no onCellChange) still gets its style panel.
-			el.addEventListener('dblclick', (evt: MouseEvent) => {
-				const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
-				const { sTarget, exactTarget, isMerge, rangeRule, applyStyle } =
-					buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
-				openCellPanel({
-					component,
-					anchor: el, els: [el],
-					styleTarget: sTarget,
-					existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
-					inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
-					showTextColor: isMerge || !!rangeRule,
-					showBoldItalic: false,
-					cellOps: ops,
-					onApplyStyle: applyStyle,
-				});
-			});
+		} else {
+			// A typed cell whose value cannot be picked here still has its panel.
+			el.addEventListener('dblclick', () => openPanel({ showTextColor: false, showBoldItalic: false }));
 		}
 		return;
 	}
@@ -717,10 +669,10 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		el.createEl('p', { text: ' ' });
 	}
 
-	const onPasteGrid = (onCellChange && onStructuralOp) ? (values: string[][], merges?: { r1: number; c1: number; r2: number; c2: number }[]) => {
+	const onPasteGrid = edits.can('paste-values') ? (values: string[][], merges?: { r1: number; c1: number; r2: number; c2: number }[]) => {
 		const anchorRowId = rowId(model, rowIdx);
 		const anchorColId = colId(model, colIdx);
-		if (anchorRowId && anchorColId) void onStructuralOp({ type: 'paste-values', anchorRowId, anchorColId, values, merges });
+		if (anchorRowId && anchorColId) edits.run({ type: 'paste-values', anchorRowId, anchorColId, values, merges });
 	} : undefined;
 
 	// Formula editing is only offered for plain untyped columns — reaching this
@@ -728,9 +680,9 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	// both return early), so no separate type check is needed here. Reuses
 	// the same `rowForFormula` lookup the error-pill check above already did.
 	const formulaHooks: FormulaEditHooks | undefined =
-		(onStructuralOp && onEnterFormulaMode && onExitFormulaMode && rowForFormula)
+		(edits.can('set-cell-formula') && onEnterFormulaMode && onExitFormulaMode && rowForFormula)
 			? {
-				model, rowId: rowForFormula.id, colId: col.id, onStructuralOp,
+				model, rowId: rowForFormula.id, colId: col.id, onStructuralOp: edits.run,
 				onEnterFormulaMode, onExitFormulaMode,
 			}
 			: undefined;
@@ -746,35 +698,12 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 
 	/** Plain text cells only: a formula cell keeps the built-in editor, which owns formula mode. */
 	const tryNativeEdit = (draft?: string, seedChar?: string): boolean =>
-		nativeEditorEnabled() && !seedChar && !existingFormula && !!onCellChange
+		nativeEditorEnabled() && !seedChar && !existingFormula && editable
 		&& enterNativeEditMode(el, value, rowIdx, colIdx, app, sourcePath, component, onCellChange, onEditNavigate, measureZoomFactor(el), cacheKey, draft);
 
-	const openDataPanel = () => {
-		if (el.hasClass('bt-editing') || (!onStructuralOp && !onMergeOp)) return;
-		const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp, onMergeOp);
-		// buildCellStyleContext needs SOME StructuralOpHandler to build its
-		// (possibly unused) applyStyle closure, but that closure is never
-		// actually wired to onApplyStyle below unless onStructuralOp is real —
-		// see this function's own doc comment: it never invokes the handler
-		// eagerly, only closes over it, so passing onMergeOp here to satisfy
-		// the type is safe even for an xlsx-backed table (phase 1 of xlsx
-		// WRITE support), which must not be able to apply cell styles.
-		const { sTarget, exactTarget, applyStyle } =
-			buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp ?? onMergeOp!);
-		openCellPanel({
-			component,
-			anchor: el, els: [el],
-			styleTarget: sTarget,
-			existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
-			inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
-			showTextColor: true,
-			styleEditable: !!onStructuralOp,
-			cellOps: ops,
-			onApplyStyle: onStructuralOp ? applyStyle : () => { /* style editing isn't in xlsx phase 1 */ },
-		});
-	};
+	const openDataPanel = () => { if (!el.hasClass('bt-editing')) openPanel({ showTextColor: true }); };
 
-	if (onCellChange) {
+	if (editable) {
 		el.addClass('bt-td-editable');
 
 		// Classic: single click (200 ms delay) → text editor, double click → style panel.
@@ -802,7 +731,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	// rebuilt this table while THIS cell was mid-edit — see renderEditHandoff.ts.
 	// If so, re-enter edit mode immediately with whatever draft text was typed,
 	// instead of silently reverting to the cell's actual stored value.
-	if (onCellChange && cacheKey) {
+	if (editable && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
 		if (resume) {
 			const draft = resume.getDraftText();
@@ -821,8 +750,8 @@ function renderDateCell(
 	colIdx: number,
 	model: TableModelV2,
 	component: Component,
-	onCellChange?: CellChangeHandler,
-	onStructuralOp?: StructuralOpHandler,
+	edits: TableEdits,
+	onCellChange: CellChangeHandler,
 	cacheKey?: string,
 	getSingleClickEdit?: () => boolean,
 	onEditNavigate?: EditNavigateHandler,
@@ -840,23 +769,11 @@ function renderDateCell(
 	}
 
 	const openDatePanel = () => {
-		if (el.hasClass('bt-editing') || !onStructuralOp) return;
-		const ops = dataCellOps(rowIdx, colIdx, model, onStructuralOp);
-		const { sTarget, exactTarget, applyStyle } =
-			buildCellStyleContext(rowIdx, colIdx, model, onStructuralOp);
-		openCellPanel({
-			component,
-			anchor: el, els: [el],
-			styleTarget: sTarget,
-			existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
-			inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
-			showTextColor: true,
-			cellOps: ops,
-			onApplyStyle: applyStyle,
-		});
+		if (!el.hasClass('bt-editing')) openDataCellPanel(el, rowIdx, colIdx, model, component, edits, { showTextColor: true });
 	};
+	const editable = edits.can('set-cell-content');
 
-	if (onCellChange) {
+	if (editable) {
 		el.addClass('bt-td-editable');
 
 		// Same entry point as the text cell: classic = delayed single click → picker,
@@ -877,8 +794,30 @@ function renderDateCell(
 	}
 
 	// Resume: see the matching resume check in renderDataCell / renderEditHandoff.ts.
-	if (onCellChange && cacheKey) {
+	if (editable && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
 		if (resume) enterDateEditMode(el, value, rowIdx, colIdx, onCellChange, cacheKey, resume.getDraftText(), onEditNavigate);
 	}
+}
+
+/** The panel for one data cell: what the table can do to it, and its style when the table can change that. */
+function openDataCellPanel(
+	el: HTMLElement, rowIdx: number, colIdx: number, model: TableModelV2, component: Component, edits: TableEdits,
+	style: { showTextColor: boolean; showBoldItalic?: boolean },
+): void {
+	if (!edits.canAny(DATA_CELL_PANEL_OPS)) return;
+	const { sTarget, exactTarget, isMerge, rangeRule, applyStyle } = buildCellStyleContext(rowIdx, colIdx, model, edits.run);
+	openCellPanel({
+		component,
+		anchor: el, els: [el],
+		styleTarget: sTarget,
+		existingStyle: cellEffectiveStyle(model, rowIdx, colIdx),
+		inheritedStyle: cellInheritedStyle(model, rowIdx, colIdx, exactTarget),
+		// A typed cell offers a text colour only where a range or merge rule applies to it.
+		showTextColor: style.showTextColor || isMerge || !!rangeRule,
+		showBoldItalic: style.showBoldItalic,
+		styleEditable: edits.canAny(['set-cell-style', 'set-range-style', 'split-range-style']),
+		cellOps: dataCellOps(rowIdx, colIdx, model, edits),
+		onApplyStyle: applyStyle,
+	});
 }

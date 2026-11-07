@@ -165,6 +165,44 @@ test.describe('zoom', () => {
 		expect(widthOp.width).toBe(130); // 100 (initial) + 30 (logical delta)
 	});
 
+	// The zoom slider changes the zoom live while it is dragged, without a re-render. A resize handle made before
+	// that used the zoom it was made with, so a border dragged right after moved twice as far as it should.
+	const previewZoom = (page: import('@playwright/test').Page, percent: number) =>
+		page.locator('.bt-status-zoom-slider').evaluate((el: HTMLInputElement, p) => {
+			el.value = String(p);
+			el.dispatchEvent(new Event('input', { bubbles: true }));
+		}, percent);
+
+	test('a column dragged right after a live zoom change moves by the new zoom', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [100, 100], rows: [{ 0: 'x', 1: 'y' }], zoom: 100 }));
+		await previewZoom(page, 200);
+		await page.locator('table.bt-table').hover();
+		const box = (await page.locator('.bt-sel-resize-col').first().boundingBox())!;
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2);
+		await page.mouse.up();
+		const op = (await page.evaluate(() => window.__btOps)).find((o: { type: string }) => o.type === 'set-col-width');
+		// 60 visual px at 200% is 30 logical px.
+		expect(op?.width).toBe(130);
+	});
+
+	test('a row dragged right after a live zoom change moves by the new zoom', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [100], rows: [{ 0: 'x' }, { 0: 'y' }, { 0: 'z' }], zoom: 100 }));
+		await page.locator('table.bt-table').hover();
+		const start = await page.locator('td[data-row="1"]').evaluate(el => (el as HTMLElement).offsetHeight);
+		await previewZoom(page, 200);
+		await page.locator('table.bt-table').hover();
+		const box = (await page.locator('.bt-sel-resize-row').first().boundingBox())!;
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 40);
+		await page.mouse.up();
+		const op = (await page.evaluate(() => window.__btOps)).find((o: { type: string }) => o.type === 'set-row-height');
+		// 40 visual px at 200% is 20 logical px.
+		expect(op?.height).toBe(start + 20);
+	});
+
 	test('a row resize-drag under zoom moves the row by the exact number of logical pixels', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		// 3 rows, not 1 — .bt-row-selector clips its own children to --rs-height
 		// (overflow: hidden), and a single-row table's only resize handle sits

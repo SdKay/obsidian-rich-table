@@ -14,7 +14,7 @@
  * for where those live and why exactly there.
  */
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT } from './operations';
-import type { StructuralOpHandler } from './renderTypes';
+import type { TableEdits } from './tableEdits';
 import { t } from './i18n';
 
 export { ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT };
@@ -45,7 +45,7 @@ const STEP = 10;
  * that bar's real estate rather than adding a second row.
  *
  * The slider drags LIVE (instant `applyZoom` on every input event, no
- * onStructuralOp — same "apply now, commit on release" split column/row
+ * write-back — same "apply now, commit on release" split column/row
  * resize already use) and only dispatches `set-zoom` once, on release/blur —
  * committing on every intermediate drag tick would flood the write-back
  * queue with a value the user hasn't settled on yet.
@@ -53,7 +53,7 @@ const STEP = 10;
 export function renderZoomControl(
 	statusBar: HTMLElement,
 	getPercent: () => number,
-	onStructuralOp: StructuralOpHandler | undefined,
+	edits: TableEdits,
 	applyLive: (percent: number) => void,
 	// Fired true on the slider's own pointerdown, false on pointerup/blur —
 	// lets a caller pause any real-layout write to statusBar's own box while
@@ -64,7 +64,7 @@ export function renderZoomControl(
 	onSliderDragChange?: (dragging: boolean) => void,
 ): HTMLElement {
 	const zoomEl = statusBar.createDiv({ cls: 'bt-status-zoom' });
-	if (!onStructuralOp) {
+	if (!edits.can('set-zoom')) {
 		// Read-only rendering (locked table / reading view without edit allowed) —
 		// still show the current level as plain text, no interactive controls, same
 		// "read-only but not hidden" treatment the stats section itself gets.
@@ -73,7 +73,7 @@ export function renderZoomControl(
 	}
 
 	const clamp = (p: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(p)));
-	const commit = (p: number) => void onStructuralOp({ type: 'set-zoom', percent: clamp(p) === ZOOM_DEFAULT ? null : clamp(p) });
+	const commit = (p: number) => edits.run({ type: 'set-zoom', percent: clamp(p) === ZOOM_DEFAULT ? null : clamp(p) });
 
 	const minusBtn = zoomEl.createDiv({ cls: 'bt-status-zoom-btn', attr: { 'aria-label': t('zoomOut') } });
 	minusBtn.setText('−');

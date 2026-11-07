@@ -1,7 +1,7 @@
 import { parseSource } from './parser';
 import { serializeTable, serializeWorkbook } from './serializer';
 import { applyStructuralOpV2, STRUCTURAL_OP_TYPES, type StructuralOpV2 } from './operations';
-import { applyWorkbookOp, type WorkbookOpV2 } from './workbookOperations';
+import { applyWorkbookOp, isWorkbookOp, type WorkbookOpV2 } from './workbookOperations';
 import type { SheetDefV2, TableModelV2, WorkbookV3 } from './model';
 import { checkOpIds, targetTable } from './opCheck';
 
@@ -19,19 +19,15 @@ export function serialize(doc: RichTableDoc): string {
 	return isWorkbook(doc) ? serializeWorkbook(doc) : serializeTable(doc);
 }
 
-const WORKBOOK_OPS: ReadonlySet<string> = new Set([
-	'create-sheet', 'delete-sheet', 'rename-sheet', 'reorder-sheets', 'set-active-sheet', 'set-sheet-tab-style', 'set-sheet-content',
-]);
-
 /**
  * Applies one operation in place. A workbook op needs a workbook; any other op acts on a
  * table, or on the active sheet of a workbook (or the one named by `sheetId`). An unknown
  * operation type, or an id that is not in the table, throws before anything is changed.
  */
 export function applyOp(doc: RichTableDoc, op: RichTableOp & { sheetId?: string }): void {
-	if (WORKBOOK_OPS.has(op.type)) {
+	if (isWorkbookOp(op)) {
 		if (!isWorkbook(doc)) throw new Error(`"${op.type}" needs a multi-sheet table`);
-		applyWorkbookOp(doc, op as WorkbookOpV2);
+		applyWorkbookOp(doc, op);
 		return;
 	}
 	if (!STRUCTURAL_OP_TYPES.has(op.type)) throw new Error(`Unknown operation "${op.type}"`);
@@ -39,7 +35,7 @@ export function applyOp(doc: RichTableDoc, op: RichTableOp & { sheetId?: string 
 	if (!table) throw new Error('This workbook has no sheet to edit');
 	const problems = checkOpIds(table, op);
 	if (problems.length > 0) throw new Error(`"${op.type}" refused: ${problems.join('; ')}`);
-	applyStructuralOpV2(table, op as StructuralOpV2);
+	applyStructuralOpV2(table, op);
 }
 
 export interface RichTableBlock {

@@ -119,6 +119,36 @@ test.describe('status bar — custom scrollbar sync (Task 5)', () => {
 		await expect.poll(() => wrapper.evaluate((el: HTMLElement) => el.scrollLeft)).toBe(0);
 	});
 
+	// The thumb used to follow a page jump a frame late, so for one frame it sat where the table had been: a
+	// second press there landed on the thumb and started a drag instead of paging back. Checked in the same task
+	// as the press, before any frame can run.
+	test('a press on the track moves the thumb at once, with the table', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(WIDE);
+		const placed = await page.evaluate(() => {
+			const track = document.querySelector('.bt-status-scroll-track') as HTMLElement;
+			const thumb = document.querySelector('.bt-status-scroll-thumb') as HTMLElement;
+			const wrapper = document.querySelector('.bt-table-wrapper') as HTMLElement;
+			const r = track.getBoundingClientRect();
+			const press = (x: number) => track.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: r.top + r.height / 2 }));
+			// Where the thumb has to be for a given scroll position.
+			const expected = () => {
+				const tw = track.clientWidth;
+				const w = Math.max(16, tw * wrapper.clientWidth / wrapper.scrollWidth);
+				return (tw - w) * wrapper.scrollLeft / (wrapper.scrollWidth - wrapper.clientWidth);
+			};
+			const left = () => thumb.getBoundingClientRect().left - r.left;
+			const out: { scrollLeft: number; thumb: number; expected: number }[] = [];
+			press(r.right - 3);
+			out.push({ scrollLeft: wrapper.scrollLeft, thumb: left(), expected: expected() });
+			press(r.left + 2);
+			out.push({ scrollLeft: wrapper.scrollLeft, thumb: left(), expected: expected() });
+			return out;
+		});
+		expect(placed[0]!.scrollLeft).toBeGreaterThan(0);
+		for (const p of placed) expect(Math.abs(p.thumb - p.expected)).toBeLessThanOrEqual(1);
+		expect(placed[1]!.scrollLeft).toBe(0);
+	});
+
 	test('dragging the thumb sets wrapper.scrollLeft', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		await renderFull(WIDE);
 		const wrapper = page.locator('.bt-table-wrapper');

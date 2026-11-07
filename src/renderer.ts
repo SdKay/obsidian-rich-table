@@ -1,132 +1,62 @@
-import { App, Component, Menu, Notice, setIcon } from 'obsidian';
-import { FillSequenceModal } from './fillSequenceModal';
-import { fillRuns } from './sequenceFill';
-import {
-	t, pick, aggLabel,
-	hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
-	collapsedRowsLabel, statusBarStatsLabel,
-} from './i18n';
-import { BUILTIN_THEMES } from './themes/index';
-import type { TableModelV2, AggType, CtrlColButtonId } from './model';
+import { clampToValidCell, moveCell, type NavCell } from './cellNav';
 import type { ChoiceRegistry } from './choiceRegistry';
-import { colIndexToLetter } from './utils';
-import { SEL_UNIT, SEL_CELL, AUTOFIT_OFFSET, VIEW_EDGE_GAP } from './selectorLayout';
-import { hasRowSpanningMerge, sortRowsByColumn, applySortForDisplay } from './renderSort';
-import type { OpHandler, ToggleLockHandler, CellChangeHandler, ColTypeChangeHandler, StructuralOpHandler, EditNavigateHandler, SnapshotKind } from './renderTypes';
-import { rowId, colId, isRowFiltered, buildOccupied, countVisibleCells, getMergeOrigin, resolveCellValue, resolveMergeBounds, computeHeaderRowSpan } from './renderGridHelpers';
-import { cellIdsToLabel, rangeIdsToLabel } from './formulaLabel';
-import { moveCell, clampToValidCell, type NavCell } from './cellNav';
-import { takeSelectedCell } from './renderSelectionHandoff';
-import { cellEffectiveStyle } from './renderCellStyle';
-import { copyRangeToClipboard, copyRangeAsMarkdown, parseHtmlTableWithMerges, parseMarkdownPipeTable } from './renderClipboard';
-import { enterLineEdit } from './renderEditMode';
-import { colMinWidth } from './renderAutofit';
-import { setupColResize, bindResizeHandle } from './renderResize';
+import { FillSequenceModal } from './fillSequenceModal';
+import { collapsedRowsLabel, deleteColsLabel, deleteRowsLabel, hideColsLabel, hideRowsLabel, t } from './i18n';
 import { createLayoutSync } from './layoutSync';
-import { shellStyled, whenStylesReady } from './stylesReady';
-import { selectorAxisOffset, computeVisibleGeom as computeVisibleGeomPure, viewSpan, setFrameBox, type VisibleGeom } from './renderGeometry';
-import { applyZoom, zoomFactor, renderZoomControl } from './renderZoom';
-import { bindScrollSync } from './renderScrollSync';
-import { type CellOpEntry, openCellPanel, buildAlignCellOp } from './renderPanel';
-import { renderRow, triggerPrimaryAction } from './renderCell';
-import { renderAggregateRows, activeAggTypes, AGG_ORDER } from './renderAggregate';
-import { isHoverPinned, onHoverUnpinned, showMenuPinned, getActiveCellMenu } from './renderHoverPin';
-import { renderKanbanBoard } from './renderKanban';
+import type { CtrlColButtonId, TableModelV2 } from './model';
+import { renderAggregateRows } from './renderAggregate';
+import { colMinWidth } from './renderAutofit';
 import { renderCalendarBoard } from './renderCalendar';
-import { renderViewToolbar, buildViewSwitcherMenu } from './renderViews';
-import { applyFreeze } from './renderFreeze';
-import { ownCells, ownCols, ownRows } from './renderOwnScope';
-import { blockReorderBlocker, blockFloor, axisSpans } from './reorderPlan';
-import { liftBlock, type BlockLift } from './renderReorderDrag';
-import { canFreezeRows, canFreezeCols } from './operations';
-import { computeSelectionStats } from './renderStatusBar';
-import { isNoteScrolling, onNoteScrollEnd } from './noteScroll';
+import { renderRow } from './renderCell';
+import { renderCellDragSelect } from './renderCellDragSelect';
+import { cellEffectiveStyle } from './renderCellStyle';
+import { copyRangeAsMarkdown, copyRangeToClipboard } from './renderClipboard';
+import { renderCtrlCol } from './renderCtrlCol';
+import { renderEdgeStrips } from './renderEdgeStrips';
+import { enterLineEdit } from './renderEditMode';
+import { createFormulaPick } from './renderFormulaPick';
+import { renderFrozenCells } from './renderFreezeDom';
+import { computeVisibleGeom as computeVisibleGeomPure, type VisibleGeom } from './renderGeometry';
+import { buildOccupied, colId, computeHeaderRowSpan, countVisibleCells, getMergeOrigin, isRowFiltered, resolveMergeBounds, rowId } from './renderGridHelpers';
+import { renderHover } from './renderHover';
+import { renderKanbanBoard } from './renderKanban';
+import { renderKeyboard } from './renderKeyboard';
+import { renderOverlays } from './renderOverlays';
+import { ownCells } from './renderOwnScope';
+import { buildAlignCellOp, openCellPanel, SELECTION_PANEL_OPS, withEdits, type CellOpEntry } from './renderPanel';
+import { takeSelectedCell } from './renderSelectionHandoff';
+import { renderSelectorStrips, SELECTOR_STRIP_OPS } from './renderSelectorStrips';
+import { applySortForDisplay } from './renderSort';
+import { renderStatusBar } from './renderStatusBarDom';
+import type { CellChangeHandler, ColTypeChangeHandler, EditNavigateHandler, TableAction } from './renderTypes';
+import { NO_EDITS, type TableEdits } from './tableEdits';
+import { renderVScroll } from './renderVScroll';
+import { renderViewToolbar } from './renderViews';
+import { applyZoom, zoomFactor } from './renderZoom';
+import { AUTOFIT_OFFSET, SEL_CELL, SEL_UNIT, VIEW_EDGE_GAP } from './selectorLayout';
+import { fillRuns } from './sequenceFill';
+import { shellStyled, whenStylesReady } from './stylesReady';
+import { colIndexToLetter } from './utils';
+import { App, Component } from 'obsidian';
 
-export async function renderTable(
-	model: TableModelV2,
-	getRegistry: () => ChoiceRegistry,
-	container: HTMLElement,
-	app: App,
-	sourcePath: string,
-	component: Component,
-	onOp?: OpHandler,
-	onToggleLock?: ToggleLockHandler,
-	onRootReady?: (root: HTMLElement) => void,
-	isSwapping?: () => boolean,
+export interface RenderTableOptions {
+	/** What the table can change and the one way to change it; nothing, when absent. */
+	edits?: TableEdits;
+	/** Toolbar buttons the kind of table offers that do not change it (open its file, snapshot, export). */
+	actions?: readonly TableAction[];
+	onRootReady?: (root: HTMLElement) => void;
+	isSwapping?: () => boolean;
 	/** Table identity for renderEditHandoff.ts's cross-rebuild edit resume —
 	 *  same key tableBlock.ts's renderCache uses. */
-	cacheKey?: string,
+	cacheKey?: string;
 	/** Read fresh on each click (not captured once) so toggling the setting takes
 	 *  effect on already-rendered tables without a re-render. When it returns true,
 	 *  single click enters edit immediately and Ctrl/Cmd+click opens the style panel
 	 *  (vs the default single-click-delay / double-click-panel). */
-	getSingleClickEdit?: () => boolean,
-	/** Left-toolbar "add sheet" button — kept as its own callback (not folded
-	 *  into onOp/StructuralOpV2) since converting a plain table into a
-	 *  multi-sheet workbook is a WORKBOOK-level action tableBlock.ts handles
-	 *  entirely separately from any single sheet's own model. Absent under
-	 *  the exact same conditions onStructuralOp itself would be (locked,
-	 *  read-only, etc.) — tableBlock.ts derives both from the same guard. */
-	onCreateSheet?: () => void,
-	/** Left-toolbar "open in default app" button — only meaningful for an
-	 *  xlsx-backed table (see TableModelV2.xlsxSource): the ctrlCol otherwise
-	 *  only appears alongside onStructuralOp/onToggleLock, neither of which an
-	 *  xlsx-backed (view-only) table ever has, so this is its own gate rather
-	 *  than folded into either of those. */
-	onOpenExternalFile?: () => void,
-	/** Left-toolbar "convert to plain table" button — same xlsx-only gate as
-	 *  onOpenExternalFile above. Snapshots the currently-loaded xlsx content
-	 *  into the block's own YAML and drops xlsxSource, turning a view-only
-	 *  reference into a normal, fully-editable rich-table (see
-	 *  tableBlock.ts's detachFromXlsx). */
-	onDetachFromXlsx?: () => void,
-	/** View-outer-edge drag-resize, for an xlsx-backed table specifically —
-	 *  same xlsx-only gate as onOpenExternalFile/onDetachFromXlsx above, and
-	 *  deliberately its OWN pair of callbacks rather than routing through
-	 *  onStructuralOp: onStructuralOp being defined at all turns on every
-	 *  OTHER editing affordance too (cell double-click, row/col drag-resize,
-	 *  right-click menus, …), which an xlsx-backed table must never offer
-	 *  (see tableBlock.ts's isXlsxBacked doc comment) — resizing the VIEW
-	 *  itself is the one edit-shaped action that's actually safe here, since
-	 *  it's shell/view state (like viewWidth/viewHeight always were), not
-	 *  table data. */
-	onSetViewWidth?: (width: number) => void,
-	onSetViewHeight?: (height: number) => void,
-	/** Left-toolbar snapshot button — the ONE ctrlCol entry with no gate at
-	 *  all (see the ctrlCol comment below): capturing an image of a table
-	 *  doesn't depend on whether editing/locking/xlsx-linking apply to it. */
-	onSnapshot?: (kind: SnapshotKind) => void,
-	/** Phase 1 of xlsx WRITE support (see CLAUDE.md's "xlsx write support"
-	 *  section): a SEPARATE, narrower entry point than onOp — passed only for
-	 *  an xlsx-backed table, and only ever asked to carry the safe subset of
-	 *  ops (xlsxSource.ts's XlsxWritableOp) that queueOp's isXlsxBacked branch
-	 *  knows how to route to the real file. Deliberately not folded into onOp:
-	 *  onOp being defined at all turns on every OTHER editing affordance too
-	 *  (sort/filter/style/row-col insert-delete/freeze/…), which an
-	 *  xlsx-backed table must still never offer — only onCellChange (content
-	 *  edits, below) and onMergeOp (existing-merge unmerge, below) ever get
-	 *  built from this. */
-	onXlsxWrite?: OpHandler,
-	/** Left-toolbar "Export as .xlsx" button — same no-edit-state-gate
-	 *  treatment as onSnapshot above (exporting is read-only, so it doesn't
-	 *  care whether the table is locked/collapsed/etc.); gated instead on
-	 *  tableBlock.ts's side to ONLY a native table, never an xlsx-backed one
-	 *  (which already has its own "open in default app"/"convert to plain
-	 *  table" buttons for essentially the same destination). */
-	onExportXlsx?: () => void,
-	/** Per-scenario left-toolbar button visibility (settings.ts's
-	 *  "Left-toolbar buttons" section, model.ts's CtrlColButtonId) — ids in
-	 *  this set are skipped when building ctrlCol below, regardless of
-	 *  whether their own callback is defined. tableBlock.ts derives this set
-	 *  from BetterTableSettings.ctrlColHiddenButtons[scenario], picking the
-	 *  scenario (locked/unlocked/xlsxRef) the SAME way it already derives every
-	 *  other per-scenario callback gate above. Deliberately a plain Set, not
-	 *  threaded through onOp/onToggleLock/etc. themselves — hiding a button is
-	 *  a display-only preference, not a change to what operations are actually
-	 *  ALLOWED (e.g. hiding "lock" doesn't stop onToggleLock from working if
-	 *  reached some other way), so it stays a separate, additive filter over
-	 *  the same gates rather than replacing any of them. */
-	hiddenCtrlColButtons?: ReadonlySet<CtrlColButtonId>,
+	getSingleClickEdit?: () => boolean;
+	/** Toolbar buttons the user hid in the settings. Hiding a button only hides it: what the table can do is
+	 *  unchanged. */
+	hiddenCtrlColButtons?: ReadonlySet<CtrlColButtonId>;
 	/** True when this table is one sheet of a 2+-sheet workbook — the sheet
 	 *  tabs (mounted into .bt-status-tabs, see tableBlock.ts) are the only way
 	 *  to switch sheets at all, so `model.statusBarMode === 'hover'` is
@@ -135,30 +65,32 @@ export async function renderTable(
 	 *  would hide the workbook's own sheet navigation. A single-sheet table's
 	 *  own hover preference (if any) is untouched — this only forces pinned
 	 *  ON, never forces it off. */
-	forceStatusBarPinned?: boolean,
+	forceStatusBarPinned?: boolean;
+}
+
+export async function renderTable(
+	model: TableModelV2,
+	getRegistry: () => ChoiceRegistry,
+	container: HTMLElement,
+	app: App,
+	sourcePath: string,
+	component: Component,
+	options: RenderTableOptions = {},
 ): Promise<void> {
+	const { edits = NO_EDITS, actions = [], onRootReady, isSwapping, cacheKey, getSingleClickEdit, hiddenCtrlColButtons, forceStatusBarPinned } = options;
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
 	// object the caller holds for write-back) so every existing display-index-based
 	// lookup below (rowId(), isRowFiltered(), cellRawValue(), etc.) keeps working
 	// unmodified — display index and storage index are the same again after this.
 	model = applySortForDisplay(model, getRegistry());
-	// Unified op handler — replaces separate onCellChange / onColTypeChange / onStructuralOp.
-	// Wrapped as void-returning so helpers typed StructuralOpHandler=(op)=>void are satisfied.
-	// Deliberately sourced from onOp ALONE, not onXlsxWrite — this is the gate
-	// behind sort/filter/style/insert/delete/freeze/etc., every one of which
-	// stays off for an xlsx-backed table (see onXlsxWrite's own doc comment).
-	const onStructuralOp: StructuralOpHandler | undefined = onOp ? (op) => void onOp(op) : undefined;
+	const run = edits.run;
 
-	// Cell content writes (data AND header text) are safe to allow through
-	// onXlsxWrite too — this callback's own dispatch logic only ever produces
-	// 'set-col-name'/'set-cell-content', both inside the xlsx-writable set.
-	const cellWriteOp = onOp ?? onXlsxWrite;
-	// Adapter: row/col-index-based callbacks used by inner helper functions.
+	// Row/col-index-based adapters for the cell editors.
 	// rowIdx=0 → header (set-col-name); rowIdx≥1 → data cell (set-cell-content).
-	const onCellChange: CellChangeHandler | undefined = cellWriteOp ? (ri, ci, value) => {
+	const onCellChange: CellChangeHandler = (ri, ci, value) => {
 		if (ri === 0) {
-			void cellWriteOp({ type: 'set-col-name', colId: colId(model, ci), name: value });
+			run({ type: 'set-col-name', colId: colId(model, ci), name: value });
 		} else {
 			// Editing a merge's effective anchor (possibly promoted past a hidden literal
 			// anchor, see getMergeOrigin) must write to the merge's literal anchor cell —
@@ -166,27 +98,10 @@ export async function renderTable(
 			const merge = getMergeOrigin(ri, ci, model);
 			const targetRowId = merge?.anchorRowId ?? rowId(model, ri);
 			const targetColId = merge?.anchorColId ?? colId(model, ci);
-			void cellWriteOp({ type: 'set-cell-content', rowId: targetRowId, colId: targetColId, value });
+			run({ type: 'set-cell-content', rowId: targetRowId, colId: targetColId, value });
 		}
-	} : undefined;
-
-	// Merge/unmerge only — a second, narrower derived handler alongside
-	// onStructuralOp (which stays xlsx-undefined). Threaded ONLY into the
-	// unmerge entry in dataCellOps/the header cell panel below, so an
-	// xlsx-backed table can undo an existing merge without lighting up every
-	// other onStructuralOp-gated entry those same call sites also build
-	// (split-cell, hide/delete row/col, align, …), none of which are in
-	// phase 1's writable set. Creating a NEW merge (drag-select → "Merge
-	// cells") isn't wired to this yet — that action lives behind the
-	// range-selection panel, which is gated on onStructuralOp for its OTHER
-	// entries too and isn't reachable at all for an xlsx-backed table today
-	// (see the mousedown listener's own onStructuralOp guard, added so a
-	// locked/xlsx table keeps native text selection) — left as a follow-up.
-	const onMergeOp: StructuralOpHandler | undefined = cellWriteOp ? (op) => void cellWriteOp(op) : undefined;
-
-	const onColTypeChange: ColTypeChangeHandler | undefined = onOp
-		? (ci, colType) => void onOp({ type: 'set-col-type', colId: colId(model, ci), colType })
-		: undefined;
+	};
+	const onColTypeChange: ColTypeChangeHandler = (ci, colType) => run({ type: 'set-col-type', colId: colId(model, ci), colType });
 
 	// Snapshot for rendering; getRegistry used in event handlers for fresh lookups
 	const registry = getRegistry();
@@ -210,25 +125,34 @@ export async function renderTable(
 	// show/hide call so that ALL position calculations see the same, correct layout.
 	// This prevents cascading errors when padding-top changes on root (which shifts
 	// the table and would invalidate any positions computed before the change).
-	let showEdgeStrips    = () => { /* assigned in edge block */ };
-	let hideEdgeStrips    = () => { /* assigned in edge block */ };
+	// Hooks each feature section below fills in for the others to call. One object, so that a section
+	// reaches another only through a name declared here.
+	const hooks = {
+		showEdgeStrips: () => { /* assigned in edge block */ },
+		hideEdgeStrips: () => { /* assigned in edge block */ },
+		isEdgeStripsVisible: () => false,
+		showSelectors: () => { /* assigned in selector block */ },
+		hideSelectors: () => { /* assigned in selector block */ },
+		prepareLayout: () => { /* assigned in selector block */ },
+		restoreLayout: () => { /* assigned in selector block */ },
+		liftTitle: () => { /* assigned in selector block */ },
+		repositionCtrlCol: (_geom?: VisibleGeom) => { /* assigned in ctrl-column block */ },
+		repositionSelectorStrips: (_geom?: VisibleGeom) => { /* assigned in selector block */ },
+		repositionEdgeStrips: (_geom?: VisibleGeom) => { /* assigned in edge block */ },
+		updateStatusBarStats: () => { /* assigned in status-bar block */ },
+		updateOuterFrame: () => { /* assigned once statusBar exists */ },
+		reapplyFreezeNow: () => { /* assigned in frozen-rows/columns block */ },
+		stripCellBusy: () => false,
+		markStripsStale: () => { /* assigned in the selector block */ },
+	};
 	// Read by bindScrollSync's shared isActive() check (selector block, below) —
 	// addRowBtn/addColBtn themselves are block-scoped to the edge-strip block and
 	// unreachable from there otherwise.
-	let isEdgeStripsVisible = () => false;
-	let showSelectors     = () => { /* assigned in selector block */ };
-	let hideSelectors     = () => { /* assigned in selector block */ };
-	let prepareLayout     = () => { /* assigned in selector block */ };
-	let restoreLayout     = () => { /* assigned in selector block */ };
-	let liftTitle         = () => { /* assigned in selector block */ };
-	let repositionLockBtn    = () => { /* assigned in lock-button block */ };
-	let repositionAutoFitBtn = () => { /* assigned in auto-fit-button block */ };
 	// Optional `geom` — bindScrollSync (below) computes the shared frame's
 	// geometry once and passes it to all three of these, instead of each
 	// independently recomputing identical geometry (see that module's own
 	// doc comment). Every OTHER call site (resize observers, mouseenter,
 	// drag-resize) omits it and gets a fresh computeVisibleGeom() as before.
-	let repositionCtrlCol    = (_geom?: VisibleGeom) => { /* assigned in ctrl-column block */ };
 	// Cheap, rebuild-free repositioning (no visibility toggle, no per-cell
 	// rebuild) — hoisted so the width/height drag-resize handles below can keep
 	// the strips tracking the view's live size during a drag, the same way the
@@ -236,22 +160,15 @@ export async function renderTable(
 	// sites for precedent: they call positionSelectors()/positionEdgeStrips()
 	// directly, never showSelectors()/rebuild(), specifically to stay cheap
 	// enough to run on every event in a fast-firing loop).
-	let repositionSelectorStrips = (_geom?: VisibleGeom) => { /* assigned in selector block */ };
-	let repositionEdgeStrips     = (_geom?: VisibleGeom) => { /* assigned in edge block */ };
 	// Assigned once the status bar exists (below) — the outer frame's bottom
 	// edge must extend to include a hover-mode status bar while it's showing,
 	// which only that block knows how to check (see the frame element's own
 	// creation comment for why this can't just read `shell`'s own rect).
-	let updateStatusBarStats     = () => { /* assigned in status-bar block */ };
-	let updateOuterFrame = () => { /* assigned once statusBar exists */ };
-	/** Visual px the title's text is currently shifted by (updateOuterFrame). */
-	let titleShift = 0;
 	// Assigned in the frozen-rows/columns block, once thead/tbody exist — lets
 	// the drag-resize handle (defined earlier) keep frozen offsets exactly in
 	// step with the geometry it just wrote live, instead of waiting on
 	// freezeResizeObs's own rAF-coalesced re-measure (a real one-frame lag,
 	// visible as the frozen column stuttering during a slow drag).
-	let reapplyFreezeNow = () => { /* assigned in frozen-rows/columns block */ };
 
 	// Footer — hidden while collapsed, along with the table body. Extracted so
 	// both the plain-table path and the Kanban-view early-return (which skips
@@ -272,7 +189,7 @@ export async function renderTable(
 		for (const line of lines) {
 			footerEl.createDiv({ cls: 'bt-table-footer-line', text: line });
 		}
-		if (onStructuralOp) {
+		if (edits.can('set-footer')) {
 			footerEl.addClass('bt-text-editable');
 			footerEl.setAttribute('aria-label', t('clickToEditFooter'));
 			footerEl.setAttribute('data-tooltip-position', 'top');
@@ -281,11 +198,11 @@ export async function renderTable(
 				const currentText = lines.join('\n');
 				enterLineEdit(footerEl, currentText, newVal => {
 					if (!newVal) {
-						void onStructuralOp({ type: 'set-footer', footer: undefined });
+						run({ type: 'set-footer', footer: undefined });
 						return;
 					}
 					const parts = newVal.split('\n').filter(l => l.length > 0);
-					void onStructuralOp({
+					run({
 						type: 'set-footer',
 						footer: parts.length === 1 ? (parts[0] ?? newVal) : parts,
 					});
@@ -374,25 +291,23 @@ export async function renderTable(
 		const titleEl = root.createDiv({ cls: 'bt-table-title' });
 		titleEl.createSpan({ text: model.title });
 		titleEl.setCssProps({ '--bt-title-sel-pad': `${SEL_UNIT}px` });
-		if (onStructuralOp) {
+		if (edits.can('set-title')) {
 			titleEl.addClass('bt-text-editable');
 			titleEl.setAttribute('aria-label', t('clickToEditTitle'));
 			titleEl.setAttribute('data-tooltip-position', 'top');
 			titleEl.addEventListener('click', () => {
 				if (titleEl.hasClass('bt-editing')) return;
 				enterLineEdit(titleEl, model.title ?? '', newVal => {
-					void onStructuralOp({ type: 'set-title', title: newVal || undefined });
+					run({ type: 'set-title', title: newVal || undefined });
 				});
 			});
 		}
 	}
 
-	// The factor every zoom-aware geometry correction below divides by — see
-	// renderGeometry.ts's own NO_ZOOM doc comment for why this is threaded as
-	// a plain number rather than measured back off the DOM. `let`, not `const`:
-	// zoom only changes through a re-render now (model.zoom), but `let` stays so
-	// applyZoom callers could keep it in sync if a live control returns.
-	let zoom = zoomFactor(model.zoom);
+	// The factor every zoom-aware geometry correction below divides by (see renderGeometry.ts's NO_ZOOM for
+	// why it is a number and not measured back off the DOM). The zoom slider changes it live, without a
+	// re-render, so a section reads `view.zoom` when it runs and never keeps a copy.
+	const view = { zoom: zoomFactor(model.zoom) };
 
 	// ── Kanban/Calendar view: an alternate render mode for the SAME rows/
 	// columns — see ViewDefV2 in model.ts. Deliberately bails out of the
@@ -409,7 +324,7 @@ export async function renderTable(
 		// (and its centered title, above it) live inside that, not directly
 		// under root, so the title centers over the board's own width rather
 		// than the full row including the icon column.
-		const viewMain = renderViewToolbar({ root, model, registry, onStructuralOp, onToggleLock, activeView, onCreateSheet });
+		const viewMain = renderViewToolbar({ root, model, registry, edits, activeView });
 		const viewWrapper = viewMain.createDiv({ cls: 'bt-table-wrapper' });
 		// The wrapper's base width (--bt-wrapper-width, styles.css) defaults to
 		// max-content — sized to hug the TABLE's own natural width, so a compact
@@ -420,9 +335,9 @@ export async function renderTable(
 		// rather than inheriting the table's hug-content default.
 		viewWrapper.setCssProps({ '--bt-wrapper-width': '100%' });
 		if (activeView.type === 'kanban') {
-			renderKanbanBoard({ model, wrapper: viewWrapper, view: activeView, registry, onStructuralOp });
+			renderKanbanBoard({ model, wrapper: viewWrapper, view: activeView, registry, edits });
 		} else {
-			renderCalendarBoard({ model, wrapper: viewWrapper, root, view: activeView, registry, onStructuralOp, cacheKey: cacheKey ?? '' });
+			renderCalendarBoard({ model, wrapper: viewWrapper, root, view: activeView, registry, edits, cacheKey: cacheKey ?? '' });
 		}
 		renderFooter();
 		return;
@@ -505,7 +420,9 @@ export async function renderTable(
 	// `root` itself (the outermost element we own, which hugs the block) and are
 	// pinned to its edges via CSS; a drag live-applies the size to the wrapper
 	// (the scroll container) and persists it on release.
-	if (onStructuralOp || onSetViewWidth || onSetViewHeight) {
+	// The handles that would write a size the table cannot take are not drawn.
+	const resizableW = edits.can('set-view-width'), resizableH = edits.can('set-view-height');
+	if (resizableW || resizableH) {
 		const makeHandle = (cls: string, mode: 'h' | 'w' | 'both', container: HTMLElement) => {
 			const handle = container.createDiv({ cls: `bt-view-resize ${cls}` });
 			handle.addEventListener('pointerdown', (e: PointerEvent) => {
@@ -519,7 +436,7 @@ export async function renderTable(
 				// using them, same correction shape as scrollContentOffset's own (see
 				// renderGeometry.ts's NO_ZOOM doc comment).
 				const r = wrapper.getBoundingClientRect();
-				let newW = r.width / zoom, newH = r.height / zoom;
+				let newW = r.width / view.zoom, newH = r.height / view.zoom;
 				const onMove = (ev: PointerEvent) => {
 					if (mode !== 'h') {
 						// ×2 on the mouse delta, not ×1 — wrapper stays centered via
@@ -533,12 +450,12 @@ export async function renderTable(
 						// width itself grow at 2x the mouse's movement, so the
 						// visible right edge — which only gets HALF of that — ends
 						// up moving at exactly 1x, matching the cursor.
-						newW = Math.max(80, r.width / zoom + 2 * (ev.clientX - startX) / zoom);
+						newW = Math.max(80, r.width / view.zoom + 2 * (ev.clientX - startX) / view.zoom);
 						wrapper.addClass('bt-view-fixed-w');
 						wrapper.setCssProps({ '--bt-view-width': `${Math.round(newW)}px` });
 					}
 					if (mode !== 'w') {
-						newH = Math.max(60, r.height / zoom + (ev.clientY - startY) / zoom);
+						newH = Math.max(60, r.height / view.zoom + (ev.clientY - startY) / view.zoom);
 						wrapper.addClass('bt-view-fixed-h');
 						wrapper.setCssProps({ '--bt-view-height': `${Math.round(newH)}px` });
 					}
@@ -550,10 +467,10 @@ export async function renderTable(
 					// them). Same cheap, rebuild-free reposition calls the scroll listener
 					// already uses — no rebuild() needed since column/row COUNT didn't
 					// change, only the visible viewport did.
-					prepareLayout();
-					repositionSelectorStrips();
-					repositionEdgeStrips();
-					repositionCtrlCol();
+					hooks.prepareLayout();
+					hooks.repositionSelectorStrips();
+					hooks.repositionEdgeStrips();
+					hooks.repositionCtrlCol();
 					// Explicit, synchronous call rather than relying solely on
 					// viewFrameResizeObs (which also watches wrapper) — that
 					// observer is rAF-coalesced (by design, to survive its own
@@ -563,32 +480,26 @@ export async function renderTable(
 					// width drag specifically (mode 'w'/'both') — not noticeable
 					// for height, whose handle lives inside the status bar and has
 					// no separate frame-edge dependency to catch up to.
-					updateOuterFrame();
+					hooks.updateOuterFrame();
 					// Same one-frame-lag reasoning as updateOuterFrame's own call —
 					// freezeResizeObs (below) is rAF-coalesced, which reads as the
 					// frozen column stuttering a pixel behind the cursor during a
 					// slow drag (reported: "冻结列整体在抖动").
-					reapplyFreezeNow();
+					hooks.reapplyFreezeNow();
 				};
 				const onUp = () => {
 					handle.removeEventListener('pointermove', onMove);
 					handle.removeEventListener('pointerup', onUp);
-					if (mode !== 'h') {
-						if (onStructuralOp) void onStructuralOp({ type: 'set-view-width', width: Math.round(newW) });
-						else onSetViewWidth?.(Math.round(newW));
-					}
-					if (mode !== 'w') {
-						if (onStructuralOp) void onStructuralOp({ type: 'set-view-height', height: Math.round(newH) });
-						else onSetViewHeight?.(Math.round(newH));
-					}
+					if (mode !== 'h') run({ type: 'set-view-width', width: Math.round(newW) });
+					if (mode !== 'w') run({ type: 'set-view-height', height: Math.round(newH) });
 				};
 				handle.addEventListener('pointermove', onMove);
 				handle.addEventListener('pointerup', onUp);
 			});
 		};
-		makeHandle('bt-view-resize-b', 'h', shell);
-		makeHandle('bt-view-resize-r', 'w', shell);
-		makeHandle('bt-view-resize-br', 'both', shell);
+		if (resizableH) makeHandle('bt-view-resize-b', 'h', shell);
+		if (resizableW) makeHandle('bt-view-resize-r', 'w', shell);
+		if (resizableW && resizableH) makeHandle('bt-view-resize-br', 'both', shell);
 	}
 
 	// contentRow holds <table> and (in edit mode) addColBtn side by side via flex,
@@ -598,6 +509,9 @@ export async function renderTable(
 	// sticky sibling rather than a root-level absolute overlay).
 	const contentRow = wrapper.createDiv({ cls: 'bt-table-content-row' });
 	const table = contentRow.createEl('table', { cls: 'bt-table' });
+	// Picking cells for a formula being edited (renderFormulaPick.ts). Shared: the cell editor turns it on and off,
+	// the pointer handlers drive the drag.
+	const formulaPick = createFormulaPick(model, table);
 
 	// Visible-viewport geometry, all in root-relative px — see renderGeometry.ts's
 	// own doc comment for the field-by-field meaning. Pulled out to a pure,
@@ -607,12 +521,10 @@ export async function renderTable(
 	// closure's own `zoom` factor flows through here too, for the same reason —
 	// every one of THOSE call sites gets the correction for free without
 	// individually knowing zoom exists.
-	const computeVisibleGeom = () => computeVisibleGeomPure(table, root, wrapper, zoom);
+	const computeVisibleGeom = () => computeVisibleGeomPure(table, root, wrapper, view.zoom);
 
 	// Everything that follows the table's layout is registered here and runs in one fixed order; see
 	// layoutSync.ts. A strip cell being dragged or held makes the rebuild of the cells wait.
-	let stripCellBusy = () => false;
-	let markStripsStale = () => { /* assigned in the selector block */ };
 	const watchedBoxes: HTMLElement[] = [];
 	const layoutSync = createLayoutSync({
 		// A watched track counts by its size only: the round itself moves it (with the status bar), and its
@@ -622,7 +534,7 @@ export async function renderTable(
 			const size = `${Math.round(r.width * 2)},${Math.round(r.height * 2)}`;
 			return i < 4 ? `${Math.round(r.left * 2)},${Math.round(r.top * 2)},${size}` : size;
 		}).join('|') + `|${wrapper.scrollWidth},${wrapper.scrollHeight},${wrapper.clientWidth},${wrapper.clientHeight}`,
-		isBusy: () => stripCellBusy(),
+		isBusy: () => hooks.stripCellBusy(),
 		nextFrame: fn => { window.requestAnimationFrame(fn); },
 	});
 
@@ -631,8 +543,8 @@ export async function renderTable(
 	// and therefore updateOuterFrame, reads) changes on a padding-only update too (hover adds --bt-sel-pad),
 	// which never touches the content box. prepareLayout/restoreLayout call updateOuterFrame() directly
 	// for that case; this is the backstop for any size-affecting change neither of them caused.
-	layoutSync.register('place', () => repositionCtrlCol());
-	layoutSync.register('place', () => updateOuterFrame());
+	layoutSync.register('place', () => hooks.repositionCtrlCol());
+	layoutSync.register('place', () => hooks.updateOuterFrame());
 	const layoutObserver = new ResizeObserver(() => layoutSync.run());
 	layoutObserver.observe(root, { box: 'border-box' });
 	layoutObserver.observe(wrapper, { box: 'border-box' });
@@ -642,18 +554,18 @@ export async function renderTable(
 	const watchLayout = (el: HTMLElement) => { watchedBoxes.push(el); layoutObserver.observe(el); };
 
 	// A resize the browser has no way of reporting (a column dragged, the page zoomed) says so itself.
-	table.addEventListener('bt-layout-changed', () => { markStripsStale(); layoutSync.schedule(); });
+	table.addEventListener('bt-layout-changed', () => { hooks.markStripsStale(); layoutSync.schedule(); });
 
+	// Whether the row/column selector strips exist: the table can do something they offer. The space reserved above
+	// and to the left of the table follows from it, so it is decided once, here.
+	const hasSelectors = edits.canAny(SELECTOR_STRIP_OPS);
 	// How far left of the table's visible edge the ctrl column needs to clear.
 	// The full SEL_UNIT+AUTOFIT_OFFSET amount is sized to sit just left of the
 	// row SELECTOR strip (see AUTOFIT_OFFSET's own doc comment) — irrelevant on
-	// a locked table, which has no selectors at all (onStructuralOp gates them
-	// off) and only ever shows the lock icon itself, SEL_CELL wide. Using the
-	// smaller gap there specifically (not the full one "just to be safe") is
-	// what was asked for once the bug above was fixed: reserving room for a
-	// selector strip that will never exist just pushed the button, and the
-	// whole table, further right than it needed to be.
-	const CTRL_COL_LEFT_GAP = onStructuralOp ? (SEL_UNIT + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
+	// a table with no selectors (a locked one), whose toolbar is SEL_CELL wide.
+	// Reserving room for a selector strip that will never exist would push the
+	// toolbar, and the whole table, further right than it needs to be.
+	const CTRL_COL_LEFT_GAP = hasSelectors ? (SEL_UNIT + AUTOFIT_OFFSET + 4) : (SEL_CELL + 4);
 
 	// With a title, the SEL_UNIT portion of this reservation moves onto the
 	// title's own margin-bottom instead (see titleEl's own --bt-title-sel-pad,
@@ -666,14 +578,14 @@ export async function renderTable(
 	// table), which the strip then rendered directly over — reported as the
 	// title being covered by the strip on hover.
 	// The whole top reservation in one place: the fixed edge gap, plus the column-selector strip's height when there is no title.
-	const TOP_STRIP_PAD = VIEW_EDGE_GAP + (model.title ? 0 : (onStructuralOp ? SEL_UNIT : 0));
+	const TOP_STRIP_PAD = VIEW_EDGE_GAP + (model.title ? 0 : (hasSelectors ? SEL_UNIT : 0));
 	// Reserved from the very first paint and never collapsed (see restoreLayout), for every table including read-only ones.
 	root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
 
 	// Reserves --bt-sel-pad-left (root's own padding-left) when a wide table fills
 	// its container flush-left, leaving no natural margin for the row selector +
 	// ctrl column to sit in on the left. Extracted out of prepareLayout (below,
-	// only assigned a real implementation when onStructuralOp is present, i.e.
+	// only assigned a real implementation when the table has selector strips, i.e.
 	// selector strips exist) so the CTRL COLUMN — which stays visible while a
 	// table is locked via .is-locked, with no row/col selectors at all in that
 	// state — can still call this on its own. Without it, a wide LOCKED table's
@@ -704,7 +616,7 @@ export async function renderTable(
 		// is the LOGICAL px this function itself already wrote into --bt-sel-pad-left
 		// — dividing only the visual term keeps the subtraction in one consistent
 		// (logical) unit, same correction shape as scrollContentOffset's own.
-		const leftRoom = (wr0.left - rr0.left) / zoom - currentPad;
+		const leftRoom = (wr0.left - rr0.left) / view.zoom - currentPad;
 		const leftPad = leftRoom < leftNeed ? Math.ceil(leftNeed - leftRoom) : 0;
 		if (leftPad === currentPad) return;
 		// A manually-set view width (--bt-view-width) is a FIXED, border-box width
@@ -778,7 +690,6 @@ export async function renderTable(
 		// setAttribute is used because setCssProps only handles custom properties and
 		// table-layout/width are standard properties that must override the stylesheet.
 		table.setAttribute('style', `table-layout:fixed;width:${totalWidth}px`);
-		if (onToggleLock) root.setCssProps({ '--bt-lock-table-w': `${totalWidth}px` });
 	}
 
 	// ── Drag-to-select for cell merging ──────────────────────────────────────
@@ -830,7 +741,7 @@ export async function renderTable(
 		sel.start = sel.end = null;
 		sel.hasMoved = false;
 		ownCells(table).forEach(e => e.removeClass('bt-selected'));
-		updateStatusBarStats();
+		hooks.updateStatusBarStats();
 	};
 
 	const updateHighlights = () => {
@@ -839,7 +750,7 @@ export async function renderTable(
 			const col = parseInt(e.dataset.col ?? '-1');
 			if (row >= 0 && col >= 0) e.toggleClass('bt-selected', inSel(row, col));
 		});
-		updateStatusBarStats();
+		hooks.updateStatusBarStats();
 	};
 
 	/** Move the single-cell keyboard selection, ignoring a clamped (null) target. */
@@ -867,13 +778,13 @@ export async function renderTable(
 	let selectionPanel: HTMLElement | null = null;
 	/** Auto-fill for a row/column selection: each selected column (or row) is its own run. */
 	const autoFillOp = (axis: 'row' | 'col', lo: number, hi: number): CellOpEntry | undefined => {
-		if (!onStructuralOp) return undefined;
+		if (!edits.can('fill-cells')) return undefined;
 		const runs = fillRuns(axis, model.rows.map(r => r.id), model.columns.map(c => c.id), lo, hi);
 		const length = runs[0]?.cells.length ?? 0;
 		if (length === 0) return undefined;
-		return { icon: 'list-ordered', label: t('fillMenu'), action: () => {
+		return { icon: 'list-ordered', label: t('fillMenu'), emits: ['fill-cells'], action: () => {
 			new FillSequenceModal(app, length, values => {
-				for (const run of runs) void onStructuralOp({ type: 'fill-cells', cells: run.cells, values });
+				for (const fill of runs) run({ type: 'fill-cells', cells: fill.cells, values });
 			}).open();
 		} };
 	};
@@ -881,8 +792,8 @@ export async function renderTable(
 	const removeSelectionPanel = () => { selectionPanel?.remove(); selectionPanel = null; };
 
 	/** Empties every selected cell. Data cells go in one op (which also drops their formulas); header cells are column names. */
-	const clearCellsOp = (r1: number, r2: number, c1: number, c2: number, op: StructuralOpHandler, setCell: CellChangeHandler): CellOpEntry => ({
-		icon: 'eraser', label: t('clearCells'),
+	const clearCellsOp = (r1: number, r2: number, c1: number, c2: number): CellOpEntry => ({
+		icon: 'eraser', label: t('clearCells'), emits: ['fill-cells'],
 		action: () => {
 			const cells: { rowId: string; colId: string }[] = [];
 			for (let r = Math.max(r1, 1); r <= r2; r++) {
@@ -893,13 +804,16 @@ export async function renderTable(
 					if (cid) cells.push({ rowId: rid, colId: cid });
 				}
 			}
-			if (cells.length > 0) void op({ type: 'fill-cells', cells, values: cells.map(() => '') });
-			if (r1 === 0) for (let c = c1; c <= c2; c++) setCell(0, c, '');
+			if (cells.length > 0) run({ type: 'fill-cells', cells, values: cells.map(() => '') });
+			if (r1 === 0) for (let c = c1; c <= c2; c++) onCellChange(0, c, '');
 		},
 	});
 
+	// Whether the panel for a selected range offers anything that changes the table; a drag across cells, and
+	// "select all", lead to it only then.
+	const canEditSelection = edits.canAny(SELECTION_PANEL_OPS);
 	const showSelectionPanel = () => {
-		if (!sel.start || !sel.end || (!onStructuralOp && !onMergeOp)) return;
+		if (!sel.start || !sel.end || !canEditSelection) return;
 		removeSelectionPanel();
 
 		const rect = effectiveSelRect();
@@ -925,12 +839,6 @@ export async function renderTable(
 		const existingStyle = cellEffectiveStyle(model, r1, c1);
 
 		const isHeaderSel = r1 === 0 && r2 === 0;
-		// Merge/unmerge only — see renderer.ts's onMergeOp doc comment (phase 1
-		// of xlsx WRITE support): an xlsx-backed table has onMergeOp but not
-		// onStructuralOp, so it gets JUST the "Merge cells" entry below, none of
-		// the row/col/align/style ops that follow (all still gated on the real
-		// onStructuralOp, unchanged from before).
-		const mergeHandler = onStructuralOp ?? onMergeOp;
 		selectionPanel = openCellPanel({
 			component,
 			anchor,
@@ -938,35 +846,31 @@ export async function renderTable(
 			styleTarget: rangeTarget,
 			existingStyle,
 			showTextColor: true,
-			styleEditable: !!onStructuralOp,
-			cellOps: [
-				...(mergeHandler ? [{ icon: 'combine', label: t('mergeCells'),
-					action: () => void mergeHandler({ type: 'merge-cells', anchorRowId: r1RId, anchorColId: c1CId, endRowId: r2RId, endColId: c2CId }) }] as CellOpEntry[] : []),
-				...(onStructuralOp ? [
-					// Row ops only for data selections (header row cannot be hidden/deleted)
-					...(!isHeaderSel ? [
-						{ icon: 'eye-off' as const, label: hideRowsLabel(r1, r2),
-							action: () => { for (let ri = r1; ri <= r2; ri++) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
-						{ icon: 'trash' as const, label: deleteRowsLabel(r1, r2), danger: true as const,
-							action: () => { for (let ri = r2; ri >= r1; ri--) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
-					] : []),
-					{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter),
-						action: () => { for (let ci = c1; ci <= c2; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
-					{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
-						action: () => { for (let ci = c2; ci >= c1; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
-					{ divider: true },
-					buildAlignCellOp(existingStyle.align, (align) => void onStructuralOp({ type: 'set-align', target: rangeTarget, align })),
+			styleEditable: edits.can('set-range-style'),
+			cellOps: withEdits([
+				{ icon: 'combine', label: t('mergeCells'), emits: ['merge-cells'],
+					action: () => run({ type: 'merge-cells', anchorRowId: r1RId, anchorColId: c1CId, endRowId: r2RId, endColId: c2CId }) },
+				// Row ops only for data selections (header row cannot be hidden/deleted)
+				...(!isHeaderSel ? [
+					{ icon: 'eye-off', label: hideRowsLabel(r1, r2), emits: ['hide-row'],
+						action: () => { for (let ri = r1; ri <= r2; ri++) { const id = rowId(model, ri); if (id) run({ type: 'hide-row', rowId: id }); } } },
+					{ icon: 'trash', label: deleteRowsLabel(r1, r2), danger: true, emits: ['delete-row'],
+						action: () => { for (let ri = r2; ri >= r1; ri--) { const id = rowId(model, ri); if (id) run({ type: 'delete-row', rowId: id }); } } },
 				] as CellOpEntry[] : []),
+				{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter), emits: ['hide-col'],
+					action: () => { for (let ci = c1; ci <= c2; ci++) { const id = colId(model, ci); if (id) run({ type: 'hide-col', colId: id }); } } },
+				{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true, emits: ['delete-col'],
+					action: () => { for (let ci = c2; ci >= c1; ci--) { const id = colId(model, ci); if (id) run({ type: 'delete-col', colId: id }); } } },
 				{ divider: true },
-				...(onStructuralOp && onCellChange ? [clearCellsOp(r1, r2, c1, c2, onStructuralOp, onCellChange)] : []),
+				{ ...buildAlignCellOp(existingStyle.align, (align) => run({ type: 'set-align', target: rangeTarget, align })), emits: ['set-align'] },
+				{ divider: true },
+				clearCellsOp(r1, r2, c1, c2),
 				{ icon: 'copy', label: t('copyToExcel'),
 					action: () => copyRangeToClipboard(model, r1, r2, c1, c2) },
 				{ icon: 'file-text', label: t('copyToMarkdown'),
 					action: () => copyRangeAsMarkdown(model, r1, r2, c1, c2) },
-			],
-			onApplyStyle: onStructuralOp
-				? (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target: rangeTarget, bg, color, size, bold, italic })
-				: () => { /* style editing isn't in xlsx phase 1 */ },
+			], edits),
+			onApplyStyle: (bg, color, size, bold, italic) => run({ type: 'set-range-style', target: rangeTarget, bg, color, size, bold, italic }),
 			onClose: () => { clearSel(); selectionPanel = null; },
 		});
 	};
@@ -978,457 +882,27 @@ export async function renderTable(
 	const headerTr = thead.createEl('tr');
 	await renderRow({
 		tr: headerTr, rowIdx: 0, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: true,
-		onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
 	});
 
 	const tbody = table.createEl('tbody');
 
-	// ── Cell drag-select ─────────────────────────────────────────────────────
-	// Unified across header AND data cells, attached at the table level rather
-	// than separately to thead/tbody: a header-anchored merge can now reach
-	// down into real data rows, and those rows are hosted in <thead> (see
-	// computeHeaderRowSpan) purely so their rowspan renders correctly — a
-	// thead/tbody-split pair of listeners would silently miss such a row
-	// entirely (thead's old version only matched <th>, tbody's only fired for
-	// descendants of <tbody>). Matching `[data-row][data-col]` regardless of
-	// tag or physical parent means "is this the header" is decided purely by
-	// the row VALUE (0), never by which element happened to contain it.
-	const CELL_SELECTOR = 'td[data-row][data-col], th[data-row][data-col]';
-
-	// Capture-phase: a mousedown+mouseup on another cell still fires a native
-	// `click` afterward, which would otherwise reach THAT cell's own
-	// bindCellActivation listener (registered directly on its <td>, bubble
-	// phase) before bubbling up to anything registered here — by the time a
-	// bubble-phase listener here could see it, the other cell would already
-	// have opened its own editor and stolen focus (reproduced: reference
-	// insertion worked, but focus jumped to the clicked cell). Capturing on
-	// table runs BEFORE the target's own bubble listener, so swallowing it
-	// here stops that from ever happening. A click inside the formula
-	// editor's own cell is left alone — that's just normal caret placement.
-	table.addEventListener('click', (evt: MouseEvent) => {
-		if (!formulaEdit) return;
-		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
-		evt.preventDefault();
-		evt.stopPropagation();
-	}, { capture: true });
-
-	table.addEventListener('mousedown', (evt: MouseEvent) => {
-		if (evt.button !== 0) return;
-		// A locked table has no editing, no structural ops, and (showSelectionPanel's
-		// own `!onStructuralOp` guard) no popup — so this custom drag-select/highlight
-		// machinery leads nowhere for it, while its own `preventDefault()` below
-		// actively blocks the ONE thing that DOES still work unassisted: the browser's
-		// native click-and-drag text selection inside a cell, and Ctrl+C copying it.
-		// Skip entirely and let that happen instead. Reported: locked tables offered
-		// no way at all to copy a cell's content.
-		// An xlsx-backed table (phase 1 of xlsx WRITE support) is the one exception:
-		// it has onMergeOp even though onStructuralOp itself stays undefined, and
-		// dragging across cells to create a NEW merge needs this same machinery —
-		// showSelectionPanel's own gate below only offers the "Merge cells" entry
-		// in that case, nothing else. Losing native drag-to-select-text here isn't
-		// the same regression it would be for a locked table: unlike a locked
-		// table, an xlsx-backed cell IS clickable into a real text editor (see
-		// onCellChange above), so copying a cell's content is still one click away.
-		if (!onStructuralOp && !onMergeOp) return;
-		if (formulaEdit) {
-			// A cell is mid-formula-edit — clicking ANOTHER cell inserts a
-			// reference instead of the normal drag-select/open-editor behaviour.
-			// A click inside the editor's OWN cell falls through to native caret
-			// placement (formula text is plain, freely hand-editable). The
-			// header can't be referenced by a formula at all, so a header click
-			// here is simply a no-op, same as it always was for any other
-			// non-referenceable target.
-			if ((evt.target as HTMLElement).closest('.bt-editing')) return;
-			const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
-			if (!cell) return;
-			const row = parseInt(cell.dataset.row ?? '-1');
-			const col = parseInt(cell.dataset.col ?? '-1');
-			if (row < 1 || col < 0) return;
-			evt.preventDefault();
-			formulaDragStart = { row, col };
-			formulaDragEnd   = { row, col };
-			updateFormulaDragHighlight();
-			const onFormulaMouseUp = () => {
-				if (formulaEdit && formulaDragStart && formulaDragEnd) {
-					const label = formulaRangeLabel(formulaDragStart, formulaDragEnd);
-					if (label) formulaEdit.insertText(label);
-				}
-				formulaDragStart = null;
-				formulaDragEnd   = null;
-				updateFormulaDragHighlight();
-				activeDocument.removeEventListener('mouseup', onFormulaMouseUp);
-			};
-			activeDocument.addEventListener('mouseup', onFormulaMouseUp, { once: true });
-			return;
-		}
-		// Don't interfere when clicking inside an active cell editor —
-		// preventDefault would block the browser from placing the cursor
-		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
-		const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
-		if (!cell) return;
-		const row = parseInt(cell.dataset.row ?? '-1');
-		const col = parseInt(cell.dataset.col ?? '-1');
-		if (row < 0 || col < 0) return; // any real cell, header (row 0) included
-		sel.ctrlHeld = evt.ctrlKey || evt.metaKey;
-		removeSelectionPanel();
-		sel.start    = { row, col };
-		sel.end      = { row, col };
-		sel.dragging = true;
-		sel.hasMoved = false;
-		updateHighlights();
-		evt.preventDefault();
-
-		// Register mouseup for THIS drag only — re-registered on each mousedown
-		activeDocument.addEventListener('mouseup', () => {
-			sel.dragging = false;
-			if (sel.hasMoved && sel.start && sel.end &&
-				(sel.start.row !== sel.end.row || sel.start.col !== sel.end.col)) {
-				if (sel.ctrlHeld) {
-					// ctrl+select: keep highlight, no popup
-				} else {
-					showSelectionPanel();
-				}
-			} else {
-				clearSel();
-			}
-			window.setTimeout(() => {
-				sel.hasMoved = false;
-				delete table.dataset.wasDragged;
-			}, 0);
-		}, { once: true });
+	// ── Cell drag-select (renderCellDragSelect.ts) ──
+	renderCellDragSelect({
+		canEditSelection, table, formulaPick, sel, clearSel, updateHighlights, removeSelectionPanel, showSelectionPanel,
 	});
 
-	table.addEventListener('mouseover', (evt: MouseEvent) => {
-		if (formulaEdit && formulaDragStart) {
-			const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
-			if (!cell) return;
-			const row = parseInt(cell.dataset.row ?? '-1');
-			const col = parseInt(cell.dataset.col ?? '-1');
-			if (row < 1 || col < 0) return;
-			formulaDragEnd = { row, col };
-			updateFormulaDragHighlight();
-			return;
-		}
-		if (!sel.dragging) return;
-		const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
-		if (!cell) return;
-		const row = parseInt(cell.dataset.row ?? '-1');
-		const col = parseInt(cell.dataset.col ?? '-1');
-		if (row < 0 || col < 0) return;
-		if (row !== sel.end?.row || col !== sel.end?.col) {
-			sel.end = { row, col };
-			sel.hasMoved = true;
-			table.dataset.wasDragged = ''; // only set on actual movement, not every click
-			updateHighlights();
-		}
+	// ── Row/cell hover highlight (merge-aware) (renderHover.ts) ──
+	const { resetHover } = renderHover({
+		component, table, sel, clearSel, isSelectionPanelOpen: () => selectionPanel !== null, removeSelectionPanel,
 	});
 
-	// ── Row/cell hover highlight (merge-aware) ──────────────────────────────
-	// Can't be native CSS :hover: a rowspanned cell's <td> physically lives in only
-	// the FIRST <tr> it visually spans, so `tr:hover` alone can never light up
-	// the rows underneath it.
-	//
-	// Modeled as a horizontal sweep through the hovered cell's own row band
-	// (just its own row if unmerged, or every row a rowspanned hovered cell
-	// itself covers): every cell IN that band gets fully row-highlighted
-	// (including any OTHER column's merge that happens to live there, which
-	// paints its own full height automatically via its rowSpan) — but a merge
-	// anchored OUTSIDE the band that merely reaches INTO it (from an earlier
-	// row, since a covered row never has its own <td> for that column) only
-	// gets itself highlighted, not its entire row. This was tried first as a
-	// transitive "two rows are joined if ANY column's merge covers both, and
-	// that can chain" union-find — reported as lighting up the entire table,
-	// since two independent merges that each touch the hovered row (one from
-	// above, one anchored at it) chained into one another's neighbors too.
-	// The sweep only ever looks at the ORIGINAL band, once, with no chaining.
-	//
-	// Tint applied via inline box-shadow, NOT a CSS class + background rule
-	// (the original design) — reported: hovering a frozen cell, or any cell
-	// with a user-set per-cell background color, showed no hover tint at all.
-	// Root cause: both a frozen cell's opaque fill (renderFreeze.ts's opaqueBg)
-	// and a per-cell custom color (applyResolvedStyle) set `background-color`
-	// inline with 'important' priority, which always beats a STYLESHEET rule's
-	// own !important regardless of specificity — the exact "inline beats any
-	// stylesheet !important" invariant this codebase already relies on
-	// elsewhere, just working against the hover tint here instead of for it.
-	// box-shadow sidesteps this categorically: an inset shadow paints in a
-	// later layer than background regardless of who set the background or
-	// with what priority, so it's visible no matter what's underneath.
-	// hoverShadowBase caches each touched cell's box-shadow *before* hovering
-	// touched it (its exact inline value, '' if none) so clearHover can put it
-	// back verbatim — needed because a frozen cell's own frame-line shadow, or
-	// a theme's own box-shadow decoration (e.g. academic's toprule/midrule),
-	// would otherwise be clobbered by the hover layer and never restored.
-	const HOVER_CELL_SHADOW = 'inset 0 0 0 999px var(--background-modifier-hover)';
-	const HOVER_ROW_SHADOW  = 'inset 0 0 0 999px color-mix(in srgb, var(--background-modifier-hover) 50%, transparent)';
-	const hoverShadowBase = new Map<HTMLElement, string>();
-	const setHoverShadow = (el: HTMLElement, layer: string) => {
-		// A cell being actively edited already gets its own outline (see the
-		// selection-highlight CSS) and its editor's own opaque background only
-		// covers its OWN content box, not necessarily the full <td> (a `<td>`'s
-		// height is "auto" — a plain child's `height:100%` doesn't resolve
-		// against a row height some OTHER cell stretched, confirmed by direct
-		// measurement) — so tinting it here left a grey band showing around a
-		// smaller white patch (reported: editing a cell while still hovering it
-		// showed a grey cell with a white rectangle inside). Matches Excel too:
-		// a cell mid-edit doesn't also show a hover tint.
-		if (el.hasClass('bt-editing')) return;
-		if (!hoverShadowBase.has(el)) hoverShadowBase.set(el, el.style.getPropertyValue('box-shadow'));
-		// Combine with whatever's currently cascading (the cell's own inline
-		// value if it has one, else a theme's stylesheet-level box-shadow) —
-		// not just the cached inline base — so a theme's decoration also isn't
-		// erased for the duration of the hover itself, not only after it ends.
-		const computed = getComputedStyle(el).boxShadow;
-		const base = computed && computed !== 'none' ? computed : '';
-		el.style.setProperty('box-shadow', base ? `${layer}, ${base}` : layer, 'important');
-	};
-	const clearHover = () => {
-		hoverShadowBase.forEach((inlineBase, el) => {
-			if (inlineBase) el.style.setProperty('box-shadow', inlineBase, 'important');
-			else el.style.removeProperty('box-shadow');
-		});
-		hoverShadowBase.clear();
-	};
-	let lastHoverCell: HTMLTableCellElement | null = null;
-	table.addEventListener('mouseover', (evt: MouseEvent) => {
-		// The note scrolling cells past a resting cursor is not the user pointing at them.
-		if (isNoteScrolling()) return;
-		const cell = (evt.target as HTMLElement).closest<HTMLTableCellElement>('.bt-td, .bt-th');
-		if (cell === lastHoverCell) return; // moving within the same cell's own nested content
-		lastHoverCell = cell;
-		clearHover();
-		if (!cell) return;
-		setHoverShadow(cell, HOVER_CELL_SHADOW);
-		const tr = cell.closest<HTMLElement>('tr');
-		const container = tr?.parentElement;
-		if (!tr || !container) return;
-		const trs = Array.from(container.children) as HTMLElement[];
-		const bandStart = trs.indexOf(tr);
-		if (bandStart < 0) return;
-		const bandEnd = bandStart + (cell.rowSpan || 1) - 1;
-
-		trs.forEach((t, i) => {
-			if (i >= bandStart && i <= bandEnd) {
-				// Fully in the sweep's own band — every cell in this row lights up
-				// (the hovered cell itself already has the stronger cell-tint above).
-				t.querySelectorAll<HTMLElement>(':scope > .bt-td, :scope > .bt-th')
-					.forEach(c => { if (c !== cell) setHoverShadow(c, HOVER_ROW_SHADOW); });
-				return;
-			}
-			// Outside the band — only a cell whose OWN span reaches into the band
-			// (an earlier row's merge extending down into it) gets highlighted,
-			// and only that one cell, since the sweep doesn't otherwise touch this row.
-			Array.from(t.children).forEach(c => {
-				const el = c as HTMLTableCellElement;
-				if (!el.matches('.bt-td, .bt-th')) return;
-				const end = i + (el.rowSpan || 1) - 1;
-				if (end >= bandStart && i <= bandEnd) setHoverShadow(el, HOVER_ROW_SHADOW);
-			});
-		});
-	});
-	table.addEventListener('mouseleave', () => { lastHoverCell = null; clearHover(); });
-
-	// Click outside the table clears selection and panel. ctrlCol counts as
-	// part of the table's own UI (same as the panel itself) — it sits outside
-	// .bt-table-wrapper in the DOM, so without this a click on one of its own
-	// buttons (e.g. select-all, below) would bubble here and immediately
-	// clear the very selection/panel that button just opened.
-	component.registerDomEvent(activeDocument, 'click', (evt: MouseEvent) => {
-		if (!selectionPanel && !sel.start) return;
-		if (!(evt.target as HTMLElement).closest('.bt-table-wrapper, .bt-cell-panel, .bt-ctrl-col')) {
-			removeSelectionPanel();
-			clearSel();
-		}
+	// ── Keyboard cell navigation, Selected state (see cellNav.ts) (renderKeyboard.ts) ──
+	renderKeyboard({
+		model, component, edits, onCellChange, occupied, table, sel, effectiveSelRect, selectCell,
 	});
 
-	// ── Keyboard cell navigation, Selected state (see cellNav.ts) ────────────
-	// Registered on the document, but gated on this table having exactly one
-	// Selected cell — so a table the user hasn't clicked into never swallows a
-	// keystroke meant for the note, and a multi-cell drag range (same
-	// `.bt-selected` class) is left to the mouse-driven selection panel.
-	// Ctrl/Cmd+V reads the system clipboard and pastes starting at the current
-	// selection's own top-left corner (single Selected cell OR a multi-cell
-	// drag range — both share `sel`), reusing the exact same parsing a
-	// single-cell edit-mode paste already does (renderEditMode.ts) — an HTML
-	// <table> (Excel/Sheets, or a copy made via the selection panel's own
-	// "Copy to Excel" button) takes priority, including reconstructing any
-	// merges its rowspan/colspan implies (parseHtmlTableWithMerges), falling
-	// back to a Markdown pipe table in plain text. Reported as pressing it
-	// while cells were merely selected (not being individually edited) doing
-	// nothing at all.
-	const pasteAtSelection = async (r1: number, c1: number): Promise<void> => {
-		if (!onStructuralOp) return;
-		let html = '', text = '';
-		try {
-			const items = await activeWindow.navigator.clipboard.read();
-			for (const item of items) {
-				if (item.types.includes('text/html')) html = await (await item.getType('text/html')).text();
-				if (item.types.includes('text/plain')) text = await (await item.getType('text/plain')).text();
-			}
-		} catch {
-			new Notice(t('pasteFailed'));
-			return;
-		}
-		const parsed = /<table[\s>]/i.test(html) ? parseHtmlTableWithMerges(html) : null;
-		const values = parsed?.values ?? parseMarkdownPipeTable(text);
-		if (!values) return;
-		const anchorColId = colId(model, c1);
-		if (!anchorColId) return;
-		// A selection anchored on the header row has no "data row" to paste
-		// into — the same table-format-conversion op a header cell's own
-		// edit-mode paste already uses (renderCell.ts's onPasteGridHeader),
-		// values-only: a merge landing in the row that BECOMES the header has
-		// no well-defined shape once that row stops being a data row at all.
-		if (r1 === 0) {
-			void onStructuralOp({ type: 'paste-values-with-header', anchorColId, values });
-			return;
-		}
-		const anchorRowId = rowId(model, r1);
-		if (!anchorRowId) return;
-		void onStructuralOp({ type: 'paste-values', anchorRowId, anchorColId, values, merges: parsed?.merges });
-	};
-
-	component.registerDomEvent(activeDocument, 'keydown', (evt: KeyboardEvent) => {
-		if (!sel.start || !sel.end) return;
-		if (!table.isConnected) return;
-
-		// An open editor owns these keys itself (renderEditMode.ts) — including
-		// its own native copy/paste of whatever text is selected inside it.
-		// What identifies that case is where the event CAME FROM — not whether
-		// the table currently carries `.bt-editing`, which is mutable state
-		// that has already changed by the time this listener runs: a microtask
-		// checkpoint happens after every event-listener callback returns, so
-		// the editor's own handler has not only run but its deferred commit has
-		// too — dropping `.bt-editing` and setting the selection — before this
-		// same keystroke finishes bubbling here. Reading the class would
-		// therefore see "not editing", treat the Enter the editor just consumed
-		// as a fresh command, and reopen the editor it just closed. (Same
-		// family as the isConnected-inside-blur trap in CLAUDE.md: don't judge
-		// an in-flight event by state that a microtask may already have
-		// rewritten.)
-		const target = evt.target as HTMLElement | null;
-		if (target?.closest('.bt-cell-editor, .bt-date-input, .bt-inline-editor')) return;
-
-		// Paste applies to BOTH a single Selected cell and a multi-cell drag
-		// range — everything else below this block is single-cell-only (see
-		// the row/col-equality check right after it). Copy is deliberately
-		// NOT bound to Ctrl/Cmd+C here — with the multi-cell selection panel
-		// open (the common case for copying a range), something ahead of this
-		// listener in the real app (outside this plugin's own DOM — Obsidian's
-		// own Live Preview/CodeMirror editor the block sits inside is the
-		// likely source) already consumes it, so this would be dead code
-		// pretending to work. The panel's own "Copy to Excel"/"Copy as
-		// Markdown" buttons are the one reliable way to copy a range; Ctrl+V
-		// here is what makes pasting it back in feel keyboard-driven end-to-end.
-		if ((evt.ctrlKey || evt.metaKey) && !evt.altKey && evt.key.toLowerCase() === 'v' && onStructuralOp) {
-			const rect = effectiveSelRect();
-			if (rect) {
-				evt.preventDefault();
-				void pasteAtSelection(rect.r1, rect.c1);
-			}
-			return;
-		}
-
-		if (sel.start.row !== sel.end.row || sel.start.col !== sel.end.col) return;
-		const current = sel.start;
-
-		// A choice column's value menu renders to document.body, outside `table` —
-		// so there's no cell class to find it by (renderHoverPin.ts tracks it
-		// instead). Tab closes it without picking a value and carries on, matching
-		// what Tab does out of a text or date editor; everything else is left to
-		// Obsidian's own Menu, which already handles ↑/↓ and Enter/Escape.
-		const activeMenu = getActiveCellMenu();
-		if (activeMenu && activeMenu.row === current.row && activeMenu.col === current.col) {
-			if (evt.key === 'Tab') {
-				evt.preventDefault();
-				activeMenu.close();
-				selectCell(moveCell(model, occupied, current, evt.shiftKey ? 'left' : 'right'));
-			}
-			return;
-		}
-
-		if (evt.key === 'Tab') {
-			evt.preventDefault();
-			selectCell(moveCell(model, occupied, current, evt.shiftKey ? 'left' : 'right'));
-			return;
-		}
-		if (evt.key === 'ArrowUp')    { evt.preventDefault(); selectCell(moveCell(model, occupied, current, 'up'));    return; }
-		if (evt.key === 'ArrowDown')  { evt.preventDefault(); selectCell(moveCell(model, occupied, current, 'down'));  return; }
-		if (evt.key === 'ArrowLeft')  { evt.preventDefault(); selectCell(moveCell(model, occupied, current, 'left'));  return; }
-		if (evt.key === 'ArrowRight') { evt.preventDefault(); selectCell(moveCell(model, occupied, current, 'right')); return; }
-
-		// Clear the cell in place, without opening an editor — spreadsheet standard.
-		if (evt.key === 'Backspace' || evt.key === 'Delete') {
-			evt.preventDefault();
-			if (!onCellChange) return;
-			const currentValue = current.row === 0
-				? (model.columns[current.col]?.name ?? '')
-				: resolveCellValue(model, rowId(model, current.row), colId(model, current.col));
-			if (currentValue !== '') onCellChange(current.row, current.col, '');
-			return;
-		}
-
-		// Enter opens the editor keeping the current content; any printable
-		// character opens it seeded with just that character (i.e. replacing the
-		// content, as Excel/Sheets do). Modifier combos are left to Obsidian.
-		if (evt.key === 'Enter' || (evt.key.length === 1 && !evt.ctrlKey && !evt.metaKey && !evt.altKey)) {
-			const cellEl = table.querySelector<HTMLElement>(`[data-row="${current.row}"][data-col="${current.col}"]`);
-			if (!cellEl) return;
-			evt.preventDefault();
-			triggerPrimaryAction(cellEl, evt.key === 'Enter' ? undefined : evt.key);
-		}
-	});
-
-	// Drop-indicator helper shared by the selector strips' Ctrl/Cmd+drag
-	// reorder below — clears whatever the last drag frame drew before the next
-	// one draws its own, on either axis.
-	const clearDropIndicators = () => {
-		[...ownRows(thead), ...ownRows(tbody)].forEach(e => e.removeClass('bt-drop-before'));
-		ownCells(table).forEach(e => e.removeClass('bt-col-drop-before'));
-	};
-
-	// Formula-mode reference insertion — set while some cell's editor is in
-	// formula mode (renderEditMode.ts's FormulaEditHooks), cleared on exit.
-	// A separate drag-range pair (not `sel`) tracks a click-drag purely for
-	// "which cells to turn into a reference label", independent of the
-	// normal multi-cell selection this table already has.
-	let formulaEdit: { insertText: (label: string) => void } | null = null;
-	let formulaDragStart: { row: number; col: number } | null = null;
-	let formulaDragEnd:   { row: number; col: number } | null = null;
-
-	const formulaRangeLabel = (start: { row: number; col: number }, end: { row: number; col: number }): string | null => {
-		const startRowId = rowId(model, start.row), startColId = colId(model, start.col);
-		const endRowId   = rowId(model, end.row),   endColId   = colId(model, end.col);
-		if (!startRowId || !startColId || !endRowId || !endColId) return null;
-		if (start.row === end.row && start.col === end.col) return cellIdsToLabel(model, startRowId, startColId);
-		return rangeIdsToLabel(model, startRowId, startColId, endRowId, endColId);
-	};
-
-	/** Same `.bt-selected` visual language as the ordinary drag-select (`sel`/
-	 *  `updateHighlights` above) — reused here rather than a new class so a
-	 *  formula-mode range drag looks exactly like any other cell selection the
-	 *  user already recognizes. Reported: dragging to build a range reference
-	 *  showed no highlight at all, so it wasn't obvious anything was selected
-	 *  even though the eventual reference insertion worked correctly. `sel`
-	 *  itself is deliberately untouched — formula mode bypasses it entirely
-	 *  (see the mousedown branch above), so this toggles the same class from
-	 *  its own independent start/end pair instead. */
-	const updateFormulaDragHighlight = () => {
-		ownCells(table).forEach(e => {
-			const row = parseInt(e.dataset.row ?? '-1');
-			const col = parseInt(e.dataset.col ?? '-1');
-			const inRange = !!formulaDragStart && !!formulaDragEnd &&
-				row >= Math.min(formulaDragStart.row, formulaDragEnd.row) &&
-				row <= Math.max(formulaDragStart.row, formulaDragEnd.row) &&
-				col >= Math.min(formulaDragStart.col, formulaDragEnd.col) &&
-				col <= Math.max(formulaDragStart.col, formulaDragEnd.col);
-			e.toggleClass('bt-selected', inRange);
-		});
-	};
-
-	// Row/column reordering moved from drag-and-drop to a keyboard shortcut
-	// (Alt+Shift+Arrow on a selected whole row/column, bound alongside the
-	// other selector-strip keyboard handling below) — see moveSelectedRowOrCol.
+	// ── Table body ───────────────────────────────────────────────────────────
 	const visibleCellCount = countVisibleCells(model);
 	// How many leading display rows a header-anchored merge reaches into —
 	// those rows' <tr> must be hosted in thead too (see computeHeaderRowSpan's
@@ -1445,8 +919,8 @@ export async function renderTable(
 		});
 		td.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
 		td.createSpan({ cls: 'bt-indicator-label', text: ` ${collapsedRowsLabel()}` });
-		if (onStructuralOp) {
-			td.addEventListener('click', () => void onStructuralOp({ type: 'toggle-collapse' }));
+		if (edits.can('toggle-collapse')) {
+			td.addEventListener('click', () => run({ type: 'toggle-collapse' }));
 		}
 	} else {
 		// v2: model.rows[] contains only data rows; iterate 0-based, use displayIdx = ri+1
@@ -1471,9 +945,9 @@ export async function renderTable(
 				td.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
 				td.createSpan({ cls: 'bt-indicator-label',
 					text: ` ${groupIds.length} hidden row${groupIds.length > 1 ? 's' : ''}` });
-				if (onStructuralOp) {
+				if (edits.can('show-row-group')) {
 					td.addEventListener('click', () =>
-						void onStructuralOp({ type: 'show-row-group', rowIds: groupIds }));
+						run({ type: 'show-row-group', rowIds: groupIds }));
 				}
 				continue;
 			}
@@ -1486,9 +960,9 @@ export async function renderTable(
 			const tr = displayIdx < headerRowSpan ? thead.createEl('tr') : tbody.createEl('tr');
 			await renderRow({
 				tr, rowIdx: displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: false,
-				onCellChange, onColTypeChange, onStructuralOp, onMergeOp, cacheKey, getSingleClickEdit, onEditNavigate,
-				onEnterFormulaMode: (insertText) => { formulaEdit = { insertText }; },
-				onExitFormulaMode: () => { formulaEdit = null; formulaDragStart = null; formulaDragEnd = null; updateFormulaDragHighlight(); },
+				edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+				onEnterFormulaMode: (insertText) => formulaPick.enter(insertText),
+				onExitFormulaMode: () => formulaPick.exit(),
 			});
 			di++;
 		}
@@ -1506,6 +980,7 @@ export async function renderTable(
 	// TODO: filter status bar ("Showing X of Y rows · Clear filter") — deferred until
 	// a unified table status bar is designed that can also host sort info.
 
+	// ── Footer ───────────────────────────────────────────────────────────────
 	// Inside wrapper (before addRowBtn, see renderFooter's own comment) — NOT
 	// container's default, which would land the footer below wrapper's entire
 	// box, horizontal scrollbar included.
@@ -1517,2074 +992,62 @@ export async function renderTable(
 	// already uses just below (contentRow.getBoundingClientRect().width /
 	// zoom) — kept live via a ResizeObserver on the table, so a column resize (or the view-width drag) reflows the
 	// footer's own wrap points immediately, not just on the next full render.
-	// Unconditional (not gated on onStructuralOp, unlike positionEdgeStrips'
-	// own --strip-max-width write) — a locked/read-only table has a footer
+	// Unconditional (unlike positionEdgeStrips' own --strip-max-width write,
+	// which exists only where the add strips do) — a locked/read-only table has a footer
 	// too and needs the same cap.
 	if (footerEl) {
 		const positionFooter = () => {
-			footerEl.setCssProps({ '--bt-footer-max-width': `${contentRow.getBoundingClientRect().width / zoom}px` });
+			footerEl.setCssProps({ '--bt-footer-max-width': `${contentRow.getBoundingClientRect().width / view.zoom}px` });
 		};
 		positionFooter();
 		layoutSync.register('place', positionFooter);
 	}
 
-	// ── Status bar ────────────────────────────────────────────────────────────
-	// Shown unless the table opted out (the view-settings toggle), and always
-	// for a 2+-sheet workbook, whose sheet tabs live in it. A sibling of `root`
-	// under `shell`, not a child, so it stays out of the zoomed subtree (it
-	// hosts the zoom control).
-	const statusBar = (forceStatusBarPinned || model.statusBarMode !== 'hover')
-		? shell.createDiv({ cls: 'bt-status-bar' })
-		: null;
-	const statusTabs = statusBar?.createDiv({ cls: 'bt-status-tabs' }) ?? null;
-	let sliderDragging = false;
-	if (statusBar) {
-		const statusStats      = statusBar.createDiv({ cls: 'bt-status-stats' });
-		// Static separator (no drag, unlike statusDivider below) — visually sets
-		// the zoom widget apart from the row/col stats to its left, matching the
-		// same vertical-line language statusDivider already uses one section over.
-		statusBar.createDiv({ cls: 'bt-status-sep', attr: { 'aria-hidden': 'true' } });
-		// Live-drag preview touches the real `zoom` CSS property on `root`
-		// (applyZoom) AND the closure-local `zoom` NUMBER above, in the same tick —
-		// every ResizeObserver-driven geometry pass in this file (rebuild()'s
-		// auto-column-width pin, applyFreeze) can fire mid-drag, well before the
-		// eventual commit's full re-render, and must divide by the CURRENT factor,
-		// not the one this closure was built with. Leaving the number stale here
-		// was the exact bug this comment used to describe as an accepted
-		// tradeoff — confirmed via diagnostic logging to actually corrupt a pinned
-		// column width (squeeze it into a visible, self-correcting wrap) rather
-		// than just "lag a little", so it isn't a tradeoff worth keeping.
-		// While the zoom slider is mid-drag, updateOuterFrame skips writing
-		// statusBar's own real width — see that function's own comment for why
-		// (writing a real layout property on the element the native <input
-		// type=range> lives inside, every zoom-driven tick, corrupted the
-		// slider's own drag math). sliderDragging is the flag it checks.
-		renderZoomControl(statusBar, () => model.zoom ?? 100, onStructuralOp, (percent) => { applyZoom(root, percent); zoom = zoomFactor(percent); }, (dragging) => {
-			sliderDragging = dragging;
-			// Writes skipped during the drag (see updateOuterFrame's own comment)
-			// need one flush once it's safe again, or statusBar's own width stays
-			// stale at whatever it was when the drag started.
-			if (!dragging) updateOuterFrame();
-		});
-		const statusDivider    = statusBar.createDiv({ cls: 'bt-status-divider', attr: { 'aria-hidden': 'true' } });
-		const statusScroll     = statusBar.createDiv({ cls: 'bt-status-scroll' });
-		if (model.statusBarScrollWidth) statusScroll.setCssProps({ '--bt-status-scroll-w': `${model.statusBarScrollWidth}px` });
-		const statusScrollTrack = statusScroll.createDiv({ cls: 'bt-status-scroll-track' });
-		const statusScrollThumb = statusScrollTrack.createDiv({ cls: 'bt-status-scroll-thumb' });
-		// statusTabs: renderTable() never populates this itself — a workbook's
-		// sheet tabs are workbook-level chrome owned by tableBlock.ts, which mounts
-		// renderSheetTabBar() into this exact element (found via querySelector,
-		// see tableBlock.ts's own comment) once this render finishes, when there
-		// are 2+ sheets and the active sheet is in table view (Task 9). A
-		// single-sheet workbook, or a kanban/calendar active view, leaves it
-		// permanently empty — .bt-status-stats' flex layout doesn't shift either
-		// way since the div itself is always present.
-		void statusTabs;
-
-		updateStatusBarStats = () => {
-			const selection = sel.start && sel.end
-				? { r1: sel.start.row, r2: sel.end.row, c1: sel.start.col, c2: sel.end.col }
-				: null;
-			const stats = computeSelectionStats(model, selection);
-			statusStats.setText(statusBarStatsLabel(stats));
-			// Lets a user's own CSS snippet target/hide one state independently of
-			// the other (e.g. "always hide the resting row/col count, keep the
-			// selection sum") — both states used to share this one class with
-			// nothing but text content to tell them apart, which CSS can't select
-			// on at all (reported: github.com/SdKay/obsidian-rich-table/issues/7).
-			statusStats.toggleClass('is-selection', stats.selectedRows !== undefined);
-		};
-		updateStatusBarStats();
-
-		// Custom scrollbar synced to wrapper's real scrollLeft/scrollWidth/
-		// clientWidth — the native track/thumb are hidden (see .bt-table-wrapper's
-		// own ::-webkit-scrollbar:horizontal rule), but the underlying scroll
-		// mechanism (wheel/trackpad/keyboard) is untouched; this is a pure
-		// read-and-mirror layer on top of it, not a replacement for it.
-		const syncScrollThumb = () => {
-			const trackWidth = statusScrollTrack.clientWidth;
-			const { scrollWidth, clientWidth, scrollLeft } = wrapper;
-			// Nothing to scroll — a native scrollbar disappears entirely here, but
-			// this control staying in flow while visually empty read as broken
-			// ("看起来像什么都没有") rather than "intentionally nothing to do" — so
-			// instead it fills the whole track, the same "100% visible, nothing more
-			// to scroll" affordance a full progress bar gives.
-			if (scrollWidth <= clientWidth + 1) {
-				statusScroll.addClass('bt-status-scroll-empty');
-				statusScrollThumb.setCssProps({ '--bt-status-thumb-w': `${trackWidth}px`, '--bt-status-thumb-l': '0px' });
-				return;
-			}
-			statusScroll.removeClass('bt-status-scroll-empty');
-			const thumbWidth = Math.max(16, trackWidth * clientWidth / scrollWidth);
-			const maxThumbLeft = trackWidth - thumbWidth;
-			const thumbLeft = maxThumbLeft * scrollLeft / (scrollWidth - clientWidth);
-			statusScrollThumb.setCssProps({
-				'--bt-status-thumb-w': `${thumbWidth}px`,
-				'--bt-status-thumb-l': `${thumbLeft}px`,
-			});
-		};
-		syncScrollThumb();
-
-		let scrollThumbSyncScheduled = false;
-		const scheduleSyncScrollThumb = () => {
-			if (scrollThumbSyncScheduled) return;
-			scrollThumbSyncScheduled = true;
-			window.requestAnimationFrame(() => { scrollThumbSyncScheduled = false; syncScrollThumb(); });
-		};
-		wrapper.addEventListener('scroll', scheduleSyncScrollThumb);
-		// Content width (columns resized/added) and track width (window/pane
-		// resized, or the divider — Task 7 — moved) both invalidate the mapping.
-		watchLayout(statusScrollTrack);
-		layoutSync.register('place', syncScrollThumb);
-
-		// Dragging the thumb sets wrapper.scrollLeft directly — this is pure local
-		// UI state (like scroll position itself), never written back to the model.
-		// A press on the empty track pages the view toward the pointer, like a native scrollbar.
-		statusScrollTrack.addEventListener('pointerdown', (e: PointerEvent) => {
-			if (e.target !== statusScrollTrack) return;
-			const dir = e.clientX < statusScrollThumb.getBoundingClientRect().left ? -1 : 1;
-			wrapper.scrollLeft += dir * wrapper.clientWidth * 0.9;
-		});
-		statusScrollThumb.addEventListener('pointerdown', (e: PointerEvent) => {
-			e.preventDefault();
-			statusScrollThumb.setPointerCapture(e.pointerId);
-			const trackRect = statusScrollTrack.getBoundingClientRect();
-			const thumbWidth = statusScrollThumb.getBoundingClientRect().width;
-			const startThumbLeft = statusScrollThumb.getBoundingClientRect().left - trackRect.left;
-			const startX = e.clientX;
-			const maxThumbLeft = trackRect.width - thumbWidth;
-			const onMove = (ev: PointerEvent) => {
-				const rawLeft = startThumbLeft + (ev.clientX - startX);
-				const clampedLeft = Math.max(0, Math.min(maxThumbLeft, rawLeft));
-				const scrollRange = wrapper.scrollWidth - wrapper.clientWidth;
-				wrapper.scrollLeft = maxThumbLeft > 0 ? scrollRange * clampedLeft / maxThumbLeft : 0;
-			};
-			const onUp = () => {
-				statusScrollThumb.removeEventListener('pointermove', onMove);
-				statusScrollThumb.removeEventListener('pointerup', onUp);
-			};
-			statusScrollThumb.addEventListener('pointermove', onMove);
-			statusScrollThumb.addEventListener('pointerup', onUp);
-		});
-
-		// Dragging the divider reallocates space between .bt-status-tabs/-stats and
-		// .bt-status-scroll, same "drag only touches CSS, release commits the op"
-		// split as the view-resize handles above — statusBarScrollWidth persists to
-		// the model, current drag position doesn't. Gated on onStructuralOp (no
-		// point letting a locked/read-only table write it back) like every other
-		// handle that ends in an op dispatch.
-		if (onStructuralOp) {
-			const MIN_SCROLL_W = 60;
-			statusDivider.addEventListener('pointerdown', (e: PointerEvent) => {
-				e.preventDefault();
-				statusDivider.setPointerCapture(e.pointerId);
-				// barRect is visual (getBoundingClientRect); MIN_SCROLL_W/80 are logical
-				// design constants and --bt-status-scroll-w is consumed as a logical
-				// flex-basis width — divide the visual reads by zoom before mixing them
-				// with those, same correction shape as scrollContentOffset's own
-				// (NO_ZOOM's doc comment).
-				const barRect = statusBar.getBoundingClientRect();
-				const barRight = barRect.right / zoom;
-				const maxScrollW = Math.max(MIN_SCROLL_W, barRect.width / zoom - 80);
-				let newW = statusScroll.getBoundingClientRect().width / zoom;
-				const onMove = (ev: PointerEvent) => {
-					newW = Math.max(MIN_SCROLL_W, Math.min(maxScrollW, barRight - ev.clientX / zoom));
-					statusScroll.setCssProps({ '--bt-status-scroll-w': `${Math.round(newW)}px` });
-					scheduleSyncScrollThumb();
-				};
-				const onUp = () => {
-					statusDivider.removeEventListener('pointermove', onMove);
-					statusDivider.removeEventListener('pointerup', onUp);
-					void onStructuralOp({ type: 'set-status-bar-scroll-width', width: Math.round(newW) });
-				};
-				statusDivider.addEventListener('pointermove', onMove);
-				statusDivider.addEventListener('pointerup', onUp);
-			});
-		}
-
-	}
-
-	// Shift+wheel scrolls the view horizontally whether or not the bar (and its
-	// scrollbar) is shown.
-	wrapper.addEventListener('wheel', (e: WheelEvent) => {
-		if (!e.shiftKey || e.deltaX !== 0) return;
-		if (wrapper.scrollWidth <= wrapper.clientWidth) return;
-		e.preventDefault();
-		wrapper.scrollLeft += e.deltaY;
-	}, { passive: false });
-
-	// The outer frame element's real geometry — a `shell`-relative box
-	// (--of-l/-t/-w/-h) that always covers `root`'s own box, extended down to
-	// also cover a PINNED status bar's box (permanently in normal flow, so
-	// shell's own bounding rect — read via getBoundingClientRect() —
-	// already includes it: display:block stacks a later sibling below an
-	// earlier one automatically). The bar is either present (in flow) or absent.
-	//
-	// Horizontally, the frame tracks the WRAPPER's own box, not root's, once a
-	// manual viewWidth is actually narrower than what's available — replacing
-	// the earlier corner-bracket markers (--vf-l/-t/-r/-b, .bt-view-corner),
-	// which existed only because the frame itself didn't yet track the real
-	// width; with the frame doing that natively, a second marker for the same
-	// fact was redundant ("重复宣布同一件事，去掉角标，让外框直接体现实际宽度").
-	// Same "only when actually narrower" condition those markers used (a
-	// manual width could already be clamped back up to fill the same space by
-	// max-width:100%, in which case there's no narrower box to show) — but,
-	// unlike them, not gated on !model.locked: this is now the frame's own
-	// permanent shape, not a dismissable editing cue, so it stays accurate
-	// regardless of lock state.
-	updateOuterFrame = () => {
-		const rr = root.getBoundingClientRect();
-		if (rr.width === 0) return;
-		const shellRect = shell.getBoundingClientRect();
-		const wr = wrapper.getBoundingClientRect();
-		const tableRect = table.getBoundingClientRect();
-		// The bar's natural (unsqueezed) width, measured with the bar and its tabs
-		// both un-clipped; skipped while the zoom slider is mid-drag (writing the
-		// bar's real width fights the native range input's drag math — the
-		// slider's drag-end callback calls this once more to flush).
-		let barNatural: number | null = null;
-		if (statusBar && statusTabs && !sliderDragging && wr.width < rr.width - 0.5) {
-			statusBar.addClass('bt-measure-natural');
-			statusTabs.addClass('bt-measure-natural');
-			barNatural = statusBar.scrollWidth;
-			statusBar.removeClass('bt-measure-natural');
-			statusTabs.removeClass('bt-measure-natural');
-		}
-		const { left, right } = viewSpan(rr, wr, CTRL_COL_LEFT_GAP, barNatural);
-		if (statusBar && !sliderDragging) {
-			statusBar.setCssProps({
-				'--sb-pinned-l': `${left - shellRect.left}px`,
-				'--sb-pinned-w': `${right - left}px`,
-			});
-		}
-		const bottom = statusBar ? shellRect.bottom : rr.bottom;
-		// outerFrame lives in `shell`, which — like the status bar itself — is
-		// never zoomed (see `shell`'s own doc comment above), so these stay RAW
-		// visual px with no `/ zoom` correction, same treatment as --sb-* just
-		// above (that comment has the full reasoning for why dividing here
-		// would double-correct an already-correctly-scaled distance).
-		setFrameBox(shell, { l: left - shellRect.left, t: rr.top - shellRect.top, w: right - left, h: bottom - rr.top });
-		// Center the title's text over the part of <table> that is on screen: an editable table's
-		// row also reserves addColBtn's width, so centering in root lands it off by half of that,
-		// and a table wider than the view would carry the title out of sight. The shift stays
-		// within root, so the title never makes the note scroll sideways. A transform does not
-		// move layout, so the unshifted position is the measured one minus the shift applied.
-		const titleText = root.querySelector<HTMLElement>(':scope > .bt-table-title > span');
-		if (titleText) {
-			const tr = titleText.getBoundingClientRect();
-			const left = tr.left - titleShift;
-			const right = tr.right - titleShift;
-			const target = (Math.max(tableRect.left, wr.left) + Math.min(tableRect.right, wr.right)) / 2;
-			const shift = Math.min(Math.max(target - (left + right) / 2, rr.left - left), rr.right - right);
-			if (Math.abs(shift - titleShift) > 0.25) {
-				titleShift = shift;
-				titleText.setCssProps({ '--bt-title-center-adj': `${shift / zoom}px` });
-			}
-		}
-	};
-	window.requestAnimationFrame(updateOuterFrame);
-
-	// ── Frozen rows/columns ──────────────────────────────────────────────────
-	// Deliberately NOT gated behind onStructuralOp — freeze is a purely visual
-	// feature and must work in read-only rendering too, unlike the hover-only
-	// selector/edge-add strips below. Also unlike those, it must take effect
-	// immediately on first render, not only after the user hovers — but
-	// renderTable() itself still builds into a detached tree (see the write-
-	// back architecture notes), where getBoundingClientRect() reads all zero,
-	// so applyFreeze can't just run once here synchronously. A ResizeObserver
-	// naturally fires once the table gains its real size after tableBlock.ts's
-	// atomic swap moves it into the live DOM, then again on any later resize/
-	// zoom/edit — exactly the live-geometry dependency applyFreeze has.
-	// applyFreeze itself writes border-top/-bottom/-left/-right (cleared to
-	// none, replaced with a synthetic box-shadow) on cells inside <table> —
-	// border is a layout-affecting property, so those writes can change
-	// table's own rendered size and re-trigger this same observer from inside
-	// its own callback. A tight synchronous re-entrant loop like that risks
-	// Chromium's built-in ResizeObserver loop-limit protection silently
-	// dropping some notifications mid-sequence, which could leave a run
-	// half-applied (e.g. the clear step ran, but the cell it was about to
-	// re-add a border-replacement box-shadow to never got reached before the
-	// next triggered run started over) — a plausible explanation for
-	// borders/shadows being inconsistently missing. Coalescing every fire
-	// within a frame into a single rAF-deferred call, rather than running
-	// synchronously and possibly re-entrantly, breaks that loop: any
-	// self-triggered re-fires during the current frame just find
-	// `scheduled` already true and no-op, so at most one real run happens
-	// per frame regardless of how many times the observer itself fires.
-	// Reset any active hover tint FIRST — applyFreeze's own clearCell()
-	// unconditionally wipes and rebuilds box-shadow on every frozen cell, with
-	// no idea a hover interaction has ALSO been layering a tint into that same
-	// property. Without this, a cell mid-hover when applyFreeze happens to
-	// re-run (any geometry change — far more than just resize) ends up with
-	// clearHover's cached "restore" value now stale relative to the
-	// freshly-rebuilt frame lines; the eventual mouseleave then puts back the
-	// WRONG value — reported as an intermittent missing seam line between two
-	// frozen columns that appeared only after hovering a few times and
-	// cleared on a fresh render (a full re-render starts hoverShadowBase
-	// empty, so the race needs an actual hover to have happened first).
-	// Clearing hover here guarantees clearCell/rebuild always start from a
-	// hover-free state; worst case the tint blips off for a frame and
-	// reappears on the next mouse move, imperceptible next to a permanently
-	// corrupted line. Shared by both call sites below (the rAF-coalesced
-	// observer and the drag handler's synchronous one) so neither can drift
-	// from this invariant independently.
-	reapplyFreezeNow = () => {
-		clearHover();
-		lastHoverCell = null;
-		applyFreeze(table, thead, tbody, model, zoom);
-	};
-
-	// The frozen cells are placed in the frame whose layout they match. It reads whether an axis scrolls
-	// (wrapper against table), which a drag of the view's size can flip without the table resizing, so
-	// the wrapper's own boxes are part of what the layout signature watches.
-	layoutSync.register('reflow', () => reapplyFreezeNow());
-
-	// Mark root to activate the padding-reservation + resting-state clip-path
-	// CSS that every left/top/right strip (row/col selectors, edge-add "+"
-	// buttons, AND the ctrl column) depends on — see .bt-render-root.bt-has-
-	// strips in styles.css. Gated on `onStructuralOp || onToggleLock`, not
-	// onStructuralOp alone: the ctrl column exists and needs this too whenever
-	// onToggleLock is present, independent of whether the (onStructuralOp-only)
-	// row/col selectors and edge-add strips also exist — a locked table has the
-	// former but not the latter. Without this class, reserveLeftPad's own
-	// --bt-sel-pad-left has no rule consuming it at all (confirmed: the custom
-	// property was set correctly but padding-left computed to 0 regardless),
-	// which was the second half of the wide-locked-table unlock-button bug —
-	// reserving the padding alone wasn't enough.
-	if (onStructuralOp || onToggleLock) root.addClass('bt-has-strips');
-
-	// ── Edge-hover add strips (CSS Grid cells inside bt-render-root) ──
-	if (onStructuralOp) {
-		// Both add-strips live INSIDE the wrapper now (the actual scroll
-		// container), as normal-flow siblings of <table>, made position:sticky
-		// in CSS instead of JS-positioned root-level overlays. Sticky pins each
-		// to the wrapper's visible edge on its axis — addRowBtn to the visible
-		// bottom (bottom/left/right: always ABOVE the horizontal scrollbar,
-		// since sticky resolves against the padding edge and the scrollbar
-		// lives outside it), addColBtn to the visible right (top/right, in the
-		// flex row it shares with <table> — see contentRow above — so it's
-		// always BEFORE the vertical scrollbar for the identical reason).
-		// Neither the row/col selectors nor the scrolling table content can
-		// extend past either "+": all four are clamped to the exact same
-		// wrapper viewport, one true boundary instead of four independently-
-		// computed ones. This replaced an oscillating series of JS-computed
-		// positions (hug the last row/col / tuck above the scrollbar / anchor
-		// to the wrapper's outer edge) that each fixed one reported case while
-		// breaking another — the underlying issue was that "where the +
-		// belongs" needs to be answered by the browser's own scroll/overflow
-		// model, not re-derived in JS from rects on every frame. (addColBtn's
-		// HEIGHT is still JS-set, unlike its position — see its own CSS rule
-		// and positionEdgeStrips below for why.)
-		const addRowBtn = wrapper.createDiv({ cls: 'bt-edge-add-row' });
-		addRowBtn.createSpan({ cls: 'bt-edge-plus', text: '+' });
-
-		const addColBtn = contentRow.createDiv({ cls: 'bt-edge-add-col' });
-		addColBtn.createSpan({ cls: 'bt-edge-plus', text: '+' });
-
-		isEdgeStripsVisible = () => addRowBtn.hasClass('bt-strip-visible') || addColBtn.hasClass('bt-strip-visible');
-
-		// Belt-and-suspenders: strip nodes are freshly created so they should never
-		// carry bt-strip-visible, but reset it explicitly to guard against any
-		// future code path that might clone them.
-		const resetStrip = (el: HTMLElement) => el.removeClass('bt-strip-visible');
-		resetStrip(addRowBtn);
-		resetStrip(addColBtn);
-
-		addRowBtn.addEventListener('click', () =>
-			void onStructuralOp({ type: 'insert-row', afterRowId: model.rows[model.rows.length - 1]?.id ?? null }));
-		addColBtn.addEventListener('click', () =>
-			void onStructuralOp({ type: 'insert-col', afterColId: model.columns[model.columns.length - 1]?.id ?? null }));
-
-		// Use getBoundingClientRect delta — same reason as positionSelectors: the wrapper's
-		// overflow-x:auto can make it an offsetParent in some Chrome builds, so offsetTop/
-		// offsetLeft traversal may stop at the wrapper instead of reaching root.
-		// getBCR viewport-coordinate subtraction is always root-relative and unambiguous.
-		// `geom`, when passed, comes from bindScrollSync's own shared computation
-		// (one read for the frame, shared with positionSelectors/positionCtrlCol) —
-		// every OTHER call site (resize observers, mouseenter, drag-resize) omits
-		// it and gets a fresh one, since those aren't part of that shared frame.
-		const positionEdgeStrips = (geom: VisibleGeom = computeVisibleGeom()): boolean => {
-			// Stale-root guard: if this renderTable() closure's root has been removed from
-			// the DOM by a subsequent atomic swap, any rect we read would be from an
-			// unrelated or detached element — bail immediately.
-			if (!root.isConnected) return false;
-
-			const g = geom;
-			const { tr, rr } = g;
-			if (tr.width === 0 || tr.height === 0) return false;
-			if (rr.width === 0) return false;
-			if (rr.height === 0) {
-				window.requestAnimationFrame(() => positionEdgeStrips());
-				return false;
-			}
-			// Double-content guard: root height should never exceed the WRAPPER height by
-			// more than root's own OTHER real chrome — title, footer, status bar, the
-			// top strip-pad reservation — can plausibly add. rr.height >> wrapper height
-			// means the DOM contains two stacked roots (cache clone injection window),
-			// producing the anomalous rr.height≈1113 in logs. Referencing the WRAPPER
-			// (not the table) is deliberate: a wide table adds a horizontal scrollbar
-			// (~12-15px) that inflates the wrapper AND root heights equally — comparing
-			// against the table height instead used to trip this guard on every
-			// scrollable table, silently killing both edge-add buttons.
-			//
-			// A flat constant here (tried first: 60, sized only for the top strip-pad)
-			// is exactly the failure mode to avoid — it has already needed bumping once
-			// per new chrome element (adding the status bar, Task 4, immediately tripped
-			// it for nearly every editable table, not just a title+footer edge case:
-			// reported as "行列增加按钮没了", the add-row/col buttons just gone — a plain
-			// table with no title/footer was ALREADY sitting exactly at the old ceiling
-			// before that addition). Any FUTURE root-level chrome would silently
-			// reintroduce the same class of bug the same way. 220px is a generous
-			// worst-case budget for everything root can legitimately add today (title +
-			// footer, each up to a few wrapped lines, + the status bar + the strip-pad
-			// reservation) while staying nowhere near the true anomaly's ~1113px, so it
-			// doesn't need retuning for a normal chrome change — but it's still a guess
-			// bounding an open set, not a computed value; if root gains something
-			// legitimately taller than this (e.g. a very long multi-line footer), widen
-			// it rather than re-deriving it from the current chrome list.
-			if (rr.height > g.wr.height + 220) return false;
-			// Table fully scrolled out of the visible viewport (either axis). Uses the
-			// clamped visible width/height, NOT the raw table top — with inner vertical
-			// scroll a negative table top (tt) is normal (table scrolled up under a
-			// frozen/pinned region), so the old `tt < -5` check wrongly bailed then.
-			if (g.vw <= 0 || g.vh <= 0) return false;
-			// addColBtn needs no JS left/top positioning (sticky handles both — see
-			// the comment at its creation above), but its HEIGHT still comes from
-			// here: g.vh is the clamped visible table height (min of the table's own
-			// height and the wrapper's), which is what gives the sticky box "room to
-			// move" within — see .bt-edge-add-col's own CSS comment for why a taller
-			// (unclamped) height breaks sticky tracking outright. Cheaper than the old
-			// full position computation, and — unlike that one — doesn't need to run
-			// every scroll frame (g.vh is scroll-invariant except at the very first/
-			// last few px of travel), but piggybacking on the existing scroll-driven
-			// call below costs nothing extra.
-			addColBtn.setCssProps({ '--strip-height': `${g.vh}px` });
-			// addRowBtn needs no JS position math either (sticky handles bottom/
-			// left/right — see its own CSS comment), but its --strip-max-width
-			// does: caps it to contentRow's (table + addColBtn) rendered width so
-			// it matches the table instead of always stretching to the full
-			// visible viewport — a no-op for a table that itself needs the full
-			// viewport (wide table, horizontal scroll), since the cap then
-			// exceeds what left:0/right:0 would render anyway.
-			addRowBtn.setCssProps({ '--strip-max-width': `${contentRow.getBoundingClientRect().width / zoom}px` });
-
-			return true;
-		};
-		repositionEdgeStrips = (geom) => { positionEdgeStrips(geom); };
-
-		let hideTimer: number | null = null;
-		const scheduleHide = () => {
-			if (hideTimer !== null) window.clearTimeout(hideTimer);
-			hideTimer = window.setTimeout(() => {
-				addRowBtn.removeClass('bt-strip-visible');
-				addColBtn.removeClass('bt-strip-visible');
-				hideTimer = null;
-			}, 80);
-		};
-		const cancelHide = () => {
-			if (hideTimer !== null) { window.clearTimeout(hideTimer); hideTimer = null; }
-		};
-
-		showEdgeStrips = () => {
-			if (isSwapping?.()) return; // bail if atomic swap is in progress
-			cancelHide();
-			window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-				if (isSwapping?.()) return; // re-check after two frames
-				if (hideTimer !== null) return;
-				if (!positionEdgeStrips()) return;
-				addRowBtn.addClass('bt-strip-visible');
-				addColBtn.addClass('bt-strip-visible');
-			}));
-		};
-		hideEdgeStrips = scheduleHide;
-
-		// Reposition when table geometry changes (column resize, row height change).
-		// Follows the table when it grows or shrinks by itself (cell editing adds a line) as well as when a
-		// resize says so. It sets the add column's height and the add row's max-width, which can change
-		// the layout, so it runs in the phase for that.
-		layoutSync.register('reflow', () => { if (addRowBtn.hasClass('bt-strip-visible')) positionEdgeStrips(); });
-
-		// Horizontal scroll inside the wrapper doesn't move the wrapper (only the table
-		// content within it), so no resize/layout event fires — reposition the edge
-		// strips explicitly against the new visible region. Wired below, alongside the
-		// selector strips and ctrl column, into ONE shared bindScrollSync call — see
-		// its own comment for why these three used to each run an independent listener.
-	}
-
-	// ── Vertical scrollbar — right-side mirror of the toolbar (.bt-ctrl-col) ──
-	// Created unconditionally like ctrlCol itself: a locked table still needs
-	// a scrollbar if its content overflows, it just never gets the edge-add
-	// strips (onStructuralOp-only) — appending it here, AFTER the edge-strip
-	// block above, guarantees it lands after addColBtn in contentRow's DOM
-	// order when addColBtn exists (unlocked), so the flex row places it to
-	// addColBtn's right; on a locked table it's simply contentRow's only
-	// added sibling of <table>. A flex sibling, not a JS-toggled overlay —
-	// see .bt-view-scroll's own CSS comment for why that's load-bearing here
-	// (the exact "toggling a size on hover shifts the table sideways" bug
-	// class .bt-edge-add-col's own comment already documents).
-	{
-		const viewScroll = contentRow.createDiv({ cls: 'bt-view-scroll' + (model.locked ? ' is-locked' : '') });
-		const viewScrollTrack = viewScroll.createDiv({ cls: 'bt-view-scroll-track' });
-		const viewScrollThumb = viewScrollTrack.createDiv({ cls: 'bt-view-scroll-thumb' });
-
-		// Mirrors positionEdgeStrips' own --strip-height (addColBtn's height) —
-		// both need the exact same clamped-to-visible table height, since they
-		// sit side by side in the same flex row. Kept as its own small
-		// function (rather than folding into positionEdgeStrips, which only
-		// exists inside the onStructuralOp-gated edge-strip block) so a LOCKED
-		// table — which never creates addColBtn at all — still gets this
-		// sized correctly.
-		const positionViewScroll = (geom: VisibleGeom = computeVisibleGeom()) => {
-			if (geom.tr.width === 0) return;
-			viewScroll.setCssProps({ '--strip-height': `${geom.vh}px` });
-		};
-		window.requestAnimationFrame(() => positionViewScroll());
-		layoutSync.register('place', () => positionViewScroll());
-		wrapper.addEventListener('scroll', () => positionViewScroll());
-
-		// Custom scrollbar synced to wrapper's real scrollTop/scrollHeight/
-		// clientHeight — vertical mirror of the status bar's own
-		// syncScrollThumb. The native track/thumb are hidden (.bt-table-
-		// wrapper's own ::-webkit-scrollbar rule); actual wheel/trackpad/
-		// keyboard scrolling is untouched.
-		const syncVScrollThumb = () => {
-			const trackHeight = viewScrollTrack.clientHeight;
-			const { scrollHeight, clientHeight, scrollTop } = wrapper;
-			if (scrollHeight <= clientHeight + 1) {
-				viewScroll.addClass('bt-view-scroll-empty');
-				viewScrollThumb.setCssProps({ '--bt-view-thumb-h': `${trackHeight}px`, '--bt-view-thumb-t': '0px' });
-				return;
-			}
-			viewScroll.removeClass('bt-view-scroll-empty');
-			const thumbHeight = Math.max(16, trackHeight * clientHeight / scrollHeight);
-			const maxThumbTop = trackHeight - thumbHeight;
-			const thumbTop = maxThumbTop * scrollTop / (scrollHeight - clientHeight);
-			viewScrollThumb.setCssProps({
-				'--bt-view-thumb-h': `${thumbHeight}px`,
-				'--bt-view-thumb-t': `${thumbTop}px`,
-			});
-		};
-		syncVScrollThumb();
-
-		let vScrollThumbSyncScheduled = false;
-		const scheduleSyncVScrollThumb = () => {
-			if (vScrollThumbSyncScheduled) return;
-			vScrollThumbSyncScheduled = true;
-			window.requestAnimationFrame(() => { vScrollThumbSyncScheduled = false; syncVScrollThumb(); });
-		};
-		wrapper.addEventListener('scroll', scheduleSyncVScrollThumb);
-		watchLayout(viewScrollTrack);
-		layoutSync.register('place', syncVScrollThumb);
-
-		// Dragging the thumb sets wrapper.scrollTop directly — pure local UI
-		// state, never written back to the model, mirroring the horizontal
-		// thumb's own drag handler.
-		viewScrollThumb.addEventListener('pointerdown', (e: PointerEvent) => {
-			e.preventDefault();
-			viewScrollThumb.setPointerCapture(e.pointerId);
-			const trackRect = viewScrollTrack.getBoundingClientRect();
-			const thumbHeight = viewScrollThumb.getBoundingClientRect().height;
-			const startThumbTop = viewScrollThumb.getBoundingClientRect().top - trackRect.top;
-			const startY = e.clientY;
-			const maxThumbTop = trackRect.height - thumbHeight;
-			const onMove = (ev: PointerEvent) => {
-				const rawTop = startThumbTop + (ev.clientY - startY);
-				const clampedTop = Math.max(0, Math.min(maxThumbTop, rawTop));
-				const scrollRange = wrapper.scrollHeight - wrapper.clientHeight;
-				wrapper.scrollTop = maxThumbTop > 0 ? scrollRange * clampedTop / maxThumbTop : 0;
-			};
-			const onUp = () => {
-				viewScrollThumb.removeEventListener('pointermove', onMove);
-				viewScrollThumb.removeEventListener('pointerup', onUp);
-			};
-			viewScrollThumb.addEventListener('pointermove', onMove);
-			viewScrollThumb.addEventListener('pointerup', onUp);
-		});
-	}
-
-	// ── Control column: open-external-file · detach-from-xlsx · lock · autofit · theme · aggregate · collapse · views · add-sheet · snapshot — left of the row-drag strip ──
-	// All buttons share a vertical flex column positioned just left of the
-	// row selector. All but lock need onStructuralOp; lock needs onToggleLock;
-	// open-external-file/detach-from-xlsx need onOpenExternalFile/
-	// onDetachFromXlsx — see those params' own doc comments for why they're
-	// fully separate gates from the other two. ctrlCol itself is now
-	// unconditional — snapshotting a table doesn't depend on any of the
-	// above being true, so with only those four gates this column would
-	// still (rarely) be entirely absent, e.g. a locked table viewed in
-	// Reading View with editing off (onStructuralOp AND onToggleLock both
-	// undefined there) — exactly the case that should still offer a snapshot.
-	{
-		const ctrlCol = root.createDiv({ cls: 'bt-ctrl-col' + (model.locked ? ' is-locked' : '') });
-		// See hiddenCtrlColButtons' own doc comment — a display-only filter
-		// layered on top of every button's existing callback-presence gate,
-		// never a substitute for it.
-		const shown = (id: CtrlColButtonId): boolean => !hiddenCtrlColButtons?.has(id);
-
-		// Open-in-default-app button — first in column, ahead of lock: for an
-		// xlsx-backed table this is the one action that matters more than
-		// anything else here (everything else in this column is about editing
-		// THIS view, which an xlsx-backed table never offers at all). Not
-		// gated on model.collapsed — collapsing hides the rendered body, but
-		// has nothing to do with the underlying file this button opens.
-		if (onOpenExternalFile && shown('openExternal')) {
-			const openBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('openInDefaultApp'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(openBtn, 'external-link');
-			openBtn.addEventListener('click', () => onOpenExternalFile());
-		}
-
-		// Convert-to-plain-table button — second, right after open-in-default-
-		// app: the other xlsx-only action, so the two sit together ahead of
-		// everything else. Same "not gated on collapsed" reasoning as above.
-		if (onDetachFromXlsx && shown('detachXlsx')) {
-			const detachBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('detachFromXlsx'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(detachBtn, 'unlink');
-			detachBtn.addEventListener('click', () => onDetachFromXlsx());
-		}
-
-		// Lock button — hidden while collapsed: only the expand
-		// button is shown, since the other buttons act on the now-invisible body.
-		if (onToggleLock && !model.collapsed && shown('lock')) {
-			const lockBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn' + (model.locked ? ' is-locked' : ''),
-				attr: {
-					'aria-label':            model.locked ? t('unlockTable') : t('lockTable'),
-					'data-tooltip-position': 'right',
-				},
-			});
-			setIcon(lockBtn, model.locked ? 'lock' : 'lock-open');
-			lockBtn.addEventListener('click', () => void onToggleLock());
-			repositionLockBtn = () => { /* handled by ctrlCol */ };
-		}
-
-		// Autofit button — second in column. Hidden while collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed && shown('autoFit')) {
-			const autoFitBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('autoFitAll'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(autoFitBtn, 'maximize-2');
-			autoFitBtn.addEventListener('click', () => {
-				// Clears every visible column's own width rather than computing and
-				// writing a specific number — same reasoning as the per-column
-				// dblclick handler (renderResize.ts): an auto column tracks its own
-				// content on every render from here on (applyAutoColWidths, called
-				// post-render from tableBlock.ts), not just at the moment of this click.
-				for (const { colIdx } of visibleCols) {
-					const col = model.columns[colIdx];
-					if (!col) continue;
-					void onStructuralOp({ type: 'set-col-width', colId: col.id, width: 0 });
-				}
-				for (const row of model.rows) {
-					void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: 0 });
-				}
-			});
-			repositionAutoFitBtn = () => { /* positioning handled by ctrlCol */ };
-		}
-
-		// Transpose button — swaps rows and columns wholesale (see
-		// transposeModel, operations.ts). Column type/formulas/sort/views can't
-		// carry across a transpose (no row-shaped equivalent, or keyed to an old
-		// column identity that stops existing) — a one-shot structural rewrite
-		// same as every other button here, not a reversible "view", so an
-		// unwanted transpose is undone the same way any other structural op is
-		// (Obsidian's own file history), not a second click. Hidden while
-		// collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed && shown('transpose')) {
-			const transposeBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('transposeTable'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(transposeBtn, 'flip-horizontal-2');
-			transposeBtn.addEventListener('click', () => void onStructuralOp({ type: 'transpose' }));
-		}
-
-		// Select-all button — selects every cell (header included) and opens the
-		// same range-selection popup a manual drag-select across the whole table
-		// would, so every range-level action (merge/hide/delete rows or columns,
-		// align, style, copy) is reachable without dragging corner-to-corner by
-		// hand. Hidden while collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed && shown('selectAll')) {
-			const selectAllBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('selectAllOpenMenu'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(selectAllBtn, 'table');
-			selectAllBtn.addEventListener('click', () => {
-				sel.start = { row: 0, col: 0 };
-				sel.end   = { row: model.rows.length, col: model.columns.length - 1 };
-				updateHighlights();
-				showSelectionPanel();
-			});
-		}
-
-		// Theme picker button — third in column. Hidden while collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed && shown('theme')) {
-			const THEMES: { id: string | null; label: string }[] = [
-				{ id: null, label: t('themeDefault') },
-				...BUILTIN_THEMES.map(th => ({
-					id: th.id,
-					label: pick(th.labels),
-				})),
-			];
-			const themeBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('changeTheme'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(themeBtn, 'palette');
-			themeBtn.addEventListener('click', (evt: MouseEvent) => {
-				const menu = new Menu();
-				for (const { id, label } of THEMES) {
-					menu.addItem(item => {
-						item.setTitle(label);
-						if ((model.theme ?? null) === id) item.setChecked(true);
-						item.onClick(() => void onStructuralOp({ type: 'set-theme', theme: id }));
-					});
-				}
-				showMenuPinned(menu, evt);
-			});
-		}
-
-		// Summary/aggregate button — fourth in column. Same toggle set as the
-		// column-selector popup's Sum/Average/More group (see endDrag('col')) —
-		// this is just a second, table-wide-only entry point to the same state,
-		// for when the user wants to add a summary row without first selecting
-		// a column. Hidden while collapsed (see lock button above).
-		if (onStructuralOp && !model.collapsed && shown('aggregate')) {
-			const aggBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('aggMore'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(aggBtn, 'sigma');
-			aggBtn.addEventListener('click', (evt: MouseEvent) => {
-				const active = new Set(model.aggregate ?? []);
-				const menu = new Menu();
-				for (const agg of AGG_ORDER) {
-					menu.addItem(item => {
-						item.setTitle(aggLabel(agg));
-						if (active.has(agg)) item.setChecked(true);
-						item.onClick(() => void onStructuralOp({ type: 'toggle-aggregate', agg }));
-					});
-				}
-				showMenuPinned(menu, evt);
-			});
-		}
-
-		// Collapse/expand button — fifth in column
-		if (onStructuralOp && shown('collapse')) {
-			const collapseBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: {
-					'aria-label':            model.collapsed ? t('expandTable') : t('collapseTable'),
-					'data-tooltip-position': 'right',
-				},
-			});
-			setIcon(collapseBtn, model.collapsed ? 'unfold-vertical' : 'fold-vertical');
-			collapseBtn.addEventListener('click', () => void onStructuralOp({ type: 'toggle-collapse' }));
-		}
-
-		// View settings — auto width/height (reset a manual drag-resize back to
-		// auto) + the only entry points for adding a title / footer when the
-		// table has none yet (once present, the inline title/footer editors take
-		// over). Hidden while collapsed (body/footer aren't shown then).
-		if (onStructuralOp && !model.collapsed && shown('viewSettings')) {
-			const settingsBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('viewSettings'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(settingsBtn, 'settings-2');
-			settingsBtn.addEventListener('click', (evt: MouseEvent) => {
-				const menu = new Menu();
-				// Unchecking pins the size the view has right now, so it doesn't jump.
-				const wrapperRect = wrapper.getBoundingClientRect();
-				menu.addItem(i => i.setTitle(t('autoWidth')).setIcon('move-horizontal')
-					.setChecked(model.viewWidth === undefined)
-					.onClick(() => void onStructuralOp({ type: 'set-view-width',
-						width: model.viewWidth === undefined ? Math.round(wrapperRect.width / zoom) : null })));
-				menu.addItem(i => i.setTitle(t('autoHeight')).setIcon('move-vertical')
-					.setChecked(model.viewHeight === undefined)
-					.onClick(() => void onStructuralOp({ type: 'set-view-height',
-						height: model.viewHeight === undefined ? Math.round(wrapperRect.height / zoom) : null })));
-				// A 2+-sheet workbook always shows the bar (its tabs live there), so
-				// the toggle would do nothing — omitted rather than shown disabled.
-				if (!forceStatusBarPinned) {
-					menu.addItem(i => i.setTitle(t('showStatusBar')).setIcon('panel-bottom')
-						.setChecked(model.statusBarMode !== 'hover')
-						.onClick(() => void onStructuralOp({
-							type: 'set-status-bar-mode',
-							mode: model.statusBarMode !== 'hover' ? 'hover' : null,
-						})));
-				}
-				if (model.title === undefined) {
-					menu.addSeparator();
-					menu.addItem(i => i.setTitle(t('addTitle')).setIcon('heading')
-						.onClick(() => void onStructuralOp({ type: 'set-title', title: t('titlePlaceholder') })));
-				}
-				if (!model.footer || (Array.isArray(model.footer) && model.footer.length === 0)) {
-					menu.addItem(i => i.setTitle(t('addFooter')).setIcon('panel-bottom')
-						.onClick(() => void onStructuralOp({ type: 'set-footer', footer: t('footerPlaceholder') })));
-				}
-				showMenuPinned(menu, evt);
-			});
-		}
-
-		// Views switcher — last in column. Shares buildViewSwitcherMenu with the
-		// Kanban toolbar's own views button (renderKanban.ts) so both surfaces
-		// offer the exact same set of views/actions.
-		if (onStructuralOp && shown('views')) {
-			const viewsBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('views'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(viewsBtn, 'layout-grid');
-			viewsBtn.addEventListener('click', (evt: MouseEvent) =>
-				showMenuPinned(buildViewSwitcherMenu(model, registry, onStructuralOp), evt));
-		}
-
-		// Add sheet — converts this table into a multi-sheet workbook (or, once
-		// it already is one, appends another sheet). Absent once the table
-		// already has its own bottom sheet-tab-bar (that bar's own "+" takes
-		// over — see tableBlock.ts).
-		if (onCreateSheet && shown('newSheet')) {
-			const addSheetBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('newSheet'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(addSheetBtn, 'copy-plus');
-			addSheetBtn.addEventListener('click', () => onCreateSheet());
-		}
-
-		// Snapshot button — last in the column, deliberately: unlike
-		// everything above it, it applies to every table regardless of edit/
-		// lock/xlsx state, so it reads as a step apart from the editing-
-		// focused tools above rather than competing with them for the most
-		// prominent (top) spot.
-		if (onSnapshot && shown('snapshot')) {
-			const snapshotBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('snapshotButton'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(snapshotBtn, 'camera');
-			snapshotBtn.addEventListener('click', (evt: MouseEvent) => {
-				const menu = new Menu();
-				menu.addItem(i => i.setTitle(t('snapshotCopyPng')).setIcon('copy').onClick(() => onSnapshot('copy-png')));
-				menu.addItem(i => i.setTitle(t('snapshotSavePng')).setIcon('image').onClick(() => onSnapshot('save-png')));
-				menu.addItem(i => i.setTitle(t('snapshotSaveSvg')).setIcon('file-code').onClick(() => onSnapshot('save-svg')));
-				showMenuPinned(menu, evt);
-			});
-		}
-
-		// Export-to-xlsx button — right next to Snapshot, same "applies
-		// regardless of edit/lock state" reasoning; only ever present for a
-		// native (non xlsx-backed) table, see onExportXlsx's own doc comment.
-		if (onExportXlsx && shown('exportXlsx')) {
-			const exportBtn = ctrlCol.createDiv({
-				cls: 'bt-ctrl-btn',
-				attr: { 'aria-label': t('exportToXlsx'), 'data-tooltip-position': 'right' },
-			});
-			setIcon(exportBtn, 'folder-up');
-			exportBtn.addEventListener('click', () => onExportXlsx());
-		}
-
-		// Position the column just left of the row selector (or, on a locked table
-		// with no row selector at all, just left of the table itself — see
-		// CTRL_COL_LEFT_GAP above) — anchored to the VISIBLE left edge (not the
-		// table's own left) so it stays on-screen when a wide table is
-		// horizontally scrolled.
-		// See positionEdgeStrips' own comment on the optional `geom` parameter —
-		// same shared-frame purpose, via bindScrollSync below.
-		const positionCtrlCol = (geom: VisibleGeom = computeVisibleGeom()) => {
-			const g = geom;
-			if (g.tr.width === 0) return;
-			// ctrlCol stacks a growing number of buttons (lock/auto-fit/theme/
-			// aggregate/collapse/views/add-sheet) with no height cap of its own —
-			// for a short table (few rows) that stack is taller than the table
-			// itself, so it silently overflows past root's bottom edge and gets
-			// clipped by Obsidian's own live-preview widget container (outside
-			// this stylesheet's control) instead of just spilling visibly onto
-			// the page below. Cap it to the table's own height so it scrolls
-			// internally in that case rather than losing buttons off the bottom.
-			// Position (--cc-top) clamps to the VISIBLE band (vt), not the full
-			// table (tt), so the toolbar stays pinned in view when the table
-			// scrolls vertically inside the wrapper instead of scrolling off with
-			// the table's top. The height cap deliberately does NOT reuse vh for
-			// this: vh is the live intersection of the table's and wrapper's
-			// rects, which is scroll-position-INVARIANT everywhere except a
-			// narrow band right at the very top/bottom of the scroll range (where
-			// the table's own edge is entering the wrapper's visible band) — the
-			// icon stack would visibly gain/lose buttons at the bottom as vh
-			// dipped there, even though the wrapper's own available height never
-			// actually changed (reported: icon spacing/visibility shifting while
-			// dragging the scrollbar). The wrapper's clientHeight is exactly as
-			// stable as vh everywhere else but doesn't have that dip, since it's
-			// the wrapper's own box size, not an intersection with the table's
-			// scroll-shifting rect.
-			ctrlCol.setCssProps({
-				'--cc-top':  `${g.vt + 2}px`,
-				'--cc-left': `${g.vl - CTRL_COL_LEFT_GAP}px`,
-				'--cc-maxh': `${Math.max(Math.min(g.th, wrapper.clientHeight) - 4, 0)}px`,
-			});
-		};
-		// A locked table's ctrl column is visible from the very first paint
-		// (.is-locked's permanent opacity:1 in styles.css — no hover needed), so
-		// unlike the general case it can't wait for a first mouseenter to reserve
-		// the left padding it needs on a wide table (see reserveLeftPad's own doc
-		// comment): with no room reserved yet, the initial positionCtrlCol() below
-		// would still compute an off-screen --cc-left. Locked-but-unhovered is
-		// exactly the state the reported bug was stuck in.
-		if (model.locked) reserveLeftPad();
-		// Called with no args here — each of these hands positionCtrlCol its OWN
-		// callback argument (a timestamp, an Event, a ResizeObserverEntry[]), none
-		// of which is the VisibleGeom its now-optional parameter expects; omitting
-		// the arg lets that parameter's default (a fresh computeVisibleGeom())
-		// take over, exactly as before this parameter existed.
-		window.requestAnimationFrame(() => positionCtrlCol());
-		// A wide table shifted right by --bt-sel-pad-left on hover doesn't change the
-		// table's own size (it just overflows less/more), so ResizeObserver won't fire
-		// — the mouseenter handler calls this explicitly after prepareLayout instead.
-		repositionCtrlCol = positionCtrlCol;
-	}
-
-	// ── Row / column selector strips (Excel-style whole-row/column selection) ──
-	if (onStructuralOp) {
-		// Capture the title element (root's own first child, if present) so we
-		// can neutralise its -9px margin while the selector is visible —
-		// without this the col-selector strip at root's top overlaps the
-		// title's last 9px of content. A direct child query, not a sibling
-		// lookup: titleEl lives INSIDE root (so it scales together with the
-		// table under zoom), not as root's previous sibling.
-		const titleEl = root.querySelector<HTMLElement>(':scope > .bt-table-title');
-
-		const colSel = root.createDiv({ cls: 'bt-col-selector' });
-		const rowSel = root.createDiv({ cls: 'bt-row-selector' });
-		// Non-frozen cells/grips/resize-handles are parented here instead of
-		// directly under colSel/rowSel — see styles.css's own comment above
-		// .bt-sel-track for why (one shared transform instead of one per cell).
-		// A frozen one stays a direct child of colSel/rowSel, outside the track,
-		// so it never inherits the track's scroll-offset transform at all.
-		const colTrack = colSel.createDiv({ cls: 'bt-sel-track' });
-		const rowTrack = rowSel.createDiv({ cls: 'bt-sel-track' });
-
-		// Persistent resize handles — created once (into the track, the common
-		// case), reparented into/out of it in rebuild() below if a column/row's
-		// frozen status changes, repositioned every time either way.
-		const colResizeHandles = new Map<number, HTMLElement>();
-		model.columns.forEach((c, ci) => {
-			if (c.hidden) return;
-			const h = colTrack.createDiv({ cls: 'bt-sel-resize-col', attr: { 'aria-hidden': 'true' } });
-			setupColResize(h, table, ci, getRegistry, model, onStructuralOp, component, zoom);
-			colResizeHandles.set(ci, h);
-		});
-		const rowResizeHandles = new Map<number, HTMLElement>();
-		// ri is 0-based v2 index; display index = ri+1 (header is 0)
-		model.rows.forEach((row, ri) => {
-			const displayIdx = ri + 1;
-			const h = rowTrack.createDiv({ cls: 'bt-sel-resize-row', attr: { 'aria-hidden': 'true' } });
-			bindResizeHandle(
-				h, table, `data-row="${displayIdx}"`, '--bt-row-height', 24,
-				(height) => void onStructuralOp({ type: 'set-row-height', rowId: row.id, height }),
-				component,
-				undefined,
-				zoom,
-			);
-			h.addEventListener('dblclick', (e: MouseEvent) => {
-				e.stopPropagation();
-				e.preventDefault();
-				// Clears the row's own height rather than computing and writing a
-				// specific number — a row with no height of its own already hugs its
-				// content natively (no --bt-row-height override), so this just drops
-				// back to that instead of pinning it to whatever fit at this instant.
-				void onStructuralOp({ type: 'set-row-height', rowId: row.id, height: 0 });
-			});
-			rowResizeHandles.set(ri, h);
-		});
-
-		let selAxis: 'col' | 'row' | null = null;
-		let selI1 = -1, selI2 = -1;
-		let selDragging = false; // true only between pointerdown and pointerup
-
-		// Row/column reordering: Ctrl/Cmd+drag on the selector strip, replacing
-		// the old dedicated drag-grip sub-zone (removed alongside the rest of the
-		// grip/label split — see selectorLayout.ts's own doc comment). A plain
-		// drag on the strip still means "select this range" (selAxis/selI1/selI2
-		// above); holding Ctrl/Cmd switches the SAME pointerdown/move/up sequence
-		// to "move this one row/column", using reorderAxis/reorderFromIdx/
-		// reorderToIdx instead so the two never fight over the same state.
-		let reorderAxis: 'col' | 'row' | null = null;
-		let reorderFromIdx = -1, reorderToIdx = -1;
-		// Summary/aggregate-row reorder shares the same Ctrl/Cmd+drag gesture but
-		// keys by AggType (there's no numeric row index for a summary row).
-		let reorderAggFrom: AggType | null = null, reorderAggTo: AggType | null = null;
-
-		// Highlight table cells corresponding to the current selector selection.
-		// Uses data-sel-stripe to track our additions so we don't clobber the
-		// cell drag-to-select highlights: only stripe-tagged cells are touched
-		// here, since rebuild() also runs from a ResizeObserver whenever the
-		// table's box changes for any reason (e.g. exiting cell-edit mode) and
-		// must leave an unrelated, `sel`-driven cell selection alone.
-		const updateTableHighlights = () => {
-			ownCells(table).forEach(e => {
-				if (!e.hasAttribute('data-sel-stripe')) return;
-				e.removeAttribute('data-sel-stripe');
-				e.removeClass('bt-selected');
-			});
-			if (selAxis === null) return;
-			const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
-			ownCells(table).filter(e => {
-				const v = parseInt((selAxis === 'col' ? e.dataset.col : e.dataset.row) ?? '-1');
-				return v >= lo && v <= hi;
-			}).forEach(e => {
-				e.setAttribute('data-sel-stripe', '1');
-				e.addClass('bt-selected');
-			});
-		};
-
-		const rebuild = () => {
-			updateTableHighlights();
-
-			// In auto layout (no explicit widths, e.g. the empty-block template) the <col>
-			// elements never get a width set at render time — see hasExplicitWidths above —
-			// so every offset computed below from col.style.width would read 0 and collapse
-			// the selector/resize-seam positions to the left edge. Measure each physical
-			// column's actual rendered width from an unspanned header/data cell and pin it
-			// onto the <col> so the existing col.style.width reads further down stay correct.
-			if (!hasExplicitWidths) {
-				const measured = new Map<string, number>();
-				// A column that's colspan-merged in EVERY row it appears in (e.g. a
-				// header merge spanning it plus a different data-row merge also
-				// spanning it) never turns up as an unspanned cell anywhere, so the
-				// loop below would never measure it — reported as the selector
-				// strip's column boundaries drifting off from that column onward,
-				// since its <col> kept whatever stale/empty width it had before,
-				// collapsing that column's contribution to 0 in the cumulative
-				// left-offset sum further down. Colspan cells are still recorded
-				// here (not skipped outright) as a fallback candidate — an equal
-				// share of the merged cell's own rendered width — applied only to
-				// whichever columns never get a precise unspanned measurement.
-				const spanned: { startCol: number; span: number; width: number }[] = [];
-				const rows = [
-					...ownRows(thead),
-					...ownRows(tbody),
-				];
-				for (const tr of rows) {
-					for (const cell of Array.from(tr.querySelectorAll<HTMLTableCellElement>('[data-col]'))) {
-						const ci = cell.dataset.col;
-						if (ci === undefined) continue;
-						if (cell.colSpan > 1) {
-							spanned.push({ startCol: parseInt(ci), span: cell.colSpan, width: cell.getBoundingClientRect().width / zoom });
-							continue;
-						}
-						if (measured.has(ci)) continue;
-						measured.set(ci, cell.getBoundingClientRect().width / zoom);
-					}
-				}
-				for (const { startCol, span, width } of spanned) {
-					const share = width / span;
-					for (let ci = startCol; ci < startCol + span; ci++) {
-						const key = String(ci);
-						if (!measured.has(key)) measured.set(key, share);
-					}
-				}
-				let pinnedTotal = 0;
-				for (const c of ownCols(table)) {
-					const ci = c.dataset.col;
-					if (ci === undefined) continue;
-					const w = measured.get(ci);
-					if (w !== undefined) { c.style.setProperty('width', `${w}px`); pinnedTotal += w; }
-				}
-				// Also pin the TABLE's own width to the just-measured total — table-
-				// layout stays 'auto' (unlike the hasExplicitWidths branch above,
-				// which switches to 'fixed'), so a column whose content genuinely
-				// grows can still expand past this on a later pass; this only
-				// removes AMBIGUITY about the table's width when content does NOT
-				// need more room. Leaving the table with no explicit width at all
-				// left auto-layout free to treat "how much width does the table
-				// get" as open-ended, which .bt-table-content-row's own
-				// width:max-content (sized from the table's contribution) could
-				// then read as bigger than the just-measured columns actually
-				// needed — and since the readout gets pinned right back onto the
-				// <col>s next cycle, this became a self-feeding ratchet: every
-				// hover (showSelectors -> rebuild()) measured a table a few px
-				// wider than last time and pinned that as the new floor, repeating
-				// indefinitely (reported: the whole table growing wider and wider
-				// across repeated hovers until it filled the page — and the column
-				// selector's own width, computed from the table's PRE-rebuild size
-				// earlier in the same hover, one step behind the growth). An
-				// explicit width removes that ambiguity: auto-layout still expands
-				// a column past it if content truly needs more (its own defined
-				// behavior for real overflow), but stops manufacturing UNNEEDED
-				// extra space just because a flex ancestor's max-content query
-				// left the door open.
-				// The columns' sum excludes the table's own border/padding, which a
-				// border-box table's width includes — pinning the bare sum squeezed the
-				// columns by that much on every rebuild.
-				const tcs = getComputedStyle(table);
-				const chrome = tcs.boxSizing === 'border-box'
-					? (parseFloat(tcs.borderLeftWidth) || 0) + (parseFloat(tcs.borderRightWidth) || 0)
-						+ (parseFloat(tcs.paddingLeft) || 0) + (parseFloat(tcs.paddingRight) || 0)
-					: 0;
-				if (pinnedTotal > 0) table.style.setProperty('width', `${pinnedTotal + chrome}px`);
-			}
-
-			// Every layout read the strips need, taken before the first write below: a read
-			// after a write re-lays the table out, and once per column and row that is the
-			// cost of this whole function.
-			const freezeColsAt = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
-			const freezeRowsAt = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
-			const colOffset = new Map<HTMLElement, number>();
-			for (const c of ownCols(table)) {
-				const ci = c.dataset.col;
-				if (ci === undefined) continue;
-				const frozen = freezeColsAt !== undefined && parseInt(ci) < freezeColsAt;
-				colOffset.set(c, selectorAxisOffset(c, 'x', zoom, frozen));
-			}
-			const rowGeom = new Map<HTMLElement, { top: number; height: number }>();
-			const tableTop = table.getBoundingClientRect().top;
-			const allTrs = [
-				...ownRows(thead),
-				...ownRows(tbody),
-			];
-			for (const tr of allTrs) {
-				if (!tr) continue;
-				const trRect = tr.getBoundingClientRect();
-				rowGeom.set(tr, { top: (trRect.top - tableTop) / zoom, height: trRect.height / zoom });
-			}
-			const handleRow = new Map<number, { frozen: boolean; offset: number; height: number }>();
-			for (const [ri] of rowResizeHandles) {
-				// data-row is 1-based (header=0, data rows=1,2,3…); ri is 0-based model index.
-				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri + 1}"]`);
-				const tr = firstCell?.closest<HTMLElement>('tr');
-				if (!tr) continue;
-				const frozen = freezeRowsAt !== undefined && ri + 1 <= freezeRowsAt;
-				handleRow.set(ri, { frozen, offset: selectorAxisOffset(tr, 'y', zoom, frozen), height: tr.getBoundingClientRect().height / zoom });
-			}
-
-			// Column selector — cells positioned by --cl/--cw relative to the selector's
-			// own left edge, which CSS Grid aligns with the table wrapper automatically.
-			colSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
-
-			// parseFloat, not parseInt: col.style.width holds a fractional px value
-			// (rebuild()'s own measurement above pins e.g. "39.9952px" for an
-			// auto-layout column) — parseInt truncates that to "39", and doing so
-			// on every column in a cumulative running sum compounds the ~1px loss
-			// per column into a growing drift, reported as the selector strip's
-			// column boundaries visibly falling further behind the table's real
-			// columns the further right you go (confirmed via logged real numbers:
-			// the drift grew by almost exactly 1px per column). Same fix applied
-			// to the resize-handle seam positions below, which summed the same
-			// truncated value.
-			// A frozen column's real table cell doesn't move on horizontal scroll
-			// (position:sticky) — its selector-strip label shouldn't either, but a
-			// non-frozen cell's parent (.bt-sel-track, below) is transformed to stay
-			// visually aligned with content scrolling past underneath. Reported: with
-			// column freeze on, the label strip kept scrolling away out from under the
-			// column it's supposed to label. Parenting a frozen cell OUTSIDE the track
-			// (see the `frozen` ternaries below) is what keeps it still; --cl is
-			// already the same table-relative left offset applyFreeze computes into
-			// --bt-frozen-left for the real cell, so no separate calculation is needed
-			// here, just reusing the existing one.
-			const freezeCols = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
-			const freezeRows = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
-			for (const c of ownCols(table)) {
-				const w = parseFloat(c.style.width) || 0;
-				if (c.dataset.col !== undefined) {
-					// Visible column — one cell per physical column
-					const ci = parseInt(c.dataset.col);
-					// Frozen cell/grip parents directly under colSel, outside colTrack
-					// (see styles.css's .bt-sel-track comment) — see selectorAxisOffset
-					// for which coordinate space --cl needs as a result.
-					const frozen = freezeCols !== undefined && ci < freezeCols;
-					const colX = colOffset.get(c) ?? 0;
-					const cell = (frozen ? colSel : colTrack).createDiv({ cls: 'bt-sel-cell', attr: { 'aria-label': t('dragReorderCol') } });
-					cell.dataset.idx = String(ci);
-					cell.setText(colIndexToLetter(ci));
-					cell.setCssProps({ '--cl': `${colX}px`, '--cw': `${w}px` });
-					if (frozen) cell.addClass('bt-sel-cell-frozen');
-					if (selAxis === 'col') {
-						const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
-						if (ci >= lo && ci <= hi) cell.addClass('is-sel');
-					}
-					if (reorderAxis === 'col' && ci === reorderFromIdx) cell.addClass('bt-dragging');
-				}
-				// Hidden column groups get no selector-strip cell — the in-table
-				// bt-col-indicator (§ renderRow) is the single "click to show" entry point.
-			}
-
-			// Row selector — cells positioned by --rt/--rh relative to the selector's
-			// own top edge, which CSS Grid aligns with the table wrapper automatically.
-			rowSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
-			// Row selector — one cell per physical row, independent of rowspan merges.
-			// Use getBoundingClientRect() for row positions: tr.offsetTop is relative to
-			// tr.offsetParent which can be tbody (not table), causing all tbody rows to
-			// report offsetTop=0. getBoundingClientRect() always gives viewport coords
-			// so subtracting table's top gives the correct table-relative offset.
-			for (const tr of allTrs) {
-				if (!tr) continue;
-				const g = rowGeom.get(tr);
-				if (!g) continue;
-				// Both operands are visual (getBoundingClientRect); rowTop/rowH feed
-				// --rt/--rh below, consumed as logical top/height — divide the
-				// difference/size by zoom, same correction shape as
-				// scrollContentOffset's own (NO_ZOOM's doc comment).
-				const rowTop = g.top;
-				const rowH   = g.height;
-				if (tr.hasClass('bt-row-indicator')) {
-					// Hidden row groups get no selector-strip cell — the in-table
-					// row itself is the single "click to show" entry point.
-				} else if (tr.dataset.agg) {
-					// Summary/aggregate row — a small icon cell (not a row number, this
-					// isn't part of model.rows) whose click opens a one-item "remove this
-					// summary row" menu. Reorders among summary rows only via the same
-					// Ctrl/Cmd+drag convention as real rows/columns, keyed by AggType
-					// instead of a numeric index — see reorderAggFrom/-To below.
-					const agg = tr.dataset.agg as AggType;
-					// Aggregate rows aren't part of model.rows/freezeRows — never frozen,
-					// always in the track.
-					const cell = rowTrack.createDiv({ cls: 'bt-sel-cell bt-sel-agg-cell', attr: { 'aria-label': t('dragReorderAgg') } });
-					cell.dataset.aggIdx = agg;
-					setIcon(cell, 'sigma');
-					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
-					cell.addEventListener('click', (e: MouseEvent) => {
-						e.stopPropagation();
-						const m = new Menu();
-						m.addItem(item => {
-							item.setTitle(t('clearAggregate')).setIcon('trash');
-							item.onClick(() => void onStructuralOp({ type: 'clear-aggregate', agg }));
-						});
-						showMenuPinned(m, e);
-					});
-					if (reorderAggFrom === agg) cell.addClass('bt-dragging');
-				} else {
-					const firstCell = tr.querySelector<HTMLElement>('[data-row]');
-					if (!firstCell) continue;
-					const ri = parseInt(firstCell.dataset.row ?? '-1');
-					if (ri < 0) continue;
-					// A frozen row's real cell doesn't move on vertical inner-scroll
-					// (position:sticky) — its row-number label shouldn't either. In
-					// renderFreeze idx<=freezeRows are frozen (header=0 + first
-					// freezeRows data rows); ri here is that same data-row value.
-					// Parenting outside rowTrack (see styles.css's .bt-sel-track
-					// comment) is what stops it tracking scroll now.
-					const rowFrozen = freezeRows !== undefined && ri <= freezeRows;
-					const cell = (rowFrozen ? rowSel : rowTrack).createDiv({ cls: 'bt-sel-cell', attr: { 'aria-label': t('dragReorderRow') } });
-					cell.dataset.idx = String(ri);
-					cell.setText(String(ri + 1));
-					cell.setCssProps({ '--rt': `${rowTop}px`, '--rh': `${rowH}px` });
-					if (rowFrozen) cell.addClass('bt-sel-cell-frozen');
-					if (selAxis === 'row') {
-						const lo = Math.min(selI1, selI2), hi2 = Math.max(selI1, selI2);
-						if (ri >= lo && ri <= hi2) cell.addClass('is-sel');
-					}
-					if (reorderAxis === 'row' && ri === reorderFromIdx) cell.addClass('bt-dragging');
-				}
-			}
-
-			// Reposition persistent resize handles (column seam positions, row bottom edges).
-			// parseFloat, not parseInt — see the matching comment on the colSel loop above.
-			for (const c of ownCols(table)) {
-				const dc = c.dataset.col;
-				if (dc === undefined) continue;
-				const h = colResizeHandles.get(parseInt(dc));
-				if (!h) continue;
-				// A frozen column's real cell doesn't move on horizontal scroll, so
-				// neither may the hover zone that resizes it — reparent it outside
-				// colTrack (same partition as the label cells above) instead of
-				// letting the track's scroll-tracking transform carry it away from
-				// the boundary line it belongs to. Reported before this existed: the
-				// resize hover area sitting outside the selector, along the
-				// extension of that line.
-				const colFrozen = freezeCols !== undefined && parseInt(dc) < freezeCols;
-				// Seam sits on the column's RIGHT edge; same frozen/non-frozen split as --cl above.
-				h.setCssProps({ '--rx': `${(colOffset.get(c) ?? 0) + (parseFloat(c.style.width) || 0)}px` });
-				h.toggleClass('bt-sel-cell-frozen', colFrozen);
-				const colDesiredParent = colFrozen ? colSel : colTrack;
-				if (h.parentElement !== colDesiredParent) colDesiredParent.appendChild(h);
-			}
-			for (const [ri, h] of rowResizeHandles) {
-				const g = handleRow.get(ri);
-				if (g) {
-					// Row's BOTTOM edge — vertical mirror of the column seams above.
-					h.setCssProps({ '--ry': `${g.offset + g.height}px` });
-					h.toggleClass('bt-sel-cell-frozen', g.frozen);
-					const rowDesiredParent = g.frozen ? rowSel : rowTrack;
-					if (h.parentElement !== rowDesiredParent) rowDesiredParent.appendChild(h);
-					h.removeClass('bt-sel-resize-hidden');
-				} else {
-					h.addClass('bt-sel-resize-hidden');
-				}
-			}
-		};
-
-		// The table's size when the strips were last rebuilt. Nothing else changes what
-		// rebuild() draws without changing that size or going through an op, and an op
-		// rebuilds the whole table.
-		let lastRebuiltW = -1, lastRebuiltH = -1;
-		const tableResizedSinceRebuild = () => {
-			const r = table.getBoundingClientRect();
-			return Math.abs(r.width - lastRebuiltW) >= 0.5 || Math.abs(r.height - lastRebuiltH) >= 0.5;
-		};
-		const rebuildAndRecordSize = () => {
-			rebuild();
-			const r = table.getBoundingClientRect();
-			lastRebuiltW = r.width;
-			lastRebuiltH = r.height;
-		};
-		const rebuildIfResized = () => { if (tableResizedSinceRebuild()) rebuildAndRecordSize(); };
-
-		let selHideTimer: number | null = null;
-		const scheduleSelHide = () => {
-			if (selAxis !== null) return;
-			if (selHideTimer) window.clearTimeout(selHideTimer);
-			selHideTimer = window.setTimeout(() => {
-				colSel.removeClass('bt-strip-visible');
-				rowSel.removeClass('bt-strip-visible');
-				restoreLayout();
-				selHideTimer = null;
-			}, 80);
-		};
-
-		// getBoundingClientRect delta is immune to the offsetParent chain: when the wrapper
-		// (overflow-x:auto) is treated as offsetParent by some Chrome/Electron versions,
-		// table.offsetLeft returns 0 (relative to wrapper) instead of the root-relative
-		// centering offset.  The viewport-coordinate subtraction always gives the correct
-		// root-relative position regardless of offsetParent.
-		// See positionEdgeStrips' own comment on the optional `geom` parameter —
-		// same shared-frame purpose, via bindScrollSync below.
-		const positionSelectors = (geom: VisibleGeom = computeVisibleGeom()) => {
-			const g = geom;
-			// Col selector: pinned to the visible top edge, spanning the visible width,
-			// clipped (overflow:hidden in CSS). --cs-top uses the visible top (vt) so
-			// the column letters stay pinned above the view while the table scrolls
-			// vertically (like a sticky column header), instead of scrolling off.
-			colSel.setCssProps({
-				'--cs-left':  `${g.vl}px`,
-				'--cs-top':   `${g.vt - SEL_UNIT}px`,
-				'--cs-width': `${g.vw}px`,
-			});
-			// colTrack's own transform carries the horizontal inner-scroll offset for
-			// every non-frozen column cell/grip/resize-handle at once (see styles.css's
-			// .bt-sel-track comment). Set directly via style.setProperty, deliberately
-			// NOT through a CSS custom property (setCssProps): a custom-property change
-			// forces the browser to re-examine style for its WHOLE descendant subtree
-			// regardless of which specific descendant (if any) actually reads it —
-			// measured at ~9ms for a 300-row table's worth of descendants vs ~0.02ms
-			// setting `transform` directly, so routing this specific value through a
-			// variable would have defeated the whole point of a shared track transform.
-			colTrack.style.setProperty('transform', `translateX(${g.colOffset}px)`);
-			// Row selector: pinned just left of the visible left edge, spanning the
-			// visible HEIGHT (not the full table), clipped — the exact vertical mirror
-			// of the col selector above, rowTrack included. Without --rs-top/height the
-			// row numbers scrolled off with the table's top once the view had a
-			// vertical scrollbar.
-			rowSel.setCssProps({
-				'--rs-left':   `${g.vl - SEL_UNIT}px`,
-				'--rs-top':    `${g.vt}px`,
-				'--rs-height': `${g.vh}px`,
-			});
-			rowTrack.style.setProperty('transform', `translateY(${g.rowOffset}px)`);
-		};
-		repositionSelectorStrips = (geom) => { positionSelectors(geom); };
-
-		// prepareLayout / restoreLayout are called by the proximity handler BEFORE
-		// show/hide so that positionEdgeStrips() and positionSelectors() both see
-		// the same layout (table already shifted by --bt-sel-pad).
-		// Cancel whatever --bt-title-mb-pull the active theme set (bridged onto titleEl in
-		// tableBlock.ts) so the title sits flush above the col-selector strip on hover
-		// instead of stacking a second gap on top of the theme's own pull-closer value.
-		// The theme's value is fixed for this render, so it is read once.
-		let titlePull: number | null = null;
-		liftTitle = () => {
-			if (!titleEl) return;
-			titlePull ??= parseFloat(getComputedStyle(titleEl).getPropertyValue('--bt-title-mb-pull')) || 0;
-			titleEl.setCssProps({ '--bt-title-mb-adj': `${-titlePull}px` });
-		};
-		prepareLayout = () => {
-			// Left-padding reservation (row selector + ctrl column sitting flush-left
-			// on a wide table) is shared with the ctrl-column-only, locked-table case —
-			// see reserveLeftPad's own doc comment above computeVisibleGeom.
-			reserveLeftPad();
-			// No right/bottom padding reservation here (there used to be one for each,
-			// --bt-sel-pad-right and --bt-add-pad, for addColBtn/addRowBtn back when
-			// both protruded past root's own edges as absolute overlays) — both now
-			// live inside .bt-table-wrapper as normal-flow sticky elements (addColBtn
-			// via the contentRow flex wrapper, addRowBtn directly), fully contained
-			// within root's own box already, so nothing needs compensating for.
-			root.setCssProps({ '--bt-sel-pad': `${TOP_STRIP_PAD}px` });
-			liftTitle();
-			// --bt-sel-pad above just changed root's own rendered height (padding-
-			// top) — the outer frame's own geometry is stale the instant that
-			// happens. viewFrameResizeObs (which watches for exactly this) won't
-			// catch it: ResizeObserver's default box option is content-box, and a
-			// padding-only change never touches the content box, only the border
-			// box getBoundingClientRect() reports — reported (back when this drove
-			// the corner-bracket markers this function has since replaced) as
-			// those markers staying frozen at their pre-hover spot until some
-			// UNRELATED resize (drag-resizing width/height) forced a real
-			// content-box change and they visibly snapped over. Calling this
-			// directly, synchronously, alongside the other reposition calls this
-			// function already makes, closes that gap without waiting on the
-			// observer at all.
-			updateOuterFrame();
-		};
-		restoreLayout = () => {
-			// --bt-sel-pad (top) is never collapsed back to 0 here, for every
-			// table, not just a workbook's — collapsing it on mouseleave
-			// shrinks root's own rendered height by the same amount, which can
-			// tip Obsidian's own reading-pane scroll container back out of
-			// needing a vertical scrollbar it needed a moment ago while
-			// hovering (or into needing one it didn't). Either way the pane's
-			// available width changes, and since .bt-table-wrapper centers via
-			// margin-inline:auto, the table visibly SHIFTS sideways with no
-			// change to its own size at all — reported as the whole table
-			// sliding left shortly after a hover, entirely outside this
-			// plugin's own positioning math (confirmed via logged rects: the
-			// table's width never changed, only its left/right edges
-			// translating, timed to Obsidian's own pane growing a scrollbar).
-			// Every strip that depends on root/wrapper geometry gets
-			// repositioned in response (viewFrameResizeObs, above) once that
-			// happens, but the shift itself was reported as unacceptable on
-			// its own regardless of whether the strips stay in sync — the
-			// only way to guarantee it can never happen is to make sure
-			// hovering never changes root's own rendered height at all, by
-			// reserving this padding permanently instead of toggling it.
-			// (Originally only a workbook's sheet-tab-bar got this treatment,
-			// to stop it jumping up right as the cursor reached it — same
-			// mechanism, just a smaller trigger; every table gets it now.)
-			// Left/right padding don't affect root's HEIGHT (only horizontal
-			// centering within whatever width IS available), so collapsing
-			// --bt-sel-pad-left has no scrollbar-cascade risk to guard against —
-			// but it's reserved permanently too now, same as --bt-sel-pad (top),
-			// rather than only while hovering: this was originally left
-			// hover-only for a wide/flush-left table specifically to avoid a
-			// visible shift at rest, on the assumption that no table actually
-			// needed it reserved permanently. A NESTED table (rendered inside a
-			// cell of another one, via the exact same renderTable() call —
-			// nothing here is nested-aware or ever should be) turned out to need
-			// exactly that: its own cell is a much smaller, tighter box than the
-			// reading pane a top-level table sits in, and the hover-only
-			// reserve/collapse cycle read as the whole (already cramped) nested
-			// table visibly shifting sideways within it. Reserving it
-			// permanently for every table — the same treatment top padding
-			// already gets — fixes that without a nested-specific branch; the
-			// one-time reserve call for this now runs unconditionally too (see
-			// the initial-paint call below), not just from a first hover.
-			titleEl?.setCssProps({ '--bt-title-mb-adj': '0px' });
-			repositionLockBtn();
-			repositionAutoFitBtn();
-			updateOuterFrame(); // mirror of prepareLayout's own call — see its comment
-		};
-
-		showSelectors = () => {
-			if (selHideTimer) { window.clearTimeout(selHideTimer); selHideTimer = null; }
-			// Show the strips IMMEDIATELY (cheap: positionSelectors only reads a
-			// couple of rects to place the containers), then do the expensive
-			// per-column rebuild() — which re-measures every column, O(cells) —
-			// on the next frame. Running rebuild() synchronously before adding the
-			// visible class meant the strips didn't appear until it finished, so a
-			// wide table felt laggy to hover (reported: "reacts slowly, sometimes
-			// I'm near the middle before it shows"). The container is positioned
-			// right away; the column letters/grips inside settle one frame later.
-			positionSelectors();
-			colSel.addClass('bt-strip-visible');
-			rowSel.addClass('bt-strip-visible');
-			// Re-entering a table that has not changed (the note scrolling it under a
-			// resting cursor) finds the strips already built: rebuilding them reads every
-			// column's rect, and in a long note each read re-lays out the whole note.
-			window.requestAnimationFrame(rebuildIfResized);
-		};
-		hideSelectors = scheduleSelHide;
-
-		let selectorPanel: HTMLElement | null = null;
-		const closeSelectorPanel = () => {
-			selectorPanel?.remove();
-			selectorPanel = null;
-		};
-
-		const startDrag = (axis: 'col' | 'row', idx: number, e: PointerEvent, wrap: HTMLElement) => {
-			closeSelectorPanel();
-			clearSel(); // a selector-strip drag replaces any active cell-range selection
-			selAxis = null; selI1 = selI2 = -1; // clear old highlight before new drag
-			e.stopPropagation(); e.preventDefault();
-			wrap.setPointerCapture(e.pointerId);
-			selAxis = axis; selI1 = selI2 = idx;
-			selDragging = true;
-			rebuild();
-		};
-		const moveDrag = (axis: 'col' | 'row', e: PointerEvent) => {
-			if (!selDragging || selAxis !== axis) return;
-			const wrap = axis === 'col' ? colSel : rowSel;
-			for (const cell of Array.from(wrap.querySelectorAll<HTMLElement>('[data-idx]'))) {
-				const r = cell.getBoundingClientRect();
-				const hit = axis === 'col'
-					? e.clientX >= r.left && e.clientX <= r.right
-					: e.clientY >= r.top  && e.clientY <= r.bottom;
-				if (hit) {
-					const idx = parseInt(cell.dataset.idx ?? '-1');
-					if (idx >= 0 && idx !== selI2) { selI2 = idx; rebuild(); }
-					break;
-				}
-			}
-		};
-		// Row/column reorder via Ctrl/Cmd+drag on the selector strip — see
-		// reorderAxis's own declaration above for why this is a separate state
-		// triple from selAxis/selI1/selI2 rather than reusing it.
-		const startReorder = (axis: 'col' | 'row', idx: number, e: PointerEvent, wrap: HTMLElement) => {
-			closeSelectorPanel();
-			clearSel();
-			selAxis = null; selI1 = selI2 = -1;
-			e.stopPropagation(); e.preventDefault();
-			wrap.setPointerCapture(e.pointerId);
-			reorderAxis = axis; reorderFromIdx = reorderToIdx = idx;
-			rebuild();
-		};
-		const moveReorder = (axis: 'col' | 'row', e: PointerEvent) => {
-			if (reorderAxis !== axis) return;
-			const wrap = axis === 'col' ? colSel : rowSel;
-			for (const cell of Array.from(wrap.querySelectorAll<HTMLElement>('[data-idx]'))) {
-				const r = cell.getBoundingClientRect();
-				const hit = axis === 'col'
-					? e.clientX >= r.left && e.clientX <= r.right
-					: e.clientY >= r.top  && e.clientY <= r.bottom;
-				if (!hit) continue;
-				const idx = parseInt(cell.dataset.idx ?? '-1');
-				const floor = axis === 'row' ? 1 : 0; // row 0 is the header, never a reorder target
-				if (idx < floor || idx === reorderToIdx) break;
-				reorderToIdx = idx;
-				clearDropIndicators();
-				if (idx !== reorderFromIdx) {
-					if (axis === 'col') {
-						ownCells(table).filter(c => c.dataset.col === String(idx)).forEach(c => c.addClass('bt-col-drop-before'));
-					} else {
-						// table, not tbody: the target row may be one a header merge
-						// reaches into, hosted in <thead> (see computeHeaderRowSpan).
-						ownCells(table).find(c => c.dataset.row === String(idx))?.closest<HTMLElement>('tr')?.addClass('bt-drop-before');
-					}
-				}
-				break;
-			}
-		};
-		const endReorder = (axis: 'col' | 'row') => {
-			if (reorderAxis !== axis) return;
-			reorderAxis = null;
-			clearDropIndicators();
-			if (reorderFromIdx >= 0 && reorderToIdx >= 0 && reorderFromIdx !== reorderToIdx) {
-				if (axis === 'col') {
-					void onStructuralOp({ type: 'move-col', fromColId: colId(model, reorderFromIdx), toColId: colId(model, reorderToIdx) });
-				} else {
-					void onStructuralOp({ type: 'move-row', fromRowId: rowId(model, reorderFromIdx), toRowId: rowId(model, reorderToIdx) });
-				}
-			}
-			reorderFromIdx = reorderToIdx = -1;
-			rebuild();
-		};
-
-		// Summary/aggregate-row reorder — same Ctrl/Cmd+drag gesture, keyed by
-		// AggType via [data-agg-idx] instead of a numeric row index, so it never
-		// interferes with the real-row reorder above.
-		const startReorderAgg = (agg: AggType, e: PointerEvent) => {
-			closeSelectorPanel();
-			clearSel();
-			selAxis = null; selI1 = selI2 = -1;
-			e.stopPropagation(); e.preventDefault();
-			rowSel.setPointerCapture(e.pointerId);
-			reorderAggFrom = reorderAggTo = agg;
-			rebuild();
-		};
-		const moveReorderAgg = (e: PointerEvent) => {
-			if (!reorderAggFrom) return;
-			for (const cell of Array.from(rowSel.querySelectorAll<HTMLElement>('[data-agg-idx]'))) {
-				const r = cell.getBoundingClientRect();
-				if (e.clientY < r.top || e.clientY > r.bottom) continue;
-				const agg = (cell.dataset.aggIdx as AggType | undefined) ?? null;
-				if (!agg || agg === reorderAggTo) break;
-				reorderAggTo = agg;
-				clearDropIndicators();
-				if (agg !== reorderAggFrom) {
-					ownRows(tbody).find(tr => tr.dataset.agg === agg)?.addClass('bt-drop-before');
-				}
-				break;
-			}
-		};
-		const endReorderAgg = () => {
-			if (!reorderAggFrom) return;
-			clearDropIndicators();
-			if (reorderAggTo && reorderAggFrom !== reorderAggTo) {
-				const order = activeAggTypes(model).filter(a => a !== reorderAggFrom);
-				order.splice(order.indexOf(reorderAggTo), 0, reorderAggFrom);
-				void onStructuralOp({ type: 'reorder-aggregate', order });
-			}
-			reorderAggFrom = reorderAggTo = null;
-			rebuild();
-		};
-
-		// Keyboard counterpart to Ctrl/Cmd+drag reorder — Alt+Shift+Arrow moves
-		// the row/column currently selected via the strip one step in that
-		// direction (Google Sheets' own binding). Only ever moves by one
-		// adjacent step per keypress, matching move-row/move-col's own
-		// swap-with-neighbor semantics — never jumps to an absolute index.
-		component.registerDomEvent(activeDocument, 'keydown', (evt: KeyboardEvent) => {
-			if (!evt.altKey || !evt.shiftKey || selAxis === null) return;
-			if (selI1 !== selI2) return; // only a single selected row/col has an unambiguous "one step"
-			const rowFloor = 1; // row 0 is the header, never a move target
-			if (selAxis === 'row' && (evt.key === 'ArrowUp' || evt.key === 'ArrowDown')) {
-				evt.preventDefault();
-				const toIdx = selI1 + (evt.key === 'ArrowUp' ? -1 : 1);
-				if (toIdx < rowFloor || toIdx >= model.rows.length + 1) return;
-				void onStructuralOp({ type: 'move-row', fromRowId: rowId(model, selI1), toRowId: rowId(model, toIdx) });
-				selI1 = selI2 = toIdx;
-				rebuild();
-			} else if (selAxis === 'col' && (evt.key === 'ArrowLeft' || evt.key === 'ArrowRight')) {
-				evt.preventDefault();
-				const toIdx = selI1 + (evt.key === 'ArrowLeft' ? -1 : 1);
-				if (toIdx < 0 || toIdx >= model.columns.length) return;
-				void onStructuralOp({ type: 'move-col', fromColId: colId(model, selI1), toColId: colId(model, toIdx) });
-				selI1 = selI2 = toIdx;
-				rebuild();
-			}
-		});
-
-		const endDrag = (axis: 'col' | 'row') => {
-			if (!selDragging || selAxis !== axis) return;
-			selDragging = false;
-			const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
-			// v2 ID-based targets for selector strip selection
-			const target = axis === 'col'
-				? (lo === hi ? colId(model, lo) : `${colId(model, lo)}:${colId(model, hi)}`)
-				: lo === 0 && hi === 0
-					? 'header'
-					: lo === hi
-						? rowId(model, lo)
-						: `${rowId(model, Math.max(lo, 1))}:${rowId(model, hi)}`;
-
-			// Collect cells for live preview
-			const els: HTMLElement[] = axis === 'col'
-				? ownCells(table).filter(e => { const c = parseInt(e.dataset.col ?? '-1'); return c >= lo && c <= hi; })
-				: ownCells(table).filter(e => { const r = parseInt(e.dataset.row ?? '-1'); return r >= lo && r <= hi; });
-
-			const anchor = axis === 'col'
-				? (ownCells(table).find(e => e.tagName === 'TH' && e.dataset.col === String(hi)) ?? table)
-				: (ownCells(table).find(e => e.dataset.row === String(hi)) ?? table);
-
-			const rule = model.styles.find(s => s.target === target);
-			const existing = { bg: rule?.bg, color: rule?.color, size: rule?.size };
-
-			// Build hide / delete ops, matching the style of the cell selection panel.
-			const copyOps: CellOpEntry[] = [
-				{ icon: 'copy', label: t('copyToExcel'),
-					action: () => axis === 'col'
-						? copyRangeToClipboard(model, 0, model.rows.length, lo, hi)
-						: copyRangeToClipboard(model, lo, hi, 0, model.columns.length - 1) },
-				{ icon: 'file-text', label: t('copyToMarkdown'),
-					action: () => axis === 'col'
-						? copyRangeAsMarkdown(model, 0, model.rows.length, lo, hi)
-						: copyRangeAsMarkdown(model, lo, hi, 0, model.columns.length - 1) },
-			];
-			// Sort — single column only (the model supports one sort key), and not
-			// while a row-spanning merge exists (see hasRowSpanningMerge). Two modes:
-			// "Sort ascending/descending" commits the current order to storage once
-			// (rows[] itself changes, no lingering state, drag-reorder stays usable
-			// right after); "Keep sorted ..." is the live view — it never touches
-			// rows[], persists as model.sort, and disables manual drag-reorder while
-			// active since the display order is derived, not stored.
-			const sortOps: CellOpEntry[] = (axis === 'col' && lo === hi && !hasRowSpanningMerge(model)) ? (() => {
-				const sortColId = colId(model, lo);
-				const sortDir = model.sort?.colId === sortColId ? model.sort.dir : null;
-				const commitSort = (dir: 'asc' | 'desc') => {
-					const sorted = sortRowsByColumn(model.rows, model.columns, sortColId, dir, registry);
-					void onStructuralOp({ type: 'reorder-rows', rowIds: sorted.map(r => r.id) });
-				};
-				return [
-					{ icon: 'arrow-up', label: t('sortAscending'), action: () => commitSort('asc') },
-					{ icon: 'arrow-down', label: t('sortDescending'), action: () => commitSort('desc') },
-					{ icon: 'repeat', label: (sortDir === 'asc' ? '✓ ' : '') + t('keepSortedAscending'),
-						action: () => void onStructuralOp({ type: 'set-sort', sort: { colId: sortColId, dir: 'asc' } }) },
-					{ icon: 'repeat', label: (sortDir === 'desc' ? '✓ ' : '') + t('keepSortedDescending'),
-						action: () => void onStructuralOp({ type: 'set-sort', sort: { colId: sortColId, dir: 'desc' } }) },
-					...(sortDir ? [{ icon: 'x', label: t('clearLiveSort'),
-						action: () => void onStructuralOp({ type: 'set-sort', sort: null }) }] : []),
-				];
-			})() : [];
-
-			// Summary/aggregate statistics — table-wide (not tied to which column is
-			// selected; the column strip is just a convenient place to reach the
-			// toggle). Sum/avg are common enough to show directly; min/max/count live
-			// behind a native Menu flyout ("More") to keep the primary list short.
-			// Every click toggles exactly one statistic and closes (this panel, plus
-			// the flyout if used) — adding another one means reopening this popup, a
-			// deliberate simplicity tradeoff over a persistent checkbox list.
-			const aggOps: CellOpEntry[] = axis === 'col' ? (() => {
-				const active = new Set(model.aggregate ?? []);
-				const toggle = (agg: AggType) => void onStructuralOp({ type: 'toggle-aggregate', agg });
-				const mark = (agg: AggType) => active.has(agg) ? '✓ ' : '';
-				return [
-					{ icon: 'sigma',  label: mark('sum') + t('aggSum'), action: () => toggle('sum') },
-					{ icon: 'divide', label: mark('avg') + t('aggAvg'), action: () => toggle('avg') },
-					{ icon: 'chevron-right', label: t('aggMore'), action: (evt: MouseEvent) => {
-						const moreMenu = new Menu();
-						(['min', 'max', 'count'] as AggType[]).forEach(agg => {
-							moreMenu.addItem(item => {
-								item.setTitle(aggLabel(agg));
-								item.setIcon(agg === 'min' ? 'move-down' : agg === 'max' ? 'move-up' : 'hash');
-								if (active.has(agg)) item.setChecked(true);
-								item.onClick(() => toggle(agg));
-							});
-						});
-						showMenuPinned(moreMenu, evt);
-					} },
-				];
-			})() : [];
-
-			// Insert-before/after moved here from the per-data-cell menu (renderPanel.ts's
-			// dataCellOps) — that menu was getting too long, and "insert a row/column
-			// relative to this selection" reads more naturally as a selector-strip action.
-			const afterLeft  = lo > 0 ? (model.columns[lo - 1]?.id ?? null) : null;
-			const afterRight = model.columns[hi]?.id ?? null;
-			const afterAbove = lo > 1 ? (model.rows[lo - 2]?.id ?? null) : null;
-			const afterBelow = model.rows[hi - 1]?.id ?? null;
-
-			// Freeze up to the LAST selected row/column — matches Excel's own
-			// "select a row/column, Freeze Panes freezes everything above/left
-			// of it" convention. Row display indices are already 1-based with
-			// the header as an implicit 0 (see rowId()), so `hi` IS the freeze
-			// count directly (freeze header + data rows 1..hi); columns are
-			// 0-based, so the count of columns 0..hi is hi+1. Rejected up front
-			// (Notice, no op dispatched) rather than silently no-opping if it
-			// would split a merge across the boundary — see canFreezeRows/Cols.
-			const freezeColOps: CellOpEntry[] = [
-				{ icon: 'pin', label: t('freezeUpToCol'),
-					action: () => {
-						const count = hi + 1;
-						if (!canFreezeCols(model, count)) { new Notice(t('freezeBlockedByMerge')); return; }
-						void onStructuralOp({ type: 'set-freeze-cols', count });
-					} },
-				...(model.freezeCols !== undefined ? [{ icon: 'pin-off', label: t('unfreezeCols'),
-					action: () => void onStructuralOp({ type: 'set-freeze-cols', count: null }) } as CellOpEntry] : []),
-			];
-			const freezeRowOps: CellOpEntry[] = [
-				{ icon: 'pin', label: lo === 0 && hi === 0 ? t('freezeHeaderOnly') : t('freezeUpToRow'),
-					action: () => {
-						const count = lo === 0 && hi === 0 ? 0 : hi;
-						if (!canFreezeRows(model, count)) { new Notice(t('freezeBlockedByMerge')); return; }
-						void onStructuralOp({ type: 'set-freeze-rows', count });
-					} },
-				...(model.freezeRows !== undefined ? [{ icon: 'pin-off', label: t('unfreezeRows'),
-					action: () => void onStructuralOp({ type: 'set-freeze-rows', count: null }) } as CellOpEntry] : []),
-			];
-
-			const fill = autoFillOp(axis, lo, hi);
-			const fillOps: CellOpEntry[] = fill ? [{ divider: true }, fill] : [];
-
-			const cellOps: CellOpEntry[] = axis === 'col' ? [
-				{ icon: 'arrow-left',  label: t('insertColBefore'),
-					action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterLeft }) },
-				{ icon: 'arrow-right', label: t('insertColAfter'),
-					action: () => void onStructuralOp({ type: 'insert-col', afterColId: afterRight }) },
-				{ divider: true },
-				{ icon: 'eye-off', label: hideColsLabel(lo, hi, colIndexToLetter),
-					action: () => { for (let ci = lo; ci <= hi; ci++) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
-				{ icon: 'trash',   label: deleteColsLabel(lo, hi, colIndexToLetter), danger: true,
-					action: () => { for (let ci = hi; ci >= lo; ci--) { const id = colId(model, ci); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
-				{ divider: true },
-				// Whole-column default — covers every row in the column, including
-				// ones added later (applyColStyle/resolveStylesV2's fallback), unlike
-				// the header cell's own align (renderCell.ts) or a data cell/range's
-				// own align, which only override this default for their own scope.
-				buildAlignCellOp(model.columns[lo]?.align, (align) => {
-					for (let ci = lo; ci <= hi; ci++) {
-						const id = colId(model, ci);
-						if (id) void onStructuralOp({ type: 'set-col-align', colId: id, align });
-					}
-				}),
-				...fillOps,
-				...(sortOps.length > 0 ? [{ divider: true } as CellOpEntry, ...sortOps] : []),
-				...(aggOps.length > 0 ? [{ divider: true } as CellOpEntry, ...aggOps] : []),
-				{ divider: true },
-				...freezeColOps,
-				{ divider: true },
-				...copyOps,
-			] : lo === 0 && hi === 0 ? [...copyOps, { divider: true }, ...freezeRowOps] : [  // no hide/delete for header row
-				{ icon: 'arrow-up',   label: t('insertRowAbove'),
-					action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterAbove }) },
-				{ icon: 'arrow-down', label: t('insertRowBelow'),
-					action: () => void onStructuralOp({ type: 'insert-row', afterRowId: afterBelow }) },
-				{ divider: true },
-				{ icon: 'eye-off', label: hideRowsLabel(lo, hi),
-					action: () => { for (let ri = lo; ri <= hi; ri++) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
-				{ icon: 'trash',   label: deleteRowsLabel(lo, hi), danger: true,
-					action: () => { for (let ri = hi; ri >= lo; ri--) { const id = rowId(model, ri); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
-				...fillOps,
-				{ divider: true },
-				...freezeRowOps,
-				{ divider: true },
-				...copyOps,
-			];
-
-			// Keep selAxis/selI1/selI2 so highlights stay visible while the panel is open.
-			// They are cleared in onClose so the highlight disappears when the panel closes.
-			closeSelectorPanel();
-			rebuild(); // re-render strip cells with is-sel, keep table highlights
-
-			selectorPanel = openCellPanel({
-				component,
-				anchor, els,
-				styleTarget: target,
-				existingStyle: existing,
-				inheritedStyle: {},
-				showTextColor: true,
-				cellOps,
-				onApplyStyle: (bg, color, size, bold, italic) => void onStructuralOp({ type: 'set-range-style', target, bg, color, size, bold, italic }),
-				onClose: () => {
-					selectorPanel = null;
-					selAxis = null; selI1 = selI2 = -1;
-					rebuild(); // clears table highlights and strip is-sel
-				},
-			});
-		};
-
-		// Ctrl/Cmd held on pointerdown routes the whole drag to the reorder path
-		// instead of range-selection — see reorderAxis's own declaration above.
-		// Long-press inside the CURRENT selection lifts the whole selected block
-		// (liftBlock); a press that moves or releases early falls back to the
-		// ordinary select-drag / click.
-		const LONG_PRESS_MS = 350, LONG_PRESS_SLOP = 4;
-		let pressed: { axis: 'col' | 'row'; idx: number; lo: number; hi: number; evt: PointerEvent; wrap: HTMLElement; timer: number } | null = null;
-		let lift: { axis: 'col' | 'row'; lo: number; hi: number; handle: BlockLift; wrap: HTMLElement } | null = null;
-		const pressPos = (axis: 'col' | 'row', e: PointerEvent) => axis === 'col' ? e.clientX : e.clientY;
-
-		const beginLift = () => {
-			if (!pressed) return;
-			const { axis, wrap, evt, lo, hi } = pressed;
-			pressed = null;
-			closeSelectorPanel();
-			const count = axis === 'col' ? model.columns.length : model.rows.length + 1;
-			lift = { axis, lo, hi, wrap, handle: liftBlock(table, axis, lo, hi, count, pressPos(axis, evt), zoom, blockFloor(model, axis), axisSpans(model, axis)) };
-			wrap.addClass('bt-reorder-armed');
-		};
-		const releasePress = (): typeof pressed => {
-			const p = pressed;
-			if (p) window.clearTimeout(p.timer);
-			pressed = null;
-			return p;
-		};
-		const pressAsSelectDrag = (p: NonNullable<typeof pressed>) => {
-			startDrag(p.axis, p.idx, p.evt, p.wrap);
-		};
-		const tryArmLift = (axis: 'col' | 'row', idx: number, e: PointerEvent, wrap: HTMLElement): boolean => {
-			if (selAxis !== axis || selDragging) return false;
-			const lo = Math.min(selI1, selI2), hi = Math.max(selI1, selI2);
-			if (idx < lo || idx > hi) return false;
-			const blocker = blockReorderBlocker(model, axis, lo, hi);
-			if (blocker === 'header') return false;
-			e.stopPropagation(); e.preventDefault();
-			wrap.setPointerCapture(e.pointerId);
-			const onHold = blocker ? () => new Notice(t(`reorderBlocked_${blocker}`)) : beginLift;
-			pressed = { axis, idx, lo, hi, evt: e, wrap, timer: window.setTimeout(onHold, LONG_PRESS_MS) };
-			return true;
-		};
-		const movePress = (axis: 'col' | 'row', e: PointerEvent) => {
-			if (lift?.axis === axis) { lift.handle.move(pressPos(axis, e)); return; }
-			const p = pressed;
-			if (!p || p.axis !== axis) return;
-			if (Math.hypot(e.clientX - p.evt.clientX, e.clientY - p.evt.clientY) <= LONG_PRESS_SLOP) return;
-			releasePress();
-			pressAsSelectDrag(p);
-			moveDrag(axis, e);
-		};
-		const endPress = (axis: 'col' | 'row'): boolean => {
-			if (lift?.axis === axis) {
-				const { lo, hi, handle, wrap } = lift;
-				lift = null;
-				wrap.removeClass('bt-reorder-armed');
-				const slot = handle.drop();
-				if (slot !== null) {
-					const size = hi - lo + 1;
-					if (axis === 'col') {
-						const ids = Array.from({ length: size }, (_, k) => colId(model, lo + k));
-						void onStructuralOp({ type: 'move-cols', colIds: ids, beforeColId: slot < model.columns.length ? colId(model, slot) : null });
-					} else {
-						const ids = Array.from({ length: size }, (_, k) => rowId(model, lo + k));
-						void onStructuralOp({ type: 'move-rows', rowIds: ids, beforeRowId: slot <= model.rows.length ? rowId(model, slot) : null });
-					}
-					selI1 = slot > hi ? slot - size : slot;
-					selI2 = selI1 + size - 1;
-				}
-				return true;
-			}
-			const p = releasePress();
-			if (!p || p.axis !== axis) return false;
-			pressAsSelectDrag(p);
-			return false;
-		};
-		const cancelPress = (axis: 'col' | 'row') => {
-			releasePress();
-			if (lift?.axis !== axis) return;
-			lift.handle.cancel();
-			lift.wrap.removeClass('bt-reorder-armed');
-			lift = null;
-		};
-
-		colSel.addEventListener('pointerdown', (e: PointerEvent) => {
-			const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-idx]');
-			const idx = parseInt(cell?.dataset.idx ?? '-1');
-			if (idx < 0) return;
-			if (e.ctrlKey || e.metaKey) startReorder('col', idx, e, colSel);
-			else if (!tryArmLift('col', idx, e, colSel)) startDrag('col', idx, e, colSel);
-		});
-		colSel.addEventListener('pointermove', (e: PointerEvent) => { movePress('col', e); moveDrag('col', e); moveReorder('col', e); });
-		colSel.addEventListener('pointerup', () => { if (endPress('col')) return; endDrag('col'); endReorder('col'); });
-		colSel.addEventListener('pointercancel', () => cancelPress('col'));
-
-		rowSel.addEventListener('pointerdown', (e: PointerEvent) => {
-			const aggCell = (e.target as HTMLElement).closest<HTMLElement>('[data-agg-idx]');
-			if (aggCell?.dataset.aggIdx) {
-				if (e.ctrlKey || e.metaKey) startReorderAgg(aggCell.dataset.aggIdx as AggType, e);
-				return;
-			}
-			const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-idx]');
-			const idx = parseInt(cell?.dataset.idx ?? '-1');
-			if (idx < 0) return;
-			if (e.ctrlKey || e.metaKey) startReorder('row', idx, e, rowSel);
-			else if (!tryArmLift('row', idx, e, rowSel)) startDrag('row', idx, e, rowSel);
-		});
-		rowSel.addEventListener('pointermove', (e: PointerEvent) => { movePress('row', e); moveDrag('row', e); moveReorder('row', e); moveReorderAgg(e); });
-		rowSel.addEventListener('pointerup', () => { if (endPress('row')) return; endDrag('row'); endReorder('row'); endReorderAgg(); });
-		rowSel.addEventListener('pointercancel', () => cancelPress('row'));
-
-		// The strips follow the layout like everything else. The cells are rebuilt only when the table is not
-		// the size they were last built for, and not while one of them is being dragged or held (a rebuild
-		// replaces every cell, which would take the one under the pointer away). A resize that says so
-		// (a column dragged, the page zoomed) makes the cells stale even when the table's size is the same.
-		const stripsShown = () => colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible');
-		layoutSync.register('place', () => { if (stripsShown()) positionSelectors(); });
-		layoutSync.register('rebuild', () => { if (stripsShown() && tableResizedSinceRebuild()) rebuildAndRecordSize(); });
-		markStripsStale = () => { lastRebuiltW = -1; lastRebuiltH = -1; };
-		stripCellBusy = () => selDragging || reorderAxis !== null || pressed !== null;
-		// Every way of holding a strip cell ends with the pointer coming up or being cancelled, and the
-		// state is cleared by the handlers on the cell first, so the rebuild that waited is done after them.
-		const settleAfterPointer = () => window.setTimeout(() => layoutSync.settle(), 0);
-		activeDocument.addEventListener('pointerup', settleAfterPointer, true);
-		activeDocument.addEventListener('pointercancel', settleAfterPointer, true);
-		component?.register(() => {
-			activeDocument.removeEventListener('pointerup', settleAfterPointer, true);
-			activeDocument.removeEventListener('pointercancel', settleAfterPointer, true);
-		});
-
-		// Scroll: repositions the selector strips, the edge-add strips, and the
-		// ctrl column — three former independent listeners, each spending 3
-		// getBoundingClientRect() reads on the SAME geometry, now merged into one
-		// rAF-coalesced frame that reads it once and hands it to all three. See
-		// bindScrollSync's own doc comment for the layout-thrashing cost this
-		// avoids. Only the containers' own position + each track's transform
-		// actually need updating on a pure scroll — the per-cell content stays
-		// table-relative and follows those, so no full rebuild() is needed here
-		// (keeps scrolling smooth).
-		bindScrollSync(
-			wrapper, table, root,
-			() => colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible') || isEdgeStripsVisible(),
-			[positionSelectors, repositionCtrlCol, repositionEdgeStrips],
-			zoom,
-		);
-	}
-
-	// ── Show/hide overlays on mouse enter/leave ───────────────────────────────
-	// With CSS Grid, root already includes all strip areas — hovering them fires
-	// enter/leave naturally. No viewport math or rAF throttling needed.
-	//
-	// Listens on `shell`, not `root`: the status bar is now shell's child but
-	// root's SIBLING (see shell's own doc comment — it moved out specifically
-	// so its zoom control isn't a descendant of the zoom it's dragging), so a
-	// mouse move from the table straight down into the status bar crosses
-	// root's own boundary on the way — root-scoped listeners would fire a
-	// spurious mouseleave/mouseenter pair mid-move, collapsing every hover-only
-	// strip for a moment even though the cursor never actually left the
-	// table's overall footprint. `shell` contains both, so that transition
-	// never crosses ITS boundary at all.
-	//
-	// Gated on `onStructuralOp || onToggleLock`, not `onStructuralOp` alone: the
-	// ctrl column (lock/auto-fit/theme icons) stays visible on a LOCKED table via
-	// `.is-locked`'s permanent opacity:1 — bypassing the hover-to-reveal path
-	// entirely — but its own left-edge positioning still depends on
-	// reserveLeftPad/repositionCtrlCol below, which used to run ONLY from this
-	// mouseenter handler. A locked table has no onStructuralOp (row/col selectors
-	// don't exist then, correctly), so the whole block — and the padding
-	// reservation with it — never ran, and a wide locked table's unlock button
-	// rendered off-screen with no room reserved for it (reported: permanently
-	// hidden top-left unlock button on a wide table once locked; a narrow table's
-	// natural margin hid the same underlying gap). showEdgeStrips/showSelectors
-	// stay gated on onStructuralOp specifically — those exist to run editing-only
-	// actions that a locked table shouldn't offer at all.
-	if (onStructuralOp || onToggleLock) {
-		// The layout these calls prepare depends only on the table's and the pane's
-		// geometry, which every real change (resize, zoom, the view-size drag) already
-		// re-applies on its own. Re-entering an unchanged table, as when the note
-		// scrolls it under a resting cursor, only has to show the strips: in a long
-		// note every rect read below would otherwise re-lay out the whole note.
-		let preparedW = -1, preparedL = NaN, preparedTW = -1, preparedTH = -1;
-		const layoutChangedSincePrepared = () => {
-			const r = root.getBoundingClientRect();
-			const t = table.getBoundingClientRect();
-			return Math.abs(r.width - preparedW) >= 0.5 || Math.abs(r.left - preparedL) >= 0.5
-				|| Math.abs(t.width - preparedTW) >= 0.5 || Math.abs(t.height - preparedTH) >= 0.5;
-		};
-		// Root's height is left out on purpose: lifting the title on hover changes it
-		// every time, without changing anything the reserved padding or the toolbar depend on.
-		const recordPrepared = () => {
-			const r = root.getBoundingClientRect();
-			const t = table.getBoundingClientRect();
-			preparedW = r.width; preparedL = r.left; preparedTW = t.width; preparedTH = t.height;
-		};
-		const onShellEnter = () => {
-			if (layoutChangedSincePrepared()) {
-				// Runs unconditionally: needed for the ctrl column's own positioning
-				// even when nothing else in this handler applies (locked table).
-				// prepareLayout re-does reserveLeftPad and updateOuterFrame itself.
-				if (onStructuralOp) {
-					prepareLayout();
-				} else {
-					reserveLeftPad();
-					updateOuterFrame();
-				}
-				repositionLockBtn();
-				repositionAutoFitBtn();
-				repositionCtrlCol();
-				recordPrepared();
-			} else if (onStructuralOp && root.querySelector(':scope > .bt-table-title')) {
-				// The lifted title changes root's height, so the frame has to follow it.
-				liftTitle();
-				updateOuterFrame();
-			}
-			if (onStructuralOp) {
-				showEdgeStrips();
-				showSelectors();
-			}
-		};
-		// A table that only scrolled under the cursor gets its hover once the note
-		// comes to rest, if the cursor is still on it.
-		let enterSkipped = false;
-		shell.addEventListener('mouseenter', () => {
-			if (isNoteScrolling()) { enterSkipped = true; return; }
-			onShellEnter();
-		});
-		component?.register(onNoteScrollEnd(() => {
-			if (!enterSkipped) return;
-			enterSkipped = false;
-			if (shell.isConnected && shell.matches(':hover')) onShellEnter();
-		}));
-		shell.addEventListener('mouseleave', () => {
-			enterSkipped = false;
-			if (isHoverPinned()) return;
-			hideEdgeStrips(); hideSelectors();
-		});
-		component?.register(onHoverUnpinned(() => {
-			if (!shell.matches(':hover')) { hideEdgeStrips(); hideSelectors(); }
-		}));
-		updateOuterFrame();
-	}
+	// ── Status bar and outer frame (renderStatusBarDom.ts) ──
+	renderStatusBar({
+		model, edits, forceStatusBarPinned, shell, root, wrapper, table, view, hooks, sel, layoutSync, watchLayout,
+		ctrlColLeftGap: CTRL_COL_LEFT_GAP,
+	});
+
+	// ── Frozen rows/columns (renderFreezeDom.ts) ──
+	renderFrozenCells({
+		model, hooks, view, table, layoutSync, thead, tbody, resetHover,
+	});
+
+	// ── Edge-hover add strips (renderEdgeStrips.ts) ──
+	renderEdgeStrips({
+		model, isSwapping, edits, hooks, root, view, wrapper, contentRow, computeVisibleGeom, layoutSync,
+	});
+
+	// ── Vertical scrollbar (renderVScroll.ts) ──
+	renderVScroll({
+		model, wrapper, contentRow, computeVisibleGeom, layoutSync, watchLayout,
+	});
+
+	// ── Control column (the toolbar on the left) (renderCtrlCol.ts) ──
+	const hasCtrlButtons = renderCtrlCol({
+		model, edits, actions, hiddenCtrlColButtons, forceStatusBarPinned, registry, hooks, root, view, wrapper, computeVisibleGeom, ctrlColLeftGap: CTRL_COL_LEFT_GAP, reserveLeftPad, visibleCols, sel, updateHighlights, showSelectionPanel, canEditSelection,
+	});
+
+	// ── Strip padding ─────────────────────────────────────────────────────────
+	// Turns on the padding reservation and the resting-state clip-path that every
+	// strip on the table's edges (row/col selectors, edge-add "+" buttons, the
+	// toolbar) depends on — see .bt-render-root.bt-has-strips in styles.css.
+	// A table with only its toolbar (a locked one) needs it too: without the class,
+	// reserveLeftPad's --bt-sel-pad-left has no rule consuming it, and a wide
+	// table's toolbar lands off-screen.
+	const hasStrips = hasSelectors || hasCtrlButtons;
+	if (hasStrips) root.addClass('bt-has-strips');
+
+	// ── Row / column selector strips (renderSelectorStrips.ts) ──
+	renderSelectorStrips({
+		model, getRegistry, component, edits, registry, hooks, root, view, wrapper, table, computeVisibleGeom, layoutSync, topStripPad: TOP_STRIP_PAD, reserveLeftPad, hasExplicitWidths, clearSel, autoFillOp, thead, tbody,
+	});
+
+	// ── Show/hide overlays on mouse enter/leave (renderOverlays.ts) ──
+	renderOverlays({
+		component, hasSelectors, hasStrips, hooks, shell, root, table, reserveLeftPad,
+	});
 
 }
 

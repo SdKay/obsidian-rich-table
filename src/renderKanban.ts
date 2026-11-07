@@ -1,7 +1,7 @@
 import { t } from './i18n';
 import type { TableModelV2, ColumnDefV2, ViewDefV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
-import type { StructuralOpHandler } from './renderTypes';
+import type { TableEdits } from './tableEdits';
 import { isRowFiltered, resolveCellValue } from './renderGridHelpers';
 import { renderTypedFieldValue } from './renderFieldValue';
 
@@ -15,7 +15,7 @@ export interface RenderKanbanBoardOptions {
 	wrapper: HTMLElement;
 	view: ViewDefV2;
 	registry: ChoiceRegistry;
-	onStructuralOp?: StructuralOpHandler;
+	edits: TableEdits;
 }
 
 /**
@@ -26,7 +26,7 @@ export interface RenderKanbanBoardOptions {
  * otherwise hand to the plain table body.
  */
 export function renderKanbanBoard(opts: RenderKanbanBoardOptions): void {
-	const { model, wrapper, view, registry, onStructuralOp } = opts;
+	const { model, wrapper, view, registry, edits } = opts;
 	const groupByColId = view.kanban?.groupByColId;
 	if (!groupByColId) {
 		wrapper.createDiv({ cls: 'bt-view-empty', text: t('kanbanNoGroupCol') });
@@ -41,7 +41,8 @@ export function renderKanbanBoard(opts: RenderKanbanBoardOptions): void {
 	}
 
 	const board = wrapper.createDiv({ cls: 'bt-kanban-board' });
-	const locked = !!model.locked;
+	// Moving a card rewrites its group-by cell; the lock and the table's kind are both in this one answer.
+	const movable = edits.can('set-cell-content');
 
 	// Card fields: every visible column except the group-by one (per the "除
 	// 分组列外的所有可见列" decision) — plain text, not markdown-rendered or
@@ -82,7 +83,7 @@ export function renderKanbanBoard(opts: RenderKanbanBoardOptions): void {
 
 		const body = laneEl.createDiv({ cls: 'bt-kanban-lane-body' });
 
-		if (onStructuralOp && !locked) {
+		if (movable) {
 			body.addEventListener('dragover', (evt: DragEvent) => {
 				if (!evt.dataTransfer?.types.includes('bt-drag-kanban-card')) return;
 				evt.preventDefault();
@@ -95,7 +96,7 @@ export function renderKanbanBoard(opts: RenderKanbanBoardOptions): void {
 				const rowId = evt.dataTransfer?.getData('bt-drag-kanban-card');
 				if (!rowId) return;
 				const value = laneDef.value === NO_VALUE_LANE ? '' : laneDef.value;
-				onStructuralOp({ type: 'set-cell-content', rowId, colId: groupByColId, value });
+				edits.run({ type: 'set-cell-content', rowId, colId: groupByColId, value });
 			});
 		}
 
@@ -107,7 +108,7 @@ export function renderKanbanBoard(opts: RenderKanbanBoardOptions): void {
 			// pill without a second color lookup. The "no value" lane has no
 			// color (nothing to match), so those cards keep the plain default.
 			if (laneDef.color) card.setCssProps({ '--bt-kanban-card-bg': laneDef.color });
-			if (!locked) {
+			if (movable) {
 				card.setAttribute('draggable', 'true');
 				card.addEventListener('dragstart', (evt: DragEvent) => {
 					evt.dataTransfer?.setData('bt-drag-kanban-card', rowId);

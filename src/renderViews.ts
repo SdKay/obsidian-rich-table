@@ -2,7 +2,7 @@ import { Menu, setIcon } from 'obsidian';
 import { t } from './i18n';
 import type { TableModelV2, ViewDefV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
-import type { StructuralOpHandler, ToggleLockHandler } from './renderTypes';
+import type { TableEdits, TableOpType } from './tableEdits';
 import { showMenuPinned } from './renderHoverPin';
 import { eligibleGroupByColumns } from './renderKanban';
 import { eligibleDateColumns } from './renderCalendar';
@@ -35,20 +35,21 @@ export function viewDisplayName(model: TableModelV2, view: ViewDefV2): string {
  * three surfaces stay in sync by construction rather than by keeping copies
  * updated in parallel.
  */
-export function buildViewSwitcherMenu(
-	model: TableModelV2, registry: ChoiceRegistry, onStructuralOp: StructuralOpHandler,
-): Menu {
+/** What the views switcher can emit; it is offered when any of them can be done. */
+export const VIEW_SWITCHER_OPS: readonly TableOpType[] = ['set-active-view', 'create-view', 'delete-view'];
+
+export function buildViewSwitcherMenu(model: TableModelV2, registry: ChoiceRegistry, edits: TableEdits): Menu {
 	const menu = new Menu();
-	menu.addItem(item => {
+	if (edits.can('set-active-view')) menu.addItem(item => {
 		item.setTitle(t('defaultTableView'));
 		if (!model.activeViewId) item.setChecked(true);
-		item.onClick(() => onStructuralOp({ type: 'set-active-view', viewId: null }));
+		item.onClick(() => edits.run({ type: 'set-active-view', viewId: null }));
 	});
-	for (const view of model.views ?? []) {
+	if (edits.can('set-active-view')) for (const view of model.views ?? []) {
 		menu.addItem(item => {
 			item.setTitle(viewDisplayName(model, view));
 			if (model.activeViewId === view.id) item.setChecked(true);
-			item.onClick(() => onStructuralOp({ type: 'set-active-view', viewId: view.id }));
+			item.onClick(() => edits.run({ type: 'set-active-view', viewId: view.id }));
 		});
 	}
 
@@ -65,15 +66,16 @@ export function buildViewSwitcherMenu(
 	const dateCols = new Set(
 		(model.views ?? []).filter(v => v.type === 'calendar' && v.calendar).map(v => v.calendar!.dateColId),
 	);
-	const eligibleKanban = eligibleGroupByColumns(model, registry).filter(c => !groupedCols.has(c.id));
-	const eligibleCalendar = eligibleDateColumns(model).filter(c => !dateCols.has(c.id));
+	const creatable = edits.can('create-view');
+	const eligibleKanban = creatable ? eligibleGroupByColumns(model, registry).filter(c => !groupedCols.has(c.id)) : [];
+	const eligibleCalendar = creatable ? eligibleDateColumns(model).filter(c => !dateCols.has(c.id)) : [];
 
 	if (eligibleKanban.length > 0 || eligibleCalendar.length > 0) menu.addSeparator();
 	for (const col of eligibleKanban) {
 		menu.addItem(item => {
 			item.setTitle(`${t('newKanbanView')} ${col.name}`);
 			item.setIcon('layout-grid');
-			item.onClick(() => onStructuralOp({
+			item.onClick(() => edits.run({
 				// name omitted — let it follow the column header automatically.
 				type: 'create-view', viewType: 'kanban', groupByColId: col.id,
 			}));
@@ -83,19 +85,19 @@ export function buildViewSwitcherMenu(
 		menu.addItem(item => {
 			item.setTitle(`${t('newCalendarView')} ${col.name}`);
 			item.setIcon('calendar-days');
-			item.onClick(() => onStructuralOp({
+			item.onClick(() => edits.run({
 				type: 'create-view', viewType: 'calendar', dateColId: col.id,
 			}));
 		});
 	}
 
 	const active = model.activeViewId ? model.views?.find(v => v.id === model.activeViewId) : undefined;
-	if (active) {
+	if (active && edits.can('delete-view')) {
 		menu.addSeparator();
 		menu.addItem(item => {
 			item.setTitle(t('deleteView'));
 			item.setIcon('trash');
-			item.onClick(() => onStructuralOp({ type: 'delete-view', viewId: active.id }));
+			item.onClick(() => edits.run({ type: 'delete-view', viewId: active.id }));
 		});
 	}
 	return menu;
@@ -105,13 +107,8 @@ export interface RenderViewToolbarOptions {
 	root: HTMLElement;
 	model: TableModelV2;
 	registry: ChoiceRegistry;
-	onStructuralOp?: StructuralOpHandler;
-	onToggleLock?: ToggleLockHandler;
+	edits: TableEdits;
 	activeView: ViewDefV2;
-	/** Left-toolbar "add sheet" button — see the matching param on
-	 *  renderTable() in renderer.ts for why this stays a separate callback
-	 *  rather than a StructuralOpV2. */
-	onCreateSheet?: () => void;
 }
 
 /**
@@ -130,40 +127,41 @@ export interface RenderViewToolbarOptions {
  * append them into `main` before rendering its board.
  */
 export function renderViewToolbar(opts: RenderViewToolbarOptions): HTMLElement {
-	const { root, model, registry, onStructuralOp, onToggleLock, activeView, onCreateSheet } = opts;
+	const { root, model, registry, edits, activeView } = opts;
 	const layout = root.createDiv({ cls: 'bt-view-layout' });
 
-	if (onToggleLock || onStructuralOp || onCreateSheet) {
+	if (edits.canAny(['toggle-lock', 'create-sheet', ...VIEW_SWITCHER_OPS])) {
 		const icons = layout.createDiv({ cls: 'bt-view-toolbar-icons' });
 
-		if (onToggleLock) {
+		if (edits.can('toggle-lock')) {
 			const lockBtn = icons.createDiv({
 				cls: 'bt-ctrl-btn' + (model.locked ? ' is-locked' : ''),
 				attr: { 'aria-label': model.locked ? t('unlockTable') : t('lockTable') },
 			});
 			setIcon(lockBtn, model.locked ? 'lock' : 'lock-open');
-			lockBtn.addEventListener('click', () => void onToggleLock());
+			lockBtn.addEventListener('click', () => edits.run({ type: 'toggle-lock' }));
 		}
 
-		if (onStructuralOp) {
+		if (edits.can('set-active-view')) {
 			// Getting INTO a non-table view is a menu action (pick/create among
 			// several options), but getting back OUT of one is the single most
 			// common next action from here — worth its own one-click button rather
 			// than making it "open the views menu, then find and click Table" every time.
 			const backBtn = icons.createDiv({ cls: 'bt-ctrl-btn', attr: { 'aria-label': t('defaultTableView') } });
 			setIcon(backBtn, 'table');
-			backBtn.addEventListener('click', () => onStructuralOp({ type: 'set-active-view', viewId: null }));
-
+			backBtn.addEventListener('click', () => edits.run({ type: 'set-active-view', viewId: null }));
+		}
+		if (edits.canAny(VIEW_SWITCHER_OPS)) {
 			const viewsBtn = icons.createDiv({ cls: 'bt-ctrl-btn', attr: { 'aria-label': t('views') } });
 			setIcon(viewsBtn, 'layout-grid');
 			viewsBtn.addEventListener('click', (evt: MouseEvent) =>
-				showMenuPinned(buildViewSwitcherMenu(model, registry, onStructuralOp), evt));
+				showMenuPinned(buildViewSwitcherMenu(model, registry, edits), evt));
 		}
 
-		if (onCreateSheet) {
+		if (edits.can('create-sheet')) {
 			const addSheetBtn = icons.createDiv({ cls: 'bt-ctrl-btn', attr: { 'aria-label': t('newSheet') } });
 			setIcon(addSheetBtn, 'copy-plus');
-			addSheetBtn.addEventListener('click', () => onCreateSheet());
+			addSheetBtn.addEventListener('click', () => edits.run({ type: 'create-sheet' }));
 		}
 	}
 

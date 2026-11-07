@@ -247,30 +247,10 @@ export class XlsxFileViewer extends Component {
 		this.shownSheetId = workbook ? (workbook.activeSheetId ?? workbook.sheets[0]?.id ?? null) : null;
 
 		const hasTabs = !!workbook && workbook.sheets.length > 1;
-		await renderTable(
-			active,
-			() => this.host.choiceRegistry,
-			tmp,
-			this.host.app,
-			file.path,
-			this,
-			/* onOp */ undefined,
-			/* onToggleLock */ undefined,
-			/* onRootReady */ undefined,
-			/* isSwapping */ undefined,
-			this.cacheKey,
-			/* getSingleClickEdit */ undefined,
-			/* onCreateSheet */ undefined,
-			/* onOpenExternalFile */ undefined,
-			/* onDetachFromXlsx */ undefined,
-			/* onSetViewWidth */ undefined,
-			/* onSetViewHeight */ undefined,
-			/* onSnapshot */ undefined,
-			/* onXlsxWrite */ undefined,
-			/* onExportXlsx */ undefined,
-			/* hiddenCtrlColButtons */ undefined,
-			/* forceStatusBarPinned */ hasTabs,
-		);
+		await renderTable(active, () => this.host.choiceRegistry, tmp, this.host.app, file.path, this, {
+			cacheKey: this.cacheKey,
+			forceStatusBarPinned: hasTabs,
+		});
 
 		if (workbook && hasTabs) {
 			const statusTabs = tmp.querySelector<HTMLElement>('.bt-status-bar .bt-status-tabs');

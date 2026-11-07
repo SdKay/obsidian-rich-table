@@ -5,8 +5,6 @@
  * checks; the actual hide-on-click behaviour is covered end-to-end in
  * test/e2e/issues/ctrl-col-visibility/.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { CTRL_COL_BUTTONS_BY_SCENARIO, ctrlColButtonIcon, type CtrlColButtonId } from '../src/model';
 import { DEFAULT_SETTINGS } from '../src/settings';
@@ -20,7 +18,7 @@ describe('CTRL_COL_BUTTONS_BY_SCENARIO', () => {
 		expect(CTRL_COL_BUTTONS_BY_SCENARIO.unlocked).not.toContain('detachXlsx');
 	});
 
-	it('snapshot is the one button available in every scenario, matching onSnapshot\'s own no-gate treatment in renderer.ts', () => {
+	it('snapshot is the one button available in every scenario, matching onSnapshot\'s own no-gate treatment in renderCtrlCol.ts', () => {
 		expect(CTRL_COL_BUTTONS_BY_SCENARIO.locked).toContain('snapshot');
 		expect(CTRL_COL_BUTTONS_BY_SCENARIO.unlocked).toContain('snapshot');
 		expect(CTRL_COL_BUTTONS_BY_SCENARIO.xlsxRef).toContain('snapshot');
@@ -57,39 +55,16 @@ describe('DEFAULT_SETTINGS.ctrlColHiddenButtons', () => {
 });
 
 describe('ctrlColButtonIcon', () => {
-	// Cross-checks against renderer.ts's own `setIcon(xBtn, '<icon>')` calls
-	// (source text, not a runtime import — renderer.ts's ctrlCol block is deep
-	// inside one large function, not worth extracting just for this) so the
-	// settings tab's icon can never silently drift from the real button's icon.
-	const rendererSrc = readFileSync(join(__dirname, '../src/renderer.ts'), 'utf8');
-
-	function realIconFor(id: CtrlColButtonId, scenario: 'locked' | 'unlocked' | 'xlsxRef'): string {
-		const setIconCall: Record<CtrlColButtonId, RegExp> = {
-			openExternal: /setIcon\(openBtn, '([\w-]+)'\)/,
-			detachXlsx:   /setIcon\(detachBtn, '([\w-]+)'\)/,
-			lock:         scenario === 'locked' ? /setIcon\(lockBtn, model\.locked \? '([\w-]+)'/ : /setIcon\(lockBtn, model\.locked \? '[\w-]+' : '([\w-]+)'/,
-			autoFit:      /setIcon\(autoFitBtn, '([\w-]+)'\)/,
-			transpose:    /setIcon\(transposeBtn, '([\w-]+)'\)/,
-			selectAll:    /setIcon\(selectAllBtn, '([\w-]+)'\)/,
-			theme:        /setIcon\(themeBtn, '([\w-]+)'\)/,
-			aggregate:    /setIcon\(aggBtn, '([\w-]+)'\)/,
-			collapse:     /setIcon\(collapseBtn, model\.collapsed \? '[\w-]+' : '([\w-]+)'\)/,
-			viewSettings: /setIcon\(settingsBtn, '([\w-]+)'\)/,
-			views:        /setIcon\(viewsBtn, '([\w-]+)'\)/,
-			newSheet:     /setIcon\(addSheetBtn, '([\w-]+)'\)/,
-			snapshot:     /setIcon\(snapshotBtn, '([\w-]+)'\)/,
-			exportXlsx:   /setIcon\(exportBtn, '([\w-]+)'\)/,
-		};
-		const match = setIconCall[id].exec(rendererSrc);
-		if (!match?.[1]) throw new Error(`could not find a real setIcon call for "${id}" in renderer.ts`);
-		return match[1];
-	}
-
-	it('matches the real ctrlCol button\'s own icon, for every button in every scenario it appears in', () => {
+	it('gives every button in every scenario it appears in an icon, from the one map the toolbar and the settings share', () => {
 		for (const scenario of ['locked', 'unlocked', 'xlsxRef'] as const) {
-			for (const id of CTRL_COL_BUTTONS_BY_SCENARIO[scenario]) {
-				expect(ctrlColButtonIcon(id, scenario)).toBe(realIconFor(id, scenario));
-			}
+			for (const id of CTRL_COL_BUTTONS_BY_SCENARIO[scenario]) expect(ctrlColButtonIcon(id, scenario).length, `${scenario}/${id}`).toBeGreaterThan(0);
 		}
+	});
+
+	it('lock and collapse change with the state of the table', () => {
+		expect(ctrlColButtonIcon('lock', 'locked')).toBe('lock');
+		expect(ctrlColButtonIcon('lock', 'unlocked')).toBe('lock-open');
+		expect(ctrlColButtonIcon('collapse', 'unlocked', false)).toBe('fold-vertical');
+		expect(ctrlColButtonIcon('collapse', 'unlocked', true)).toBe('unfold-vertical');
 	});
 });

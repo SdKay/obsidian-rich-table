@@ -8,11 +8,14 @@ import { rowId, colId, getMergeOrigin } from './renderGridHelpers';
 import { cellEffectiveStyle } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { pinHover, showMenuPinned } from './renderHoverPin';
+import type { TableEdits, TableOpType } from './tableEdits';
 
 export interface CellOpDef {
 	icon:    string;
 	label:   string;
 	danger?: boolean;
+	/** The operations this entry can emit. Absent for one that changes nothing (copying); see `withEdits`. */
+	emits?:  readonly TableOpType[];
 	/** Receives the triggering click event — lets an op open its own native
 	 *  Obsidian Menu (e.g. a "more options" flyout) positioned at the click. */
 	action:  (evt: MouseEvent) => void;
@@ -24,6 +27,23 @@ export interface CellOpDivider {
 }
 
 export type CellOpEntry = CellOpDef | CellOpDivider;
+
+/**
+ * The entries the table can carry out: one that emits operations is kept when any of them can be done. Dividers
+ * that end up leading, trailing or doubled are dropped with the groups they separated.
+ */
+export function withEdits(entries: readonly CellOpEntry[], edits: TableEdits): CellOpEntry[] {
+	const out: CellOpEntry[] = [];
+	for (const e of entries) {
+		if ('divider' in e) {
+			if (out.length > 0 && !('divider' in out[out.length - 1]!)) out.push(e);
+		} else if (!e.emits || edits.canAny(e.emits)) {
+			out.push(e);
+		}
+	}
+	if (out.length > 0 && 'divider' in out[out.length - 1]!) out.pop();
+	return out;
+}
 
 /**
  * A "Align" trigger item that opens a second-level native Menu (Left/Center/
@@ -90,33 +110,35 @@ export interface CellPanelConfig {
 }
 
 
-/** Standard cell-op buttons for a data cell (row/col insert/delete/hide + optional unmerge).
- *  `onStructuralOp` is optional so an xlsx-backed table (phase 1 of xlsx WRITE
- *  support — see CLAUDE.md) can call this with just `onMergeOp`: only the
- *  unmerge entry (if a merge exists) comes back, none of the row/col/style
- *  ops below, which have no xlsx equivalent yet. */
-export function dataCellOps(
-	rowIdx: number, colIdx: number,
-	model: TableModelV2, onStructuralOp: StructuralOpHandler | undefined, onMergeOp?: StructuralOpHandler,
-): CellOpEntry[] {
-	const ops: CellOpEntry[] = [];
-	const merge = getMergeOrigin(rowIdx, colIdx, model);
-	const mergeHandler = onStructuralOp ?? onMergeOp;
-	if (merge && (merge.endRow > merge.startRow || merge.endCol > merge.startCol) && mergeHandler) {
-		ops.push({ icon: 'table-2', label: t('unmergeCells'),
-			action: () => void mergeHandler({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) });
-	}
-	if (!onStructuralOp) return ops;
+/** Whether a list offers anything that changes the table, not just copying it. */
+export const offersEdits = (entries: readonly CellOpEntry[]): boolean => entries.some(e => !('divider' in e) && !!e.emits);
 
+/** Every operation a data cell's panel can lead to; the panel opens when the table can do one of them. */
+export const DATA_CELL_PANEL_OPS: readonly TableOpType[] = [
+	'unmerge-cells', 'split-cell-row', 'split-cell-col', 'hide-row', 'hide-col', 'delete-row', 'delete-col', 'set-align',
+	'set-cell-style', 'set-range-style', 'split-range-style',
+];
+
+/** Every operation the panel for a selected range of cells can lead to. */
+export const SELECTION_PANEL_OPS: readonly TableOpType[] = [
+	'merge-cells', 'hide-row', 'hide-col', 'delete-row', 'delete-col', 'set-align', 'fill-cells', 'set-range-style',
+];
+
+/** The panel entries for one data cell (or the merge it anchors) that the table can carry out. */
+export function dataCellOps(rowIdx: number, colIdx: number, model: TableModelV2, edits: TableEdits): CellOpEntry[] {
+	const run = edits.run;
+	const merge = getMergeOrigin(rowIdx, colIdx, model);
 	const r1 = merge?.startRow ?? rowIdx;
 	const r2 = merge?.endRow   ?? rowIdx;
 	const c1 = merge?.startCol ?? colIdx;
 	const c2 = merge?.endCol   ?? colIdx;
+	const spans = !!merge && (merge.endRow > merge.startRow || merge.endCol > merge.startCol);
 
-	// Insert-row/insert-col live in the row/column selector strip's own menu
-	// now, not here — see endDrag('row')/endDrag('col') in renderer.ts. Moved
-	// out to shorten this per-cell menu (it was getting too long).
-	ops.push(
+	// Insert-row/insert-col live in the row/column selector strip's own menu,
+	// not here, to keep this per-cell menu short.
+	return withEdits([
+		...(merge && spans ? [{ icon: 'table-2', label: t('unmergeCells'), emits: ['unmerge-cells'],
+			action: () => run({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) }] as CellOpEntry[] : []),
 		// Splitting a plain (unmerged) cell works either way. A merged cell only
 		// has one axis left to split along — a vertical-only merge (spans rows,
 		// one column) can split into 2 columns (each keeping its own copy of the
@@ -124,38 +146,40 @@ export function dataCellOps(
 		// spans both axes has no single shape left to preserve and isn't offered
 		// either action — see splitMergedCellIntoRows/Cols in operations.ts.
 		...((!merge || (merge.endRow === merge.startRow && merge.endCol > merge.startCol)) ? [
-			{ icon: 'rows-2',    label: t('splitCellRow'),
-				action: () => void onStructuralOp({ type: 'split-cell-row', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
+			{ icon: 'rows-2',    label: t('splitCellRow'), emits: ['split-cell-row'],
+				action: () => run({ type: 'split-cell-row', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
 		] as CellOpEntry[] : []),
 		...((!merge || (merge.endCol === merge.startCol && merge.endRow > merge.startRow)) ? [
-			{ icon: 'columns-2', label: t('splitCellCol'),
-				action: () => void onStructuralOp({ type: 'split-cell-col', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
+			{ icon: 'columns-2', label: t('splitCellCol'), emits: ['split-cell-col'],
+				action: () => run({ type: 'split-cell-col', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
 		] as CellOpEntry[] : []),
-		{ icon: 'eye-off', label: hideRowsLabel(r1, r2),
-			action: () => { for (let r = r1; r <= r2; r++) { const id = rowId(model, r); if (id) void onStructuralOp({ type: 'hide-row', rowId: id }); } } },
-		{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter),
-			action: () => { for (let c = c1; c <= c2; c++) { const id = colId(model, c); if (id) void onStructuralOp({ type: 'hide-col', colId: id }); } } },
-		{ icon: 'trash', label: deleteRowsLabel(r1, r2), danger: true,
-			action: () => { for (let r = r2; r >= r1; r--) { const id = rowId(model, r); if (id) void onStructuralOp({ type: 'delete-row', rowId: id }); } } },
-		{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true,
-			action: () => { for (let c = c2; c >= c1; c--) { const id = colId(model, c); if (id) void onStructuralOp({ type: 'delete-col', colId: id }); } } },
+		{ icon: 'eye-off', label: hideRowsLabel(r1, r2), emits: ['hide-row'],
+			action: () => { for (let r = r1; r <= r2; r++) { const id = rowId(model, r); if (id) run({ type: 'hide-row', rowId: id }); } } },
+		{ icon: 'eye-off', label: hideColsLabel(c1, c2, colIndexToLetter), emits: ['hide-col'],
+			action: () => { for (let c = c1; c <= c2; c++) { const id = colId(model, c); if (id) run({ type: 'hide-col', colId: id }); } } },
+		{ icon: 'trash', label: deleteRowsLabel(r1, r2), danger: true, emits: ['delete-row'],
+			action: () => { for (let r = r2; r >= r1; r--) { const id = rowId(model, r); if (id) run({ type: 'delete-row', rowId: id }); } } },
+		{ icon: 'trash', label: deleteColsLabel(c1, c2, colIndexToLetter), danger: true, emits: ['delete-col'],
+			action: () => { for (let c = c2; c >= c1; c--) { const id = colId(model, c); if (id) run({ type: 'delete-col', colId: id }); } } },
 		{ divider: true },
-		buildAlignCellOp(
-			cellEffectiveStyle(model, rowIdx, colIdx).align,
-			(align) => {
-				const target = (r1 === r2 && c1 === c2)
-					? `${rowId(model, r1)}.${colId(model, c1)}`
-					: `${rowId(model, r1)}.${colId(model, c1)}:${rowId(model, r2)}.${colId(model, c2)}`;
-				void onStructuralOp({ type: 'set-align', target, align });
-			},
-		),
+		{
+			...buildAlignCellOp(
+				cellEffectiveStyle(model, rowIdx, colIdx).align,
+				(align) => {
+					const target = (r1 === r2 && c1 === c2)
+						? `${rowId(model, r1)}.${colId(model, c1)}`
+						: `${rowId(model, r1)}.${colId(model, c1)}:${rowId(model, r2)}.${colId(model, c2)}`;
+					run({ type: 'set-align', target, align });
+				},
+			),
+			emits: ['set-align'],
+		},
 		{ divider: true },
 		{ icon: 'copy', label: t('copyToExcel'),
 			action: () => copyRangeToClipboard(model, r1, r2, c1, c2) },
 		{ icon: 'file-text', label: t('copyToMarkdown'),
 			action: () => copyRangeAsMarkdown(model, r1, r2, c1, c2) },
-	);
-	return ops;
+	], edits);
 }
 
 // Module-level reference so any new openCellPanel call can close the previous one first.

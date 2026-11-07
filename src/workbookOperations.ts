@@ -30,6 +30,13 @@ export type WorkbookOpV2 =
 	 *  are replaced. */
 	| { type: 'set-sheet-content'; sheetId: string; content: Omit<TableModelV2, 'version'> };
 
+const WORKBOOK_OP_TYPE_MAP: { [K in WorkbookOpV2['type']]: true } = {
+	'create-sheet': true, 'delete-sheet': true, 'rename-sheet': true, 'reorder-sheets': true,
+	'set-active-sheet': true, 'set-sheet-tab-style': true, 'set-sheet-content': true,
+};
+export const WORKBOOK_OP_TYPES: ReadonlySet<string> = new Set(Object.keys(WORKBOOK_OP_TYPE_MAP));
+export const isWorkbookOp = (op: { type: string }): op is WorkbookOpV2 => WORKBOOK_OP_TYPES.has(op.type);
+
 export function applyWorkbookOp(workbook: WorkbookV3, op: WorkbookOpV2): void {
 	switch (op.type) {
 		case 'create-sheet': {
