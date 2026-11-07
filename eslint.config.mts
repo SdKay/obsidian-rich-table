@@ -34,7 +34,7 @@ export default defineConfig(
 			},
 			parserOptions: {
 				projectService: {
-					allowDefaultProject: ['eslint.config.mts', 'manifest.json', 'vitest.config.ts', 'playwright.config.ts'],
+					allowDefaultProject: ['eslint.config.mts', 'manifest.json', 'vitest.config.ts', 'playwright.config.ts', 'playwright.perf.config.ts'],
 				},
 				tsconfigRootDir: import.meta.dirname,
 				extraFileExtensions: ['.json'],

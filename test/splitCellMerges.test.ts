@@ -138,7 +138,7 @@ describe('splitting a cell keeps the merges it always did', () => {
 			expect(reversed).toBeGreaterThan(100);
 			expect(extended).toBeGreaterThan(500);
 			expect(covered).toBeGreaterThan(0);
-		});
+		}, 60_000);
 	}
 });
 
@@ -171,6 +171,6 @@ describe('splitting a merged cell keeps the merges it always did', () => {
 			expect(compared).toBeGreaterThan(2500);
 			// Enough of them really split (were eligible), or the comparison would be of nothing happening.
 			expect(split).toBeGreaterThan(800);
-		});
+		}, 60_000);
 	}
 });

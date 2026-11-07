@@ -24,7 +24,7 @@ export default defineConfig({
 		// include glob matches *.spec.ts too, and running Playwright's test()
 		// under vitest's runner breaks outright (different, incompatible
 		// test-framework globals).
-		exclude: [...configDefaults.exclude, 'test/e2e/**'],
+		exclude: [...configDefaults.exclude, 'test/e2e/**', 'test/perf/**/*.spec.ts'],
 	},
 	resolve: {
 		alias: {

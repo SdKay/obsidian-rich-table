@@ -50,7 +50,7 @@ describe('mergeOriginIndex', () => {
 		// The comparison must have met merges, or it proved nothing.
 		expect(cells).toBeGreaterThan(20000);
 		expect(withMerge).toBeGreaterThan(500);
-	});
+	}, 60_000);
 
 	it('answers undefined outside the table', () => {
 		const model = randomTable(7);

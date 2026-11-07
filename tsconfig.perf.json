@@ -1,0 +1,6 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": { "noEmit": true, "types": ["node"], "isolatedModules": true },
+	"include": ["src/**/*.ts", "test/perf/**/*.ts"],
+	"exclude": ["test/perf/**/*.spec.ts"]
+}

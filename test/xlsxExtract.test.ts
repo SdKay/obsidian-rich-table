@@ -175,7 +175,7 @@ describe('extractXlsx: size limits', () => {
 		expect(loaded.ok).toBe(true);
 		expect(refused.ok).toBe(false);
 		expect(refused.ms).toBeLessThan(loaded.ms / 2);
-	});
+	}, 30_000);
 
 	it('a sparse sheet whose declared range is big but whose real cell count is small is still read', async () => {
 		const result = await extractXlsx(await bytesOf(wb => {

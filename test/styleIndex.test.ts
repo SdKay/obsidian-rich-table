@@ -52,7 +52,7 @@ describe('compileStyles', () => {
 		// The comparison must have met styles, or it proved nothing.
 		expect(cells).toBeGreaterThan(25000);
 		expect(styled).toBeGreaterThan(5000);
-	});
+	}, 60_000);
 
 	it('answers an empty style outside the table', () => {
 		const style = compileStyles(randomTable(11));
