@@ -92,6 +92,23 @@ A block is user content in people's notes; breaking it is data loss.
 - Do not weaken a test or add waits to hide a real bug; fix the product code. A test must encode the requirement, not the current implementation.
 - A test run is only a pass once the summary shows `PASS (n) FAIL (0)`. An exit code of 0 is not enough (a bundle failure can produce one with zero tests run).
 
+## Performance measurement
+
+A number is only worth reporting if it measures the plugin and the path under test actually ran. Each rule below is a way a wrong number has already been produced.
+
+- **Keep Playwright out of the loop.** `mouse.move`, `keyboard.press`, `hover` and `boundingBox` each cost tens to hundreds of milliseconds of their own (an injected script walks the DOM before every action). Never report their wall time as the product's response time. Dispatch the events from inside the page (`handle.dispatchEvent(new PointerEvent(...))`) and time there with `performance.now()`, or read the browser's Event Timing (`PerformanceObserver` on `event`: `processingEnd - processingStart` for the handler, `duration` to the next paint). Playwright drives only the setup.
+- **Check the CPU profile's source before believing it.** `Profiler.start`/`stop` around a drag attributes to the plugin only what has the bundle's URL. Functions with no URL (`visitNode`, `expectValue`) are Playwright's injected scripts, not ours; a profile dominated by them means the measurement is wrong.
+- **Prove the path ran.** A measurement that comes back near zero is suspect, not fast. Assert the state it depends on first (a cell carries `.bt-selected`, the editor is open, the handle exists) and that the action changed it (the selection moved). Keyboard navigation needs the Selected state, which only Escape out of an editor creates, after the editor has appeared. Dispatching `keydown` with nothing selected returns in 0.0 ms and measures nothing.
+- **Use a table that can show the problem, and add one kind of complexity at a time.** A 40 x 10 text table or the 10-row demo template hid a half-second keypress that 400 rows with merges showed at once. Build one large base table (hundreds of rows, a dozen columns), then switch on merges, frozen panes, style rules, row heights, column widths and auto layout each on its own, so a slowdown is put on one feature. Only then combine them.
+- **Measure the old build, in a worktree, before blaming a change.** Run the same probe on the last release, the commit before the change and the current one, interleaved and several rounds each (`git worktree add --detach /tmp/x <ref>`, symlink `node_modules`, remove it afterwards). A slowness present in all three is not a regression and is not to be reported as one.
+- **Enough samples, and spread, not one number.** Report the median and the range over at least three rounds of repeated operations. A difference inside the range is noise: say "cannot tell" rather than "slower" or "same". Run unit and e2e suites alone; a concurrent run makes timing tests flaky.
+- **Do not report from a partial run.** If a scenario timed out or wrote no data for one build, the comparison table is not evidence for that scenario. Say what is missing; do not read the gap as a result. Probe specs have a 30 s limit, so size the repetitions to fit it.
+- **Check units before reading a table.** Chrome's `Performance.getMetrics` is in seconds; convert once, in one place, and sanity-check a column of all zeros or all identical values as a bug in the summary.
+- **Split the cost before fixing it.** `ScriptDuration`, `RecalcStyleDuration` and `LayoutDuration` from `Performance.getMetrics` say whether the time is our JavaScript or the browser's rendering; the layout count per operation says whether it is laid out once or many times.
+- **A performance regression test compares, it does not time.** An absolute millisecond bound moves with the machine. Compare the same operation on a plain table and on one with the feature (`merged < max(plain * 8, 25ms)`), choose a bound far from both the healthy and the broken value, and verify both directions as for any test.
+- The e2e shim's `MarkdownRenderer` emits plain text, so formulas and images are not rendered and their cost is not measured. Say so when a result is about a table that has them in a real vault.
+- Probe specs live in `tmp/perf/` (git-ignored) and are copied into a worktree's `test/e2e/perf/` to run; do not commit them.
+
 ## Conventions
 
 - `noUncheckedIndexedAccess` is on: guard indexed access.
