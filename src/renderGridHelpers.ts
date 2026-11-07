@@ -38,6 +38,37 @@ export function resolveMergeBounds(model: TableModelV2): MergeBounds[] {
 }
 
 /**
+ * The raw drag rectangle from `start` to `end`, grown to contain every merge it only partly overlaps: touching
+ * part of a merged cell selects the whole merge, and a rectangular selection never ends up with a notch missing
+ * where a merge's other rows or columns should be. Iterates to a fixed point, since growing for one merge can
+ * newly overlap another (two merges chained end to end).
+ *
+ * Takes the merges already resolved (`resolveMergeBounds`) so the caller resolves them once, not per call.
+ */
+export function expandToMerges(
+	bounds: readonly MergeBounds[],
+	start: { row: number; col: number },
+	end: { row: number; col: number },
+): { r1: number; r2: number; c1: number; c2: number } {
+	let r1 = Math.min(start.row, end.row);
+	let r2 = Math.max(start.row, end.row);
+	let c1 = Math.min(start.col, end.col);
+	let c2 = Math.max(start.col, end.col);
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const m of bounds) {
+			if (m.rowHi < r1 || m.rowLo > r2 || m.colHi < c1 || m.colLo > c2) continue; // no overlap
+			if (m.rowLo < r1) { r1 = m.rowLo; changed = true; }
+			if (m.rowHi > r2) { r2 = m.rowHi; changed = true; }
+			if (m.colLo < c1) { c1 = m.colLo; changed = true; }
+			if (m.colHi > c2) { c2 = m.colHi; changed = true; }
+		}
+	}
+	return { r1, r2, c1, c2 };
+}
+
+/**
  * How many LEADING display rows (the header itself, plus any data rows a
  * header-anchored merge reaches down into) must physically live inside
  * `<thead>` rather than `<tbody>` for their merges to render correctly.

@@ -17,7 +17,7 @@ import { enterLineEdit } from './renderEditMode';
 import { createFormulaPick } from './renderFormulaPick';
 import { renderFrozenCells } from './renderFreezeDom';
 import { computeVisibleGeom as computeVisibleGeomPure, type VisibleGeom } from './renderGeometry';
-import { buildOccupied, colId, computeHeaderRowSpan, countVisibleCells, getMergeOrigin, isRowFiltered, resolveMergeBounds, rowId } from './renderGridHelpers';
+import { buildOccupied, colId, computeHeaderRowSpan, countVisibleCells, expandToMerges, getMergeOrigin, isRowFiltered, resolveMergeBounds, rowId } from './renderGridHelpers';
 import { renderHover } from './renderHover';
 import { renderKanbanBoard } from './renderKanban';
 import { renderKeyboard } from './renderKeyboard';
@@ -703,39 +703,11 @@ export async function renderTable(
 		ctrlHeld: false,
 	};
 
-	/**
-	 * The raw drag rectangle, expanded to fully contain any merge it only
-	 * partly overlaps — matches Excel: touching part of a merged cell selects
-	 * the whole merge, and a rectangular selection can never end up with a
-	 * "notch" missing where a merge's other rows/columns should be. Iterates
-	 * to a fixed point since expanding for one merge can newly overlap another
-	 * (e.g. two merges chained end-to-end).
-	 */
-	const effectiveSelRect = (): { r1: number; r2: number; c1: number; c2: number } | null => {
-		if (!sel.start || !sel.end) return null;
-		let r1 = Math.min(sel.start.row, sel.end.row);
-		let r2 = Math.max(sel.start.row, sel.end.row);
-		let c1 = Math.min(sel.start.col, sel.end.col);
-		let c2 = Math.max(sel.start.col, sel.end.col);
-		let changed = true;
-		while (changed) {
-			changed = false;
-			for (const m of resolveMergeBounds(model)) {
-				if (m.rowHi < r1 || m.rowLo > r2 || m.colHi < c1 || m.colLo > c2) continue; // no overlap
-				if (m.rowLo < r1) { r1 = m.rowLo; changed = true; }
-				if (m.rowHi > r2) { r2 = m.rowHi; changed = true; }
-				if (m.colLo < c1) { c1 = m.colLo; changed = true; }
-				if (m.colHi > c2) { c2 = m.colHi; changed = true; }
-			}
-		}
-		return { r1, r2, c1, c2 };
-	};
-
-	const inSel = (row: number, col: number): boolean => {
-		const rect = effectiveSelRect();
-		if (!rect) return false;
-		return row >= rect.r1 && row <= rect.r2 && col >= rect.c1 && col <= rect.c2;
-	};
+	// The model does not change while this render lives (a write-back rebuilds the table), so the merges are
+	// resolved once; resolving them walks every row for every merge.
+	const mergeBounds = resolveMergeBounds(model);
+	const effectiveSelRect = (): { r1: number; r2: number; c1: number; c2: number } | null =>
+		sel.start && sel.end ? expandToMerges(mergeBounds, sel.start, sel.end) : null;
 
 	const clearSel = () => {
 		sel.start = sel.end = null;
@@ -745,10 +717,12 @@ export async function renderTable(
 	};
 
 	const updateHighlights = () => {
+		// The selection is the same for every cell of this pass.
+		const rect = effectiveSelRect();
 		ownCells(table).forEach(e => {
 			const row = parseInt(e.dataset.row ?? '-1');
 			const col = parseInt(e.dataset.col ?? '-1');
-			if (row >= 0 && col >= 0) e.toggleClass('bt-selected', inSel(row, col));
+			if (row >= 0 && col >= 0) e.toggleClass('bt-selected', !!rect && row >= rect.r1 && row <= rect.r2 && col >= rect.c1 && col <= rect.c2);
 		});
 		hooks.updateStatusBarStats();
 	};
