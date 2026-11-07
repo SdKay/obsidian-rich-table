@@ -17,7 +17,7 @@ import { enterLineEdit } from './renderEditMode';
 import { createFormulaPick } from './renderFormulaPick';
 import { renderFrozenCells } from './renderFreezeDom';
 import { computeVisibleGeom as computeVisibleGeomPure, type VisibleGeom } from './renderGeometry';
-import { buildOccupied, colId, computeHeaderRowSpan, countVisibleCells, expandToMerges, getMergeOrigin, isRowFiltered, resolveMergeBounds, rowId } from './renderGridHelpers';
+import { buildOccupied, colId, computeHeaderRowSpan, countVisibleCells, expandToMerges, getMergeOrigin, isRowFiltered, mergeOriginIndex, resolveMergeBounds, rowId } from './renderGridHelpers';
 import { renderHover } from './renderHover';
 import { renderKanbanBoard } from './renderKanban';
 import { renderKeyboard } from './renderKeyboard';
@@ -26,8 +26,10 @@ import { ownCells } from './renderOwnScope';
 import { buildAlignCellOp, openCellPanel, SELECTION_PANEL_OPS, withEdits, type CellOpEntry } from './renderPanel';
 import { takeSelectedCell } from './renderSelectionHandoff';
 import { renderSelectorStrips, SELECTOR_STRIP_OPS } from './renderSelectorStrips';
+import type { StripAxis } from './stripRebuildPlan';
 import { applySortForDisplay } from './renderSort';
 import { renderStatusBar } from './renderStatusBarDom';
+import { compileStyles } from './styleIndex';
 import type { CellChangeHandler, ColTypeChangeHandler, EditNavigateHandler, TableAction } from './renderTypes';
 import { NO_EDITS, type TableEdits } from './tableEdits';
 import { renderVScroll } from './renderVScroll';
@@ -143,7 +145,7 @@ export async function renderTable(
 		updateOuterFrame: () => { /* assigned once statusBar exists */ },
 		reapplyFreezeNow: () => { /* assigned in frozen-rows/columns block */ },
 		stripCellBusy: () => false,
-		markStripsStale: () => { /* assigned in the selector block */ },
+		markStripsStale: (_axis?: StripAxis) => { /* assigned in the selector block */ },
 	};
 	// Read by bindScrollSync's shared isActive() check (selector block, below) —
 	// addRowBtn/addColBtn themselves are block-scoped to the edge-strip block and
@@ -213,6 +215,10 @@ export async function renderTable(
 	}
 
 	const occupied = buildOccupied(model);
+	// Every cell asks which merge it anchors and which style rules apply to it; resolving them again for each one
+	// took seconds on a large table.
+	const merges = mergeOriginIndex(model);
+	const styleOf = compileStyles(model);
 	// The keyboard-Selected cell, carried over from the instance a write-back just
 	// replaced (renderSelectionHandoff.ts). Re-validated against the CURRENT model
 	// because the very operation that triggered this rebuild may have deleted the
@@ -469,22 +475,10 @@ export async function renderTable(
 					// change, only the visible viewport did.
 					hooks.prepareLayout();
 					hooks.repositionSelectorStrips();
-					hooks.repositionEdgeStrips();
 					hooks.repositionCtrlCol();
-					// Explicit, synchronous call rather than relying solely on
-					// viewFrameResizeObs (which also watches wrapper) — that
-					// observer is rAF-coalesced (by design, to survive its own
-					// reposition calls resizing wrapper again without looping
-					// forever, see its own comment), which added one extra frame
-					// of visible lag between the handle and the frame during a
-					// width drag specifically (mode 'w'/'both') — not noticeable
-					// for height, whose handle lives inside the status bar and has
-					// no separate frame-edge dependency to catch up to.
-					hooks.updateOuterFrame();
-					// Same one-frame-lag reasoning as updateOuterFrame's own call —
-					// freezeResizeObs (below) is rAF-coalesced, which reads as the
-					// frozen column stuttering a pixel behind the cursor during a
-					// slow drag (reported: "冻结列整体在抖动").
+					// prepareLayout has just moved the frame (updateOuterFrame), in this event rather than a frame later
+					// through the observers, which are coalesced to the next frame and read as a lag behind the handle.
+					// The frozen cells are re-placed the same way (reported: the frozen column shaking).
 					hooks.reapplyFreezeNow();
 				};
 				const onUp = () => {
@@ -554,7 +548,7 @@ export async function renderTable(
 	const watchLayout = (el: HTMLElement) => { watchedBoxes.push(el); layoutObserver.observe(el); };
 
 	// A resize the browser has no way of reporting (a column dragged, the page zoomed) says so itself.
-	table.addEventListener('bt-layout-changed', () => { hooks.markStripsStale(); layoutSync.schedule(); });
+	table.addEventListener('bt-layout-changed', (e: Event) => { hooks.markStripsStale((e as CustomEvent<{ axis?: StripAxis }>).detail?.axis); layoutSync.schedule(); });
 
 	// Whether the row/column selector strips exist: the table can do something they offer. The space reserved above
 	// and to the left of the table follows from it, so it is decided once, here.
@@ -856,7 +850,7 @@ export async function renderTable(
 	const headerTr = thead.createEl('tr');
 	await renderRow({
 		tr: headerTr, rowIdx: 0, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: true,
-		edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, merges, styleOf, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
 	});
 
 	const tbody = table.createEl('tbody');
@@ -934,7 +928,7 @@ export async function renderTable(
 			const tr = displayIdx < headerRowSpan ? thead.createEl('tr') : tbody.createEl('tr');
 			await renderRow({
 				tr, rowIdx: displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: false,
-				edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+				edits, merges, styleOf, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
 				onEnterFormulaMode: (insertText) => formulaPick.enter(insertText),
 				onExitFormulaMode: () => formulaPick.exit(),
 			});

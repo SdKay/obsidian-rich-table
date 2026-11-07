@@ -1,6 +1,6 @@
 import type { TableModelV2 } from './model';
 import { canFreezeRows, canFreezeCols } from './operations';
-import { cellEffectiveStyle } from './renderCellStyle';
+import { compileStyles } from './styleIndex';
 
 /**
  * The DECIDING half of frozen rows/columns: given a snapshot of what the table
@@ -142,9 +142,10 @@ export function planFreeze<Ref>(snapshot: TableSnapshot<Ref>, model: TableModelV
 	// the user has to win, since this runs on every geometry change and would
 	// otherwise overwrite it every time. Aggregate rows already have their own
 	// opaque, meaningful background.
+	const styleOf = compileStyles(model);
 	const opaqueBg = (cell: CellSnapshot<Ref>): string | null => {
 		if (cell.isAgg) return null;
-		const custom = cell.colIdx !== undefined ? cellEffectiveStyle(model, cell.rowIdx, cell.colIdx).bg : undefined;
+		const custom = cell.colIdx !== undefined ? styleOf(cell.rowIdx, cell.colIdx).bg : undefined;
 		if (custom) return custom;
 		return cell.isHeader
 			? 'var(--bt-frozen-header-bg, var(--background-secondary))'

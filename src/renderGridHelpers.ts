@@ -246,6 +246,54 @@ export function countVisibleCells(model: TableModelV2): number {
 }
 
 /**
+ * Every merge of the table resolved once, to be asked cell by cell: `at` answers exactly what `getMergeOrigin`
+ * does, in constant time. `getMergeOrigin` resolves every merge again for each cell it is asked about, which for a
+ * table of hundreds of rows with dozens of merges is most of the time spent drawing it.
+ *
+ * Built for a table that does not change while it is used (one render); build another after a change.
+ */
+export function mergeOriginIndex(model: TableModelV2): { at: (rowIdx: number, colIdx: number) => ResolvedMerge | undefined } {
+	// Keyed by the effective anchor, display row (0 = header) and column. Merges are taken in order and the first
+	// for a cell wins, as the loop in getMergeOrigin returns the first match.
+	const byAnchor = new Map<number, ResolvedMerge>();
+	const width = model.columns.length;
+	for (const m of model.merges) {
+		const dotA = m.anchor.indexOf('.');
+		const dotE = m.end.indexOf('.');
+		if (dotA < 0 || dotE < 0) continue;
+		const anchorRowId = m.anchor.slice(0, dotA);
+		const anchorColId = m.anchor.slice(dotA + 1);
+		const endRowId = m.end.slice(0, dotE);
+		const endColId = m.end.slice(dotE + 1);
+		const r1 = resolveMergeRowIndex(model, anchorRowId);
+		const c1 = model.columns.findIndex(c => c.id === anchorColId);
+		const r2 = resolveMergeRowIndex(model, endRowId);
+		const c2 = model.columns.findIndex(c => c.id === endColId);
+		if (r1 === undefined || c1 < 0 || r2 === undefined || c2 < 0) continue;
+		let effR1 = r1;
+		while (effR1 <= r2 && rowHasNoTr(model, effR1)) effR1++;
+		let effC1 = c1;
+		while (effC1 <= c2 && model.columns[effC1]?.hidden) effC1++;
+		if (effR1 > r2 || effC1 > c2) continue;
+		const key = (effR1 + 1) * width + effC1;
+		if (byAnchor.has(key)) continue;
+		byAnchor.set(key, {
+			anchorRowId, anchorColId, endRowId, endColId,
+			startRow: effR1 + 1, startCol: effC1,
+			endRow: r2 + 1, endCol: c2,
+		});
+	}
+	return {
+		at(rowIdx, colIdx) {
+			// Same guards as getMergeOrigin, so a cell outside the table has no merge.
+			if (rowIdx < 0 || colIdx < 0 || !model.columns[colIdx]) return undefined;
+			if (rowIdx > 0 && !model.rows[rowIdx - 1]) return undefined;
+			return byAnchor.get(rowIdx * width + colIdx);
+		},
+	};
+}
+
+/**
  * Finds the merge whose effective (hidden-row/col-promoted) anchor is this cell.
  * `rowIdx === 0` (header) is a valid origin too — a header-only merge's anchor/end
  * row IDs are the `'header'` sentinel, which `resolveMergeRowIndex` maps to -1, one

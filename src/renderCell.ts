@@ -5,11 +5,12 @@ import type { FormulaErrorCode } from './formula';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { CellChangeHandler, ColTypeChangeHandler, EditNavigateHandler } from './renderTypes';
 import type { TableEdits } from './tableEdits';
-import { rowId, colId, getMergeOrigin, isRowFiltered } from './renderGridHelpers';
+import { rowId, colId, getMergeOrigin, isRowFiltered, type ResolvedMerge } from './renderGridHelpers';
 import {
 	cellEffectiveStyle, cellInheritedStyle, buildCellStyleContext,
-	applyColStyle, applyStyleRulesV2,
+	applyColStyle, applyResolvedStyle,
 } from './renderCellStyle';
+import type { ResolvedStyleV2 } from './styleTarget';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { enterDateEditMode, enterEditMode, enterNativeEditMode, type FormulaEditHooks } from './renderEditMode';
 import { nativeEditorEnabled } from './nativeCellEditor';
@@ -113,6 +114,10 @@ export interface RenderRowOptions {
 	isHeader:        boolean;
 	/** What the table can change; every control in a cell asks it about the operation it would emit. */
 	edits:           TableEdits;
+	/** The table's merges, resolved once for all its cells. */
+	merges:          { at: (rowIdx: number, colIdx: number) => ResolvedMerge | undefined };
+	/** The table's style rules, resolved once for all its cells. */
+	styleOf:         (rowIdx: number, colIdx: number) => ResolvedStyleV2;
 	onCellChange:    CellChangeHandler;
 	onColTypeChange: ColTypeChangeHandler;
 	/** Table identity for renderEditHandoff.ts's cross-rebuild edit resume — see that
@@ -133,7 +138,7 @@ export interface RenderRowOptions {
 export async function renderRow(options: RenderRowOptions): Promise<void> {
 	const {
 		tr, rowIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader,
-		edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, merges, styleOf, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
 		onEnterFormulaMode, onExitFormulaMode,
 	} = options;
 	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
@@ -179,7 +184,7 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 
 		// Normal cell — snapshot c so closures below capture the right column index
 		const colIdx = c;
-		const merge = getMergeOrigin(rowIdx, colIdx, model);
+		const merge = merges.at(rowIdx, colIdx);
 		const tag   = isHeader ? 'th' : 'td';
 		const el    = tr.createEl(tag, { cls: isHeader ? 'bt-th' : 'bt-td' });
 		el.dataset.row = String(rowIdx);
@@ -204,7 +209,7 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		}
 
 		applyColStyle(el, col);
-		applyStyleRulesV2(el, rowIdx, colIdx, model);
+		applyResolvedStyle(el, styleOf(rowIdx, colIdx));
 		// Apply stored row height (height on td acts as minimum row height)
 		const rh = currentRow?.height;
 		if (rh) el.style.setProperty('--bt-row-height', `${rh}px`);

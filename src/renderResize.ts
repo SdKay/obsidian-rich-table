@@ -132,7 +132,7 @@ export function setupColResize(
 				colLine.setCssProps({ '--ri-x': `${(tbl.getBoundingClientRect().left - parentLeft) / getZoom() + colRightX(tbl, colIdx)}px` });
 			}
 			// Grid auto-updates edge-add strip sizes — no manual repositioning needed.
-			tbl.dispatchEvent(new CustomEvent('bt-layout-changed'));
+			tbl.dispatchEvent(new CustomEvent('bt-layout-changed', { detail: { axis: 'col' } }));
 		};
 
 		const onUp = (ev: PointerEvent) => {
@@ -256,7 +256,7 @@ export function bindResizeHandle(
 			}
 			onDrag?.();
 			// Row height change shifts cell geometry → rebuild selector strips to follow
-			table.dispatchEvent(new CustomEvent('bt-layout-changed'));
+			table.dispatchEvent(new CustomEvent('bt-layout-changed', { detail: { axis: 'row' } }));
 			hasMoved = true;
 
 			// Restore scroll in the next animation frame (runs before paint, after

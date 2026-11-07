@@ -160,6 +160,38 @@ describe('createLayoutSync', () => {
 			expect(log).toEqual(['place', 'place']);
 		});
 
+		it('does not run the frame that was asked for when a round has run since it was asked, which measured what the asker changed', () => {
+			const { log, sync, frames, flushFrame } = make();
+			sync.register('place', () => log.push('place'));
+			sync.schedule();
+			sync.run();
+			expect(log).toEqual(['place']);
+			expect(frames, 'the frame was asked for and is waiting').toHaveLength(1);
+			flushFrame();
+			expect(log, 'the observer already placed everything for the layout the asker left').toEqual(['place']);
+		});
+
+		it('still runs the frame when the only round was before it was asked, since that round could not have measured the change', () => {
+			const { log, sync, flushFrame } = make();
+			sync.register('place', () => log.push('place'));
+			sync.run();
+			sync.schedule();
+			flushFrame();
+			expect(log).toEqual(['place', 'place']);
+		});
+
+		it('runs the frame when the round since it was asked did nothing because the layout looked the same', () => {
+			// An inner change the observer cannot see (a column dragged inside a table that keeps its box): the signature
+			// is unchanged, so run() does nothing, and the frame is the only thing that places for it.
+			const { log, sync, flushFrame } = make({ signature: () => 'same' });
+			sync.register('place', () => log.push('place'));
+			sync.run();
+			sync.schedule();
+			sync.run();
+			flushFrame();
+			expect(log).toEqual(['place', 'place']);
+		});
+
 		it('can be asked again once the frame has run', () => {
 			const { log, sync, frames, flushFrame } = make();
 			sync.register('place', () => log.push('place'));

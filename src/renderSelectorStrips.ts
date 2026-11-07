@@ -23,6 +23,7 @@ import { SEL_UNIT } from './selectorLayout';
 import { colIndexToLetter } from './utils';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { TableEdits, TableOpType } from './tableEdits';
+import { sameRowGeometry, stripsToRebuild, type RowGeometry, type StripAxis } from './stripRebuildPlan';
 import type { LayoutSync } from './layoutSync';
 
 /** Every operation the strips can lead to; they are drawn when the table can do one of them. */
@@ -38,7 +39,7 @@ export interface RenderSelectorStripsContext {
 	component: Component;
 	edits: TableEdits;
 	registry: ChoiceRegistry;
-	hooks: { hideSelectors: () => void; showSelectors: () => void; isEdgeStripsVisible: () => boolean; liftTitle: () => void; markStripsStale: () => void; prepareLayout: () => void; restoreLayout: () => void; repositionCtrlCol: (geom?: VisibleGeom) => void; repositionEdgeStrips: (geom?: VisibleGeom) => void; repositionSelectorStrips: (geom?: VisibleGeom) => void; stripCellBusy: () => boolean; updateOuterFrame: () => void };
+	hooks: { hideSelectors: () => void; showSelectors: () => void; isEdgeStripsVisible: () => boolean; liftTitle: () => void; markStripsStale: (axis?: StripAxis) => void; prepareLayout: () => void; restoreLayout: () => void; repositionCtrlCol: (geom?: VisibleGeom) => void; repositionEdgeStrips: (geom?: VisibleGeom) => void; repositionSelectorStrips: (geom?: VisibleGeom) => void; stripCellBusy: () => boolean; updateOuterFrame: () => void };
 	root: HTMLElement;
 	view: { zoom: number };
 	wrapper: HTMLElement;
@@ -161,8 +162,26 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 			});
 		};
 
-		const rebuild = () => {
-			updateTableHighlights();
+		const BOTH: ReadonlySet<StripAxis> = new Set<StripAxis>(['col', 'row']);
+		/** Every row's top (relative to the table) and height, in logical px, in the order the rows appear. */
+		const readRows = (): { trs: HTMLElement[]; geom: Map<HTMLElement, { top: number; height: number }>; flat: number[] } => {
+			const tableTop = table.getBoundingClientRect().top;
+			const trs = [...ownRows(thead), ...ownRows(tbody)];
+			const geom = new Map<HTMLElement, { top: number; height: number }>();
+			const flat: number[] = [];
+			for (const tr of trs) {
+				const r = tr.getBoundingClientRect();
+				const g = { top: (r.top - tableTop) / view.zoom, height: r.height / view.zoom };
+				geom.set(tr, g);
+				flat.push(g.top, g.height);
+			}
+			return { trs, geom, flat };
+		};
+		/** Redraws the cells of the strips named. A strip that was not touched is left as it is. */
+		const rebuild = (axes: ReadonlySet<StripAxis> = BOTH) => {
+			const doCols = axes.has('col'), doRows = axes.has('row');
+			// What is selected is marked on the table's cells and on both strips, so a selection redraws everything.
+			if (selAxis !== null || (doCols && doRows)) updateTableHighlights();
 
 			// In auto layout (no explicit widths, e.g. the empty-block template) the <col>
 			// elements never get a width set at render time — see hasExplicitWidths above —
@@ -260,22 +279,20 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 				const frozen = freezeColsAt !== undefined && parseInt(ci) < freezeColsAt;
 				colOffset.set(c, selectorAxisOffset(c, 'x', view.zoom, frozen));
 			}
-			const rowGeom = new Map<HTMLElement, { top: number; height: number }>();
-			const tableTop = table.getBoundingClientRect().top;
-			const allTrs = [
-				...ownRows(thead),
-				...ownRows(tbody),
-			];
-			for (const tr of allTrs) {
-				if (!tr) continue;
-				const trRect = tr.getBoundingClientRect();
-				rowGeom.set(tr, { top: (trRect.top - tableTop) / view.zoom, height: trRect.height / view.zoom });
-			}
+			const rows = doRows ? readRows() : null;
+			const rowGeom = rows?.geom ?? new Map<HTMLElement, { top: number; height: number }>();
+			const allTrs = rows?.trs ?? [];
+			if (rows) rowsBuilt = rows.flat;
 			const handleRow = new Map<number, { frozen: boolean; offset: number; height: number }>();
-			for (const [ri] of rowResizeHandles) {
+			// The row each number belongs to, found in one pass over the rows rather than a search of the table per handle.
+			const trOfRow = new Map<number, HTMLElement>();
+			if (doRows) for (const tr of allTrs) {
+				const n = parseInt(tr.querySelector<HTMLElement>('[data-row]')?.dataset.row ?? '');
+				if (!Number.isNaN(n) && !trOfRow.has(n)) trOfRow.set(n, tr);
+			}
+			if (doRows) for (const [ri] of rowResizeHandles) {
 				// data-row is 1-based (header=0, data rows=1,2,3…); ri is 0-based model index.
-				const firstCell = table.querySelector<HTMLElement>(`[data-row="${ri + 1}"]`);
-				const tr = firstCell?.closest<HTMLElement>('tr');
+				const tr = trOfRow.get(ri + 1);
 				if (!tr) continue;
 				const frozen = freezeRowsAt !== undefined && ri + 1 <= freezeRowsAt;
 				handleRow.set(ri, { frozen, offset: selectorAxisOffset(tr, 'y', view.zoom, frozen), height: tr.getBoundingClientRect().height / view.zoom });
@@ -283,7 +300,7 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 
 			// Column selector — cells positioned by --cl/--cw relative to the selector's
 			// own left edge, which CSS Grid aligns with the table wrapper automatically.
-			colSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
+			if (doCols) colSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
 
 			// parseFloat, not parseInt: col.style.width holds a fractional px value
 			// (rebuild()'s own measurement above pins e.g. "39.9952px" for an
@@ -307,7 +324,7 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 			// here, just reusing the existing one.
 			const freezeCols = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
 			const freezeRows = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
-			for (const c of ownCols(table)) {
+			if (doCols) for (const c of ownCols(table)) {
 				const w = parseFloat(c.style.width) || 0;
 				if (c.dataset.col !== undefined) {
 					// Visible column — one cell per physical column
@@ -334,7 +351,7 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 
 			// Row selector — cells positioned by --rt/--rh relative to the selector's
 			// own top edge, which CSS Grid aligns with the table wrapper automatically.
-			rowSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
+			if (doRows) rowSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
 			// Row selector — one cell per physical row, independent of rowspan merges.
 			// Use getBoundingClientRect() for row positions: tr.offsetTop is relative to
 			// tr.offsetParent which can be tbody (not table), causing all tbody rows to
@@ -403,7 +420,7 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 
 			// Reposition persistent resize handles (column seam positions, row bottom edges).
 			// parseFloat, not parseInt — see the matching comment on the colSel loop above.
-			for (const c of ownCols(table)) {
+			if (doCols) for (const c of ownCols(table)) {
 				const dc = c.dataset.col;
 				if (dc === undefined) continue;
 				const h = colResizeHandles.get(parseInt(dc));
@@ -422,7 +439,7 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 				const colDesiredParent = colFrozen ? colSel : colTrack;
 				if (h.parentElement !== colDesiredParent) colDesiredParent.appendChild(h);
 			}
-			for (const [ri, h] of rowResizeHandles) {
+			if (doRows) for (const [ri, h] of rowResizeHandles) {
 				const g = handleRow.get(ri);
 				if (g) {
 					// Row's BOTTOM edge — vertical mirror of the column seams above.
@@ -437,21 +454,25 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 			}
 		};
 
-		// The table's size when the strips were last rebuilt. Nothing else changes what
-		// rebuild() draws without changing that size or going through an op, and an op
+		// The table's size when the strips were last rebuilt, and the strips a drag has said are out of date.
+		// Nothing else changes what rebuild() draws without changing that size or going through an op, and an op
 		// rebuilds the whole table.
-		let lastRebuiltW = -1, lastRebuiltH = -1;
-		const tableResizedSinceRebuild = () => {
-			const r = table.getBoundingClientRect();
-			return Math.abs(r.width - lastRebuiltW) >= 0.5 || Math.abs(r.height - lastRebuiltH) >= 0.5;
+		let built: { w: number; h: number } | null = null;
+		/** The rows' tops and heights the row strip was built for. */
+		let rowsBuilt: RowGeometry = [];
+		const staleAxes = new Set<StripAxis>();
+		const tableSize = () => { const r = table.getBoundingClientRect(); return { w: r.width, h: r.height }; };
+		/** The strips that are out of date; empty when they are as they were built. */
+		const axesToRebuild = () => stripsToRebuild(staleAxes, built, tableSize(), () => !sameRowGeometry(rowsBuilt, readRows().flat));
+		const rebuildAndRecordSize = (axes: ReadonlySet<StripAxis> = BOTH) => {
+			rebuild(axes);
+			staleAxes.clear();
+			built = tableSize();
 		};
-		const rebuildAndRecordSize = () => {
-			rebuild();
-			const r = table.getBoundingClientRect();
-			lastRebuiltW = r.width;
-			lastRebuiltH = r.height;
+		const rebuildIfResized = () => {
+			const axes = axesToRebuild();
+			if (axes.size > 0) rebuildAndRecordSize(axes);
 		};
-		const rebuildIfResized = () => { if (tableResizedSinceRebuild()) rebuildAndRecordSize(); };
 
 		let selHideTimer: number | null = null;
 		const scheduleSelHide = () => {
@@ -1077,8 +1098,13 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 		// (a column dragged, the page zoomed) makes the cells stale even when the table's size is the same.
 		const stripsShown = () => colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible');
 		layoutSync.register('place', () => { if (stripsShown()) positionSelectors(); });
-		layoutSync.register('rebuild', () => { if (stripsShown() && tableResizedSinceRebuild()) rebuildAndRecordSize(); });
-		hooks.markStripsStale = () => { lastRebuiltW = -1; lastRebuiltH = -1; };
+		layoutSync.register('rebuild', () => {
+			if (!stripsShown()) return;
+			const axes = axesToRebuild();
+			if (axes.size > 0) rebuildAndRecordSize(axes);
+		});
+		// Without an axis everything is stale; a column or row drag says which strip it moved.
+		hooks.markStripsStale = (axis) => { if (axis) staleAxes.add(axis); else built = null; };
 		hooks.stripCellBusy = () => selDragging || reorderAxis !== null || pressed !== null;
 		// Every way of holding a strip cell ends with the pointer coming up or being cancelled, and the
 		// state is cleared by the handlers on the cell first, so the rebuild that waited is done after them.

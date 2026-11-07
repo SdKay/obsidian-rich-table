@@ -460,14 +460,17 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			const existingIds = new Set(model.rows.map(r => r.id));
 			const newRow: RowDefV2 = { id: genId('r', existingIds), cells: {} };
 			model.rows.splice(rowIdx + 1, 0, newRow);
+			const cover = mergeCoverIndex(model);
 			for (const col of model.columns) {
 				if (col.id === op.colId) continue;
-				const covering = findMergeCoveringCell(model, op.rowId, col.id);
+				const covering = cover.find(op.rowId, col.id);
 				if (!covering) {
-					model.merges.push({ anchor: `${op.rowId}.${col.id}`, end: `${newRow.id}.${col.id}` });
+					const added = { anchor: `${op.rowId}.${col.id}`, end: `${newRow.id}.${col.id}` };
+					model.merges.push(added);
+					cover.add(added);
 				} else {
 					const [endRowId, endColId] = splitAnchor(covering.end);
-					if (endRowId === op.rowId) covering.end = `${newRow.id}.${endColId}`;
+					if (endRowId === op.rowId) { covering.end = `${newRow.id}.${endColId}`; cover.refresh(covering); }
 					// else: the merge already extends past this row — the new row is
 					// physically inside its span, so it's absorbed automatically (merges
 					// resolve by ID, not position) and needs no change here.
@@ -497,14 +500,17 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			// shape should be preserved, same as every data row below. 'header' is the
 			// sentinel row ID resolveMergeRowIndex()/findMergeCoveringCell() treat as one
 			// position before the first data row (see renderGridHelpers.ts).
+			const cover = mergeCoverIndex(model);
 			for (const rId of ['header', ...model.rows.map(r => r.id)]) {
 				if (rId === op.rowId) continue;
-				const covering = findMergeCoveringCell(model, rId, op.colId);
+				const covering = cover.find(rId, op.colId);
 				if (!covering) {
-					model.merges.push({ anchor: `${rId}.${op.colId}`, end: `${rId}.${newCol.id}` });
+					const added = { anchor: `${rId}.${op.colId}`, end: `${rId}.${newCol.id}` };
+					model.merges.push(added);
+					cover.add(added);
 				} else {
 					const [endRowId, endColId] = splitAnchor(covering.end);
-					if (endColId === op.colId) covering.end = `${endRowId}.${newCol.id}`;
+					if (endColId === op.colId) { covering.end = `${endRowId}.${newCol.id}`; cover.refresh(covering); }
 					// else: already extends past this column — absorbed automatically.
 				}
 			}
@@ -1195,6 +1201,51 @@ export function findMergeCoveringCell(model: TableModelV2, rowId: string, colId:
 }
 
 /**
+ * `findMergeCoveringCell` asked many times over one table that is only changed by merges added or ended differently:
+ * each merge is resolved to a rectangle once, so a question costs a pass over the merges rather than a search of the
+ * rows and columns for each of them. Answers are those of `findMergeCoveringCell` (first merge in list order that
+ * contains the cell, one that names a row or column not there skipped), provided the rows and columns are not moved
+ * while it is used. A merge added to `model.merges` is told to `add`, one whose ends changed to `refresh`.
+ */
+function mergeCoverIndex(model: TableModelV2) {
+	const rowAt = new Map<string, number>();
+	model.rows.forEach((r, i) => { if (!rowAt.has(r.id)) rowAt.set(r.id, i); });
+	const colAt = new Map<string, number>();
+	model.columns.forEach((c, i) => { if (!colAt.has(c.id)) colAt.set(c.id, i); });
+	const row = (id: string) => (id === 'header' ? -1 : rowAt.get(id));
+	interface Rect { m: MergeRangeV2; r1: number; r2: number; c1: number; c2: number }
+	const rects: Rect[] = [];
+	const rectOf = new Map<MergeRangeV2, Rect>();
+	const resolve = (m: MergeRangeV2): Omit<Rect, 'm'> | undefined => {
+		const [anchorRowId, anchorColId] = splitAnchor(m.anchor);
+		const [endRowId, endColId] = splitAnchor(m.end);
+		const r1 = row(anchorRowId), r2 = row(endRowId), c1 = colAt.get(anchorColId), c2 = colAt.get(endColId);
+		if (r1 === undefined || r2 === undefined || c1 === undefined || c2 === undefined) return undefined;
+		return { r1: Math.min(r1, r2), r2: Math.max(r1, r2), c1: Math.min(c1, c2), c2: Math.max(c1, c2) };
+	};
+	const add = (m: MergeRangeV2) => {
+		const r = resolve(m);
+		if (!r) return;
+		const rect = { m, ...r };
+		rects.push(rect);
+		rectOf.set(m, rect);
+	};
+	const refresh = (m: MergeRangeV2) => {
+		const rect = rectOf.get(m);
+		const r = resolve(m);
+		if (rect && r) Object.assign(rect, r);
+	};
+	model.merges.forEach(add);
+	const find = (rowId: string, colId: string): MergeRangeV2 | undefined => {
+		const ri = row(rowId), ci = colAt.get(colId);
+		if (ri === undefined || ci === undefined) return undefined;
+		for (const q of rects) if (ri >= q.r1 && ri <= q.r2 && ci >= q.c1 && ci <= q.c2) return q.m;
+		return undefined;
+	};
+	return { find, add, refresh };
+}
+
+/**
  * Removes every existing merge whose rectangle INTERSECTS the given one
  * (row indices in resolveMergeRowIndex's scale — -1 for the header, 0-based
  * into model.rows otherwise) — not just one sharing the new merge's exact
@@ -1267,16 +1318,19 @@ function splitMergedCellIntoRows(model: TableModelV2, covering: MergeRangeV2): v
 	// Every OTHER column (outside this merge's own span) behaves exactly like
 	// the plain single-cell split-cell-row below: create-or-extend-or-absorb.
 	const lo = Math.min(c1, c2), hi = Math.max(c1, c2);
+	const cover = mergeCoverIndex(model);
 	for (let ci = 0; ci < model.columns.length; ci++) {
 		if (ci >= lo && ci <= hi) continue; // part of the merge being split — handled above
 		const col = model.columns[ci];
 		if (!col) continue;
-		const other = findMergeCoveringCell(model, anchorRowId, col.id);
+		const other = cover.find(anchorRowId, col.id);
 		if (!other) {
-			model.merges.push({ anchor: `${anchorRowId}.${col.id}`, end: `${newRow.id}.${col.id}` });
+			const added = { anchor: `${anchorRowId}.${col.id}`, end: `${newRow.id}.${col.id}` };
+			model.merges.push(added);
+			cover.add(added);
 		} else {
 			const [otherEndRowId, otherEndColId] = splitAnchor(other.end);
-			if (otherEndRowId === anchorRowId) other.end = `${newRow.id}.${otherEndColId}`;
+			if (otherEndRowId === anchorRowId) { other.end = `${newRow.id}.${otherEndColId}`; cover.refresh(other); }
 			// else: already extends past this row — absorbed automatically.
 		}
 	}
@@ -1309,15 +1363,18 @@ function splitMergedCellIntoCols(model: TableModelV2, covering: MergeRangeV2): v
 	// Every OTHER row (outside this merge's own span, including the header
 	// sentinel) behaves exactly like the plain single-cell split-cell-col below.
 	const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+	const cover = mergeCoverIndex(model);
 	for (const rId of ['header', ...model.rows.map(r => r.id)]) {
 		const ri = resolveMergeRowIndex(model, rId);
 		if (ri === undefined || (ri >= lo && ri <= hi)) continue; // part of the merge being split
-		const other = findMergeCoveringCell(model, rId, anchorColId);
+		const other = cover.find(rId, anchorColId);
 		if (!other) {
-			model.merges.push({ anchor: `${rId}.${anchorColId}`, end: `${rId}.${newCol.id}` });
+			const added = { anchor: `${rId}.${anchorColId}`, end: `${rId}.${newCol.id}` };
+			model.merges.push(added);
+			cover.add(added);
 		} else {
 			const [otherEndRowId, otherEndColId] = splitAnchor(other.end);
-			if (otherEndColId === anchorColId) other.end = `${otherEndRowId}.${newCol.id}`;
+			if (otherEndColId === anchorColId) { other.end = `${otherEndRowId}.${newCol.id}`; cover.refresh(other); }
 			// else: already extends past this column — absorbed automatically.
 		}
 	}

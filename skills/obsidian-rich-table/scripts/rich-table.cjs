@@ -7985,14 +7985,20 @@ function applyStructuralOpV2(model, op) {
       const existingIds = new Set(model.rows.map((r) => r.id));
       const newRow = { id: genId("r", existingIds), cells: {} };
       model.rows.splice(rowIdx + 1, 0, newRow);
+      const cover = mergeCoverIndex(model);
       for (const col of model.columns) {
         if (col.id === op.colId) continue;
-        const covering = findMergeCoveringCell(model, op.rowId, col.id);
+        const covering = cover.find(op.rowId, col.id);
         if (!covering) {
-          model.merges.push({ anchor: `${op.rowId}.${col.id}`, end: `${newRow.id}.${col.id}` });
+          const added = { anchor: `${op.rowId}.${col.id}`, end: `${newRow.id}.${col.id}` };
+          model.merges.push(added);
+          cover.add(added);
         } else {
           const [endRowId, endColId] = splitAnchor(covering.end);
-          if (endRowId === op.rowId) covering.end = `${newRow.id}.${endColId}`;
+          if (endRowId === op.rowId) {
+            covering.end = `${newRow.id}.${endColId}`;
+            cover.refresh(covering);
+          }
         }
       }
       extendStylesPastSplitRow(model, op.rowId, newRow.id);
@@ -8010,14 +8016,20 @@ function applyStructuralOpV2(model, op) {
       const existingIds = new Set(model.columns.map((c) => c.id));
       const newCol = { id: genId("c", existingIds), name: "" };
       model.columns.splice(colIdx + 1, 0, newCol);
+      const cover = mergeCoverIndex(model);
       for (const rId of ["header", ...model.rows.map((r) => r.id)]) {
         if (rId === op.rowId) continue;
-        const covering = findMergeCoveringCell(model, rId, op.colId);
+        const covering = cover.find(rId, op.colId);
         if (!covering) {
-          model.merges.push({ anchor: `${rId}.${op.colId}`, end: `${rId}.${newCol.id}` });
+          const added = { anchor: `${rId}.${op.colId}`, end: `${rId}.${newCol.id}` };
+          model.merges.push(added);
+          cover.add(added);
         } else {
           const [endRowId, endColId] = splitAnchor(covering.end);
-          if (endColId === op.colId) covering.end = `${endRowId}.${newCol.id}`;
+          if (endColId === op.colId) {
+            covering.end = `${endRowId}.${newCol.id}`;
+            cover.refresh(covering);
+          }
         }
       }
       extendStylesPastSplitCol(model, op.colId, newCol.id);
@@ -8553,6 +8565,46 @@ function findMergeCoveringCell(model, rowId, colId) {
   }
   return void 0;
 }
+function mergeCoverIndex(model) {
+  const rowAt = /* @__PURE__ */ new Map();
+  model.rows.forEach((r, i) => {
+    if (!rowAt.has(r.id)) rowAt.set(r.id, i);
+  });
+  const colAt = /* @__PURE__ */ new Map();
+  model.columns.forEach((c, i) => {
+    if (!colAt.has(c.id)) colAt.set(c.id, i);
+  });
+  const row = (id) => id === "header" ? -1 : rowAt.get(id);
+  const rects = [];
+  const rectOf = /* @__PURE__ */ new Map();
+  const resolve = (m) => {
+    const [anchorRowId, anchorColId] = splitAnchor(m.anchor);
+    const [endRowId, endColId] = splitAnchor(m.end);
+    const r1 = row(anchorRowId), r2 = row(endRowId), c1 = colAt.get(anchorColId), c2 = colAt.get(endColId);
+    if (r1 === void 0 || r2 === void 0 || c1 === void 0 || c2 === void 0) return void 0;
+    return { r1: Math.min(r1, r2), r2: Math.max(r1, r2), c1: Math.min(c1, c2), c2: Math.max(c1, c2) };
+  };
+  const add = (m) => {
+    const r = resolve(m);
+    if (!r) return;
+    const rect = { m, ...r };
+    rects.push(rect);
+    rectOf.set(m, rect);
+  };
+  const refresh = (m) => {
+    const rect = rectOf.get(m);
+    const r = resolve(m);
+    if (rect && r) Object.assign(rect, r);
+  };
+  model.merges.forEach(add);
+  const find = (rowId, colId) => {
+    const ri = row(rowId), ci = colAt.get(colId);
+    if (ri === void 0 || ci === void 0) return void 0;
+    for (const q of rects) if (ri >= q.r1 && ri <= q.r2 && ci >= q.c1 && ci <= q.c2) return q.m;
+    return void 0;
+  };
+  return { find, add, refresh };
+}
 function clearMergesOverlapping(model, r1, r2, c1, c2) {
   const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
   const cLo = Math.min(c1, c2), cHi = Math.max(c1, c2);
@@ -8587,16 +8639,22 @@ function splitMergedCellIntoRows(model, covering) {
   model.rows.splice(rowIdx + 1, 0, newRow);
   model.merges.push({ anchor: `${newRow.id}.${anchorColId}`, end: `${newRow.id}.${endColId}` });
   const lo = Math.min(c1, c2), hi = Math.max(c1, c2);
+  const cover = mergeCoverIndex(model);
   for (let ci = 0; ci < model.columns.length; ci++) {
     if (ci >= lo && ci <= hi) continue;
     const col = model.columns[ci];
     if (!col) continue;
-    const other = findMergeCoveringCell(model, anchorRowId, col.id);
+    const other = cover.find(anchorRowId, col.id);
     if (!other) {
-      model.merges.push({ anchor: `${anchorRowId}.${col.id}`, end: `${newRow.id}.${col.id}` });
+      const added = { anchor: `${anchorRowId}.${col.id}`, end: `${newRow.id}.${col.id}` };
+      model.merges.push(added);
+      cover.add(added);
     } else {
       const [otherEndRowId, otherEndColId] = splitAnchor(other.end);
-      if (otherEndRowId === anchorRowId) other.end = `${newRow.id}.${otherEndColId}`;
+      if (otherEndRowId === anchorRowId) {
+        other.end = `${newRow.id}.${otherEndColId}`;
+        cover.refresh(other);
+      }
     }
   }
   extendStylesPastSplitRow(model, anchorRowId, newRow.id);
@@ -8619,15 +8677,21 @@ function splitMergedCellIntoCols(model, covering) {
   model.columns.splice(colIdx + 1, 0, newCol);
   model.merges.push({ anchor: `${anchorRowId}.${newCol.id}`, end: `${endRowId}.${newCol.id}` });
   const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+  const cover = mergeCoverIndex(model);
   for (const rId of ["header", ...model.rows.map((r) => r.id)]) {
     const ri = resolveMergeRowIndex(model, rId);
     if (ri === void 0 || ri >= lo && ri <= hi) continue;
-    const other = findMergeCoveringCell(model, rId, anchorColId);
+    const other = cover.find(rId, anchorColId);
     if (!other) {
-      model.merges.push({ anchor: `${rId}.${anchorColId}`, end: `${rId}.${newCol.id}` });
+      const added = { anchor: `${rId}.${anchorColId}`, end: `${rId}.${newCol.id}` };
+      model.merges.push(added);
+      cover.add(added);
     } else {
       const [otherEndRowId, otherEndColId] = splitAnchor(other.end);
-      if (otherEndColId === anchorColId) other.end = `${otherEndRowId}.${newCol.id}`;
+      if (otherEndColId === anchorColId) {
+        other.end = `${otherEndRowId}.${newCol.id}`;
+        cover.refresh(other);
+      }
     }
   }
   extendStylesPastSplitCol(model, anchorColId, newCol.id);

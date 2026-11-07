@@ -257,3 +257,71 @@ describe('planFreeze — background', () => {
 		expect(find(plan, 'r1c0')?.background).toBe('#c39292');
 	});
 });
+
+describe('planFreeze — the colour a styled frozen cell keeps', () => {
+	const rng = (seed: number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0x100000000; }; };
+	const styled = (seed: number): TableModelV2 => {
+		const r = rng(seed);
+		const rows = 3 + Math.floor(r() * 6), cols = 2 + Math.floor(r() * 4);
+		const row = () => (r() < 0.05 ? 'r_missing' : `r_${Math.floor(r() * rows)}`);
+		const col = () => (r() < 0.05 ? 'c_missing' : `c_${Math.floor(r() * cols)}`);
+		const targets = [() => 'header', () => `header.${col()}`, () => row(), () => col(), () => `${row()}.${col()}`, () => `${row()}:${row()}`, () => `${col()}:${col()}`, () => `${row()}.${col()}:${row()}.${col()}`];
+		return {
+			version: 2,
+			columns: Array.from({ length: cols }, (_, c) => ({ id: `c_${c}`, name: `C${c}` })),
+			rows: Array.from({ length: rows }, (_, i) => ({ id: `r_${i}`, cells: {} })),
+			merges: [],
+			styles: Array.from({ length: Math.floor(r() * 12) }, () => ({ target: targets[Math.floor(r() * targets.length)]!(), ...(r() < 0.7 ? { bg: `#${Math.floor(r() * 0xffffff).toString(16).padStart(6, '0')}` } : {}) })),
+			freezeRows: 1 + Math.floor(r() * 2), freezeCols: 1 + Math.floor(r() * 2),
+		} as unknown as TableModelV2;
+	};
+	const wholeSnapshot = (m: TableModelV2): TableSnapshot<string> => {
+		const fr = m.freezeRows ?? 0, fc = m.freezeCols ?? 0;
+		const rowOffsets = new Map<number, number>(), colOffsets = new Map<number, number>();
+		for (let r = 0; r <= fr; r++) rowOffsets.set(r, r * 30);
+		for (let c = 0; c < fc; c++) colOffsets.set(c, c * 50);
+		const cells: CellSnapshot<string>[] = [];
+		for (let r = 0; r <= m.rows.length; r++) for (let c = 0; c < m.columns.length; c++) if (rowOffsets.has(r) || colOffsets.has(c)) cells.push(cell({ rowIdx: r, colIdx: c }));
+		return { rowOffsets, colOffsets, cells, outer: { topColor: null, topWidth: 1, leftColor: null, leftWidth: 1 }, tbodyShadow: null };
+	};
+
+	it('is the colour the cell\'s own style rules give, on random styled tables', async () => {
+		const { cellEffectiveStyle } = await import('../src/renderCellStyle');
+		let frozen = 0, coloured = 0;
+		for (let seed = 1; seed <= 1500; seed++) {
+			const m = styled(seed);
+			const plan = planFreeze(wholeSnapshot(m), m);
+			for (const w of plan.cells) {
+				const rowIdx = Number(/^r(\d+)/.exec(w.ref)![1]), colIdx = Number(/c(\d+)$/.exec(w.ref)![1]);
+				const expected = cellEffectiveStyle(m, rowIdx, colIdx).bg;
+				const fallback = rowIdx === 0 ? 'var(--bt-frozen-header-bg, var(--background-secondary))' : 'var(--bt-frozen-bg, var(--background-primary))';
+				expect(w.background, `seed ${seed} cell ${w.ref}`).toBe(expected ?? fallback);
+				frozen++;
+				if (expected) coloured++;
+			}
+		}
+		// The comparison met frozen cells, and some of them with a colour of their own.
+		expect(frozen).toBeGreaterThan(5000);
+		expect(coloured).toBeGreaterThan(1000);
+	});
+
+	it('does not read every style rule again for every frozen cell', () => {
+		// A rule's target is read to decide whom it applies to; counting those reads counts the work done per rule.
+		const count = (rows: number) => {
+			let reads = 0;
+			const styles = Array.from({ length: 40 }, (_, i) => ({
+				get target() { reads++; return `r_${i}.c_${i % 6}`; }, bg: '#abcdef',
+			}));
+			const m = model({
+				columns: Array.from({ length: 6 }, (_, c) => ({ id: `c_${c}`, name: `C${c}` })),
+				rows: Array.from({ length: rows }, (_, r) => ({ id: `r_${r}`, cells: {} })),
+				styles, freezeRows: 1, freezeCols: 2,
+			});
+			planFreeze(wholeSnapshot(m), m);
+			return reads;
+		};
+		const few = count(20), many = count(400);
+		// Twenty times the rows (so twenty times the frozen cells) must not mean twenty times the rule reading.
+		expect(many, `${few} reads for 20 rows, ${many} for 400`).toBeLessThanOrEqual(few + 5);
+	});
+});

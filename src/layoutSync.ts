@@ -47,6 +47,11 @@ export function createLayoutSync({ signature, isBusy, nextFrame }: LayoutSyncOpt
 	let running = false;
 	let rebuildOwed = false;
 	let frameAsked = false;
+	// Ticks for ordering: when the frame was asked for, and when a round last placed things. A round that began after
+	// the ask measured the layout the asker left, so the frame has nothing more to do.
+	let clock = 0;
+	let askedAt = 0;
+	let placedAt = 0;
 
 	const call = (phase: LayoutPhase): void => {
 		for (const fn of Array.from(consumers.get(phase) ?? [])) {
@@ -59,6 +64,7 @@ export function createLayoutSync({ signature, isBusy, nextFrame }: LayoutSyncOpt
 		const now = signature();
 		if (!opts?.force && now === last) return;
 		running = true;
+		placedAt = ++clock;
 		try {
 			// A phase can change the layout an earlier phase has just placed things for (the reflow phase
 			// does, and so does a stylesheet still being applied), so the round is repeated, in the same
@@ -88,8 +94,13 @@ export function createLayoutSync({ signature, isBusy, nextFrame }: LayoutSyncOpt
 		schedule() {
 			if (frameAsked) return;
 			frameAsked = true;
+			askedAt = ++clock;
 			nextFrame(() => {
 				frameAsked = false;
+				// The observer reports a changed box in the same frame, after the asker changed it: its round has
+				// already placed everything for this layout. Only a change the observer cannot see (the inside of a
+				// table that keeps its box) leaves the ask unmet, and then no round has begun since.
+				if (placedAt > askedAt) return;
 				run({ force: true });
 			});
 		},
