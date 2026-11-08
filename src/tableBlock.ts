@@ -597,6 +597,15 @@ export class TableBlock extends MarkdownRenderChild {
 			tmp.createDiv({ cls: 'bt-error', text: `Rich Table: ${msg}` });
 		}
 
+		this.commitRender(tmp);
+	}
+
+	/**
+	 * Puts the freshly drawn tree in place of the old one, then repairs what a swap loses: focus in a resumed editor,
+	 * the hover the old root had, the title's pull variable, the search marks. Needs only the tree, so it is apart from
+	 * everything that decides what to draw.
+	 */
+	private commitRender(tmp: HTMLElement): void {
 		// NOTE: the placeholder snapshot is captured from the LIVE DOM at write-back
 		// time (handleStructuralOp), not here — a render()-end clone would be the
 		// pristine, never-hovered base state (strips hidden), i.e. exactly the "zeroed"
