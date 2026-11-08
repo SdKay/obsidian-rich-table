@@ -1,5 +1,5 @@
 import { getLanguage } from 'obsidian';
-import type { CtrlColButtonId } from '../model';
+import type { CtrlColButtonId, CtrlColScenario } from '../model';
 import { en, type Dict } from './en';
 import { zh } from './zh';
 import { de } from './de';
@@ -115,6 +115,6 @@ export function ctrlColButtonLabel(id: CtrlColButtonId): string {
 }
 
 /** Settings tab heading label for one of the three ctrlCol scenarios. */
-export function ctrlColScenarioLabel(scenario: 'locked' | 'unlocked' | 'xlsxRef'): string {
+export function ctrlColScenarioLabel(scenario: CtrlColScenario): string {
 	return t(scenario === 'locked' ? 'ctrlColScenarioLocked' : scenario === 'unlocked' ? 'ctrlColScenarioUnlocked' : 'ctrlColScenarioXlsxRef');
 }

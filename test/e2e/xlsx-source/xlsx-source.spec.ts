@@ -108,6 +108,31 @@ test.describe('xlsx-backed table', () => {
 		expect(await block.noteText()).toBe(noteBefore);
 	});
 
+	// The model shown is the whole spreadsheet: an op written back to the note would inline it. Ops sent to the block
+	// directly, past the buttons, must meet the same rule.
+	test('an op the file cannot hold is dropped however it reaches the block, and one it can goes to the file', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({
+			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done']] }],
+		});
+		const block = await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+		const noteBefore = await block.noteText();
+		const ids = await page.evaluate(() => {
+			const td = document.querySelector<HTMLElement>('.bt-td[data-row="1"][data-col="0"]')!;
+			return { rowId: td.closest('tr')!.dataset.rowId!, colId: document.querySelector<HTMLElement>('col[data-col="0"]')!.dataset.colId! };
+		});
+		await page.evaluate(async ({ rowId, colId }) => {
+			const blk = (window as unknown as { __btBlock: { handleStructuralOp(op: unknown): Promise<void> } }).__btBlock;
+			await blk.handleStructuralOp({ type: 'insert-row', afterRowId: rowId });
+			await blk.handleStructuralOp({ type: 'set-theme', theme: 'academic' });
+			await blk.handleStructuralOp({ type: 'set-cell-content', rowId, colId, value: 'Written' });
+		}, ids);
+		await expect.poll(async () => {
+			const model = asSingle(await readXlsxAsModel(new Uint8Array(await block.readBinaryFile(XLSX_PATH)).buffer));
+			return [model.rows.length, model.rows[0]!.cells[model.columns[0]!.id]];
+		}, { timeout: 3000 }).toEqual([1, 'Written']);
+		expect(await block.noteText()).toBe(noteBefore);
+	});
+
 	test('a write that fails (e.g. file locked by another program) shows a Notice and reverts the stale on-screen edit', async ({ page, renderBlock }) => {
 		const bytes = await buildXlsxFixtureBytes({
 			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done']] }],

@@ -1,5 +1,5 @@
-import { FileSystemAdapter, MarkdownPostProcessorContext, MarkdownRenderChild, Notice, Platform, TFile, setIcon } from 'obsidian';
-import { t, fmt, pick, tableVersionTooHighMsg } from './i18n';
+import { MarkdownPostProcessorContext, MarkdownRenderChild, Notice, Platform, TFile, setIcon } from 'obsidian';
+import { t, pick, tableVersionTooHighMsg } from './i18n';
 import { CURRENT_TABLE_VERSION, MIN_STABLE_VERSION, getTableVersion, migrateSource } from './tableVersion';
 import type BetterTablePlugin from './main';
 import type { CtrlColButtonId, SheetDefV2, TableModelV2, WorkbookV3 } from './model';
@@ -9,11 +9,6 @@ import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
 import { applyWorkbookOp, isWorkbookOp, type WorkbookOpV2 } from './workbookOperations';
 import { renderSheetTabBar } from './renderSheetTabs';
-import { buildTasksTable, type TasksTable } from './tasks/taskTable';
-import { toIso } from './tasks/taskRun';
-import { buildTasksBlock, hasQuery } from './tasks/taskBlock';
-import { TaskQueryModal } from './tasks/taskQueryModal';
-import { tasksAccepts, sortedQuery, withSort } from './tasks/taskOps';
 import { applyThemeClass } from './renderThemeClass';
 import { genId } from './idGen';
 import { registerHoverState, takeHoverState } from './renderHoverHandoff';
@@ -25,7 +20,6 @@ import type { EmptyEntry } from './emptyEntries';
 import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
 import { displayTheme, resolveDefaultTheme } from './themes';
-import { readXlsxAsModel, writeXlsxOps, isXlsxWritableOp, type XlsxWritableOp } from './xlsxSource';
 import { editPolicy } from './editPolicy';
 import { settleRenderedTables } from './renderAutofit';
 import { markSpans, markableText, stripSearchMarks, type Marked } from './searchHighlight';
@@ -35,12 +29,13 @@ import { isBlockAnchor, type BlockAnchor } from './blockExtract';
 import { revealCell } from './searchReveal';
 import { belongsToRoot, ownCells } from './renderOwnScope';
 import { NESTED_CACHE_KEY_MARKER } from './blockCacheKey';
-import { electronShell, fsPromises } from './nodeBridge';
-import { watchXlsxFile, type XlsxFileWatch } from './xlsxFileWatch';
-import { openXlsxFilePicker } from './xlsxFilePicker';
+import { fsPromises } from './nodeBridge';
 import { captureTablePng, captureTableSvg } from './tableSnapshot';
 import type { SnapshotKind, TableAction } from './renderTypes';
-import { tableEdits, type TableOp } from './tableEdits';
+import { tableEdits, type TableOpType } from './tableEdits';
+import { NATIVE, type BlockSource, type Loaded, type Parsed, type SourceHost, type SourceKind } from './blockSource';
+import { xlsxSourceKind } from './xlsxBlockSource';
+import { tasksSourceKind } from './tasks/tasksBlockSource';
 import { exportModelToXlsx, exportWorkbookToXlsx } from './xlsxExport';
 import { XlsxSaveModal, ConfirmOverwriteModal, vaultFileExists } from './xlsxSaveModal';
 
@@ -184,9 +179,6 @@ type PendingOp =
 	| { kind: 'cell';     op: StructuralOpV2 }
 	| { kind: 'workbook'; op: WorkbookOpV2 };
 
-/** What a table backed by an .xlsx file takes besides what its file can hold: choosing a sheet and the view's size,
- *  which are the block's own state and are kept in the note. */
-const XLSX_ACCEPTED_OPS: ReadonlySet<string> = new Set(['set-active-sheet', 'set-view-width', 'set-view-height']);
 
 export class TableBlock extends MarkdownRenderChild {
 	// Exactly one of these two is non-null at a time (mutually exclusive
@@ -206,47 +198,10 @@ export class TableBlock extends MarkdownRenderChild {
 	// True during the atomic DOM swap in render() — strips must not show while
 	// containerEl is being rebuilt (stale or double-root rects are unreliable).
 	private isRendering = false;
-	// Set in render() whenever this block's content was loaded from an
-	// external .xlsx file rather than parsed from this block's own YAML — see
-	// the guard in queueOp().
-	private isXlsxBacked = false;
-	// Which sheet the user last picked in an xlsx-backed workbook. Switching
-	// sheets can't go through the normal write-back/reprocess cycle (there's
-	// nothing to write — see queueOp's isXlsxBacked guard), so switchXlsxSheet
-	// re-runs render() directly on this same instance; render() re-derives a
-	// FRESH WorkbookV3 from the file every time (it has no memory of its own
-	// previous in-memory state), so this field is what survives across that
-	// re-derivation to put the right sheet back active.
-	private xlsxActiveSheetId: string | undefined;
-	// The resolved TFile behind isXlsxBacked, set alongside it in render()'s
-	// xlsx-loading branch — kept so the "open in default app" button (below)
-	// doesn't need to re-resolve xlsxSource.path via metadataCache on click.
-	private xlsxFile: TFile | null = null;
-	// The block's own front-matter AS PARSED, captured right before the
-	// xlsx-loading branch overwrites this.model with the file's real content
-	// — i.e. `{ xlsxSource, viewWidth?, viewHeight?, title?, … }` with
-	// `columns`/`rows` always empty (see model.ts's xlsxSource doc comment).
-	// this.model/this.workbook become the DISPLAYED data (the loaded xlsx
-	// content); this is the tiny "shell" that's actually honest to write back
-	// to the block. setXlsxViewWidth/setXlsxViewHeight/handleXlsxRenamed all
-	// mutate THIS, then re-serialize just it — never this.model/this.workbook,
-	// which is exactly the giant-inline-dump risk queueOp's isXlsxBacked guard
-	// exists to prevent (see that guard's own comment).
-	private xlsxShell: TableModelV2 | null = null;
-	// Phase-1 xlsx WRITE support (see CLAUDE.md's "xlsx write support" section):
-	// batch queue for the SAME-tick-coalescing pattern queueOp already uses for
-	// the YAML path, kept separate because it targets the external xlsx file
-	// via writeXlsxOps/modifyBinary instead of vault.process() on this note.
-	private xlsxPendingOps: XlsxWritableOp[] = [];
-	private xlsxWriteScheduled = false;
-	// The watcher on xlsxFile for external changes (see refreshXlsxWatch), replaced
-	// whenever the bound path changes (e.g. xlsxSource.path edited by hand).
-	private xlsxWatch: { path: string; watch: XlsxFileWatch } | null = null;
-	// A table that shows a task query. `this.model` stays the block as saved (query, columns, look: no rows) so
-	// that ops reduce on it and only it is written back; what is drawn is `tasksTable.model`, rebuilt from the
-	// vault's tasks on every render and never stored.
-	private tasksTable: TasksTable | null = null;
-	private stopTasksWatch: (() => void) | null = null;
+	// Where the rows come from when they are not the block's own (an .xlsx file, a task query); null for a table
+	// written in the note. Kept across draws while the kind stays the same, so what it watches carries on.
+	private blockSource: BlockSource | null = null;
+	private blockSourceKind: SourceKind | null = null;
 	// The marks the search panel's query has put on this block's cells, and the query that came with the
 	// hit it was opened from (used only by a Rich Search that cannot say when a search ends).
 	private clearSearchMarks: (() => void) | null = null;
@@ -275,8 +230,7 @@ export class TableBlock extends MarkdownRenderChild {
 		liveInstances.add(this);
 		this.register(() => { liveInstances.delete(this); });
 		// Registered once here: reads the CURRENT watcher at unload time.
-		this.register(() => { this.xlsxWatch?.watch.stop(); });
-		this.register(() => { this.stopTasksWatch?.(); this.stopTasksWatch = null; });
+		this.register(() => { this.blockSource?.dispose(); this.blockSource = null; });
 		this.register(this.plugin.searchPanel.follow(change => { if (change === 'hit') this.moveBright(); else this.syncSearchMarks(); }));
 		// A nested table's cacheKey (main.ts) is unique per mount — nothing will
 		// ever look it up again after THIS instance is done with it, unlike a
@@ -418,82 +372,24 @@ export class TableBlock extends MarkdownRenderChild {
 				this.workbook = null;
 			}
 
-			// xlsx-backed table (phase 1: view-only — see the class-level
-			// isXlsxBacked/xlsxActiveSheetId fields and queueOp's guard). Only a
-			// plain single-sheet block can declare xlsxSource (see model.ts) —
-			// the loaded file's OWN sheet count then decides whether this.model
-			// or this.workbook ends up populated, replacing whatever the YAML
-			// parse above produced. Errors (missing file, unreadable/corrupt
-			// xlsx) are thrown rather than handled locally, so they fall through
-			// to this method's own outer catch below and render as the exact
-			// same `.bt-error` box every other parse failure in this file uses —
-			// no separate error-display convention needed for this one source.
-			this.isXlsxBacked = false;
-			this.xlsxFile = null;
-			this.xlsxShell = null;
-			const xlsxRef = this.model?.xlsxSource;
-			if (xlsxRef && !isEmpty) {
-				this.xlsxShell = this.model;
-				const dest = this.plugin.app.metadataCache.getFirstLinkpathDest(xlsxRef.path, this.sourcePath);
-				if (!dest) throw new Error(fmt('xlsxNotFound', { path: xlsxRef.path }));
-				const bytes = await this.plugin.app.vault.readBinary(dest);
-				const loaded = await readXlsxAsModel(bytes, xlsxRef.sheet);
-				if (loaded.version === 3) {
-					if (this.xlsxActiveSheetId && loaded.sheets.some(s => s.id === this.xlsxActiveSheetId)) {
-						loaded.activeSheetId = this.xlsxActiveSheetId;
-					}
-					this.workbook = loaded;
-					this.model = null;
-				} else {
-					this.model = loaded;
-					this.workbook = null;
-				}
-				this.isXlsxBacked = true;
-				this.xlsxFile = dest;
-			}
-			this.refreshXlsxWatch();
-
-			// A tasks table: the rows are whatever the query finds right now. Waits for the first read of the vault,
-			// and redraws when the vault's tasks change.
-			this.tasksTable = null;
-			const tasksQueryMissing = !!this.model?.tasks && !isEmpty && !this.isXlsxBacked && !hasQuery(this.model.tasks.query);
-			if (this.model?.tasks && !isEmpty && !this.isXlsxBacked && !tasksQueryMissing) {
-				await this.plugin.tasks.whenReady();
-				this.tasksTable = buildTasksTable(this.model, this.plugin.tasks.tasks(), toIso(new Date()));
-				if (!this.stopTasksWatch) {
-					this.stopTasksWatch = this.plugin.tasks.onChange(() => { void this.render(); });
-				}
-			} else {
-				this.stopTasksWatch?.();
-				this.stopTasksWatch = null;
+			// A block whose rows come from elsewhere (an .xlsx file, a task query) asks its source what to draw and
+			// how to treat edits; one written in the note has no source. The source is kept while the kind stays the
+			// same, so what it watches (a file, the vault's tasks) carries on across draws.
+			const blockSource = this.sourceFor(isEmpty ? null : this.model);
+			let drawn: TableModelV2 | undefined;
+			let message: Extract<Loaded, { kind: 'message' }>['render'] | undefined;
+			if (blockSource) {
+				const parsed: Parsed = this.workbook ? { model: null, workbook: this.workbook } : { model: this.model!, workbook: null };
+				const loaded = await blockSource.load(parsed);
+				this.model = loaded.parsed.model;
+				this.workbook = loaded.parsed.workbook;
+				if (loaded.kind === 'message') message = loaded.render;
+				else drawn = loaded.drawn;
 			}
 
 			const active = this.activeModel;
-			// The view size is shell/block-level state (see xlsxShell's own doc
-			// comment), not per-sheet — deliberately simpler than a real
-			// (non-xlsx) workbook's per-sheet viewWidth/viewHeight, since the
-			// original single-sheet block had only one view size to begin with,
-			// before it ever became a multi-sheet display. Applied to whichever
-			// sheet ends up active, so every sheet of an xlsx-backed workbook
-			// shares the one size set on the block itself.
-			if (this.isXlsxBacked && this.xlsxShell && active) {
-				if (this.xlsxShell.viewWidth !== undefined)  active.viewWidth  = this.xlsxShell.viewWidth;
-				if (this.xlsxShell.viewHeight !== undefined) active.viewHeight = this.xlsxShell.viewHeight;
-				// Same shell-preservation idea, for theme: the theme picker button is
-				// unavailable here (it needs onStructuralOp, which queueOp's
-				// isXlsxBacked guard would drop anyway), so an xlsx-backed table can't
-				// switch themes interactively. Default to 'grid' — plain/no-theme read
-				// worse against a spreadsheet-shaped table than an explicit gridline
-				// theme does — but still honor a theme the user hand-wrote into the
-				// block's own YAML, the same way viewWidth/viewHeight above do.
-				active.theme = this.xlsxShell.theme ?? 'grid';
-			}
-			// An xlsx-backed table is view-only outright (phase 1 — see the
-			// isXlsxBacked field doc comment): every editing entry point below is
-			// gated off by it directly, rather than relying solely on queueOp's
-			// guard, so the UI doesn't even offer an action that would silently
-			// no-op (e.g. a lock toggle that "locks" a table with nothing to lock).
-			const locked = !this.isXlsxBacked && (active?.locked ?? false);
+			const answers = blockSource ?? NATIVE;
+			const locked = answers.locked(active?.locked ?? false);
 			// What the user may do right now: the surface, the lock and the format decide, the source does not.
 			const policy = editPolicy({
 				surface: isReadingView ? 'reading' : 'live',
@@ -502,33 +398,14 @@ export class TableBlock extends MarkdownRenderChild {
 				legacy: isOldFormat,
 				empty: isEmpty,
 			});
-			// What the table accepts depends on its kind: a table written in the note takes every operation; one backed
-			// by an .xlsx file takes the ones its file can hold, plus choosing a sheet. The user's situation (policy)
-			// narrows that further.
-			const accepts = (type: TableOp['type']) => {
-				if (this.isXlsxBacked) return XLSX_ACCEPTED_OPS.has(type) || isXlsxWritableOp({ type });
-				// A tasks table has no stored rows: what names a row or a cell has nothing to act on. Sorting is
-				// accepted though it is not on the list, since queueOp turns it into a line of the query.
-				if (this.tasksTable) return tasksAccepts(type) || type === 'set-sort';
-				return true;
-			};
-			const edits = tableEdits(accepts, (effect) => policy.permits(effect), (op) => {
-				if (isWorkbookOp(op)) {
-					if (op.type === 'set-active-sheet' && this.isXlsxBacked) void this.switchXlsxSheet(op.sheetId);
-					else void this.handleWorkbookOp(op);
-				} else if (this.isXlsxBacked && op.type === 'set-view-width') {
-					void this.setXlsxViewWidth(op.width);
-				} else if (this.isXlsxBacked && op.type === 'set-view-height') {
-					void this.setXlsxViewHeight(op.height);
-				} else {
-					void this.handleStructuralOp(op);
-				}
+			// What the table accepts depends on its kind (the source); the user's situation (policy) narrows it further.
+			const edits = tableEdits((type) => answers.accepts(type), (effect) => policy.permits(effect), (op) => {
+				if (isWorkbookOp(op)) void this.handleWorkbookOp(op);
+				else void this.handleStructuralOp(op);
 			});
-			const actions = this.tableActions(isEmpty, isOldFormat, edits.can('set-tasks-query'));
+			const actions = this.tableActions(blockSource, isEmpty, isOldFormat, edits.can);
 
-			// Which of settings.ts's three ctrlCol scenarios this table currently is.
-			const ctrlColScenario: 'locked' | 'unlocked' | 'xlsxRef' = this.isXlsxBacked ? 'xlsxRef' : locked ? 'locked' : 'unlocked';
-			const hiddenCtrlColButtons = new Set<CtrlColButtonId>(this.plugin.settings.ctrlColHiddenButtons[ctrlColScenario]);
+			const hiddenCtrlColButtons = new Set<CtrlColButtonId>(this.plugin.settings.ctrlColHiddenButtons[answers.scenario(locked)]);
 			const onWorkbookOp = edits.can('rename-sheet') ? (op: WorkbookOpV2) => edits.run(op) : undefined;
 			const onSwitchSheet = edits.can('set-active-sheet') ? (sheetId: string) => edits.run({ type: 'set-active-sheet', sheetId }) : undefined;
 			const onCreateSheet = edits.can('create-sheet') ? () => edits.run({ type: 'create-sheet' }) : undefined;
@@ -538,16 +415,16 @@ export class TableBlock extends MarkdownRenderChild {
 			// banner below renders its own multi-template preview, so skip this
 			// render entirely rather than showing the default template as if it
 			// were the block's real (about-to-be-overwritten) content.
-			if (tasksQueryMissing) {
-				this.renderMissingTasksQuery(tmp, edits.can('set-tasks-query'));
+			if (message) {
+				message(tmp, edits.can);
 			} else if (active && !isEmpty) {
 				// A theme that no longer exists is drawn as the one new tables get. Only for drawing: the model
 				// written back keeps the theme the note names.
 				const shown = displayTheme(active.theme, this.plugin.settings.defaultTheme);
-				// A tasks table draws the model built from the tasks found; `active` stays the block as saved.
-				const drawn = this.tasksTable?.model ?? active;
+				// A source may draw a model built from elsewhere; `active` stays the block as saved.
+				const model = drawn ?? active;
 				await renderTable(
-					shown === active.theme ? drawn : { ...drawn, theme: shown },
+					shown === active.theme ? model : { ...model, theme: shown },
 					() => this.plugin.choiceRegistry,
 					tmp,
 					this.plugin.app,
@@ -577,8 +454,7 @@ export class TableBlock extends MarkdownRenderChild {
 				await this.renderEmptyBanner(tmp, this.emptyEntries({
 					template: (templateId) => this.insertTemplate(templateId),
 					blank: (rows, cols) => this.insertBlank(rows, cols),
-					xlsx: (file) => this.insertXlsxSource(file),
-					tasks: () => this.insertTasksTable(),
+					sources: true,
 				}), BUILTIN_TEMPLATES[0]?.id ?? 'blank');
 			} else if (active && active.columns.length === 0) {
 				// A brand-new sheet (create-sheet appends one with zero columns) or
@@ -998,12 +874,12 @@ export class TableBlock extends MarkdownRenderChild {
 	private emptyEntries(insert: {
 		template: (templateId: string) => Promise<void>;
 		blank: (rows: number, cols: number) => Promise<void>;
-		xlsx?: (file: TFile) => Promise<void>;
-		tasks?: () => Promise<void>;
+		/** Whether the kinds of table a source brings are offered: a whole block can be one, a sheet cannot. */
+		sources?: boolean;
 	}): EmptyEntry[] {
+		const host = { ...this.sourceHost, defaultTheme: () => this.defaultTheme() };
 		return [
-			...(insert.xlsx ? [this.xlsxImportEntry(insert.xlsx)] : []),
-			...(insert.tasks ? [this.tasksEntry(insert.tasks)] : []),
+			...(insert.sources ? this.sourceKinds.flatMap(k => k.entry ? [k.entry(host)] : []) : []),
 			...BUILTIN_TEMPLATES.map(tpl => this.templateEntry(tpl, insert.template)),
 			this.blankEntry(insert.blank),
 		];
@@ -1070,41 +946,40 @@ export class TableBlock extends MarkdownRenderChild {
 		};
 	}
 
-	/** The entry for a table of the tasks a query finds: one click inserts it with the default query. Whole blocks only. */
-	private tasksEntry(insert: () => Promise<void>): EmptyEntry {
-		return {
-			key: 'tasks',
-			label: t('insertTasksTable'),
-			// The tasks are in the vault, not in this block, so there is no table to show before it is inserted.
-			preview: { hint: t('tasksPreviewHint') },
-			bind: (ctx) => { ctx.button.addEventListener('click', () => ctx.insert(insert)); },
-		};
+	/**
+	 * The source for a block of this kind, the one already held when the kind is unchanged. A block names its kind
+	 * in its own fields: `xlsxSource` before `tasks`, as a block is one kind of table.
+	 */
+	private sourceFor(model: TableModelV2 | null): BlockSource | null {
+		const kind = model ? this.sourceKinds.find(k => k.matches(model)) ?? null : null;
+		if (kind && kind === this.blockSourceKind) return this.blockSource;
+		this.blockSource?.dispose();
+		this.blockSource = kind?.create(this.sourceHost) ?? null;
+		this.blockSourceKind = kind;
+		return this.blockSource;
 	}
 
-	/** The entry for backing the block with an .xlsx file: a file picker opens on click. Whole blocks only. */
-	private xlsxImportEntry(insert: (file: TFile) => Promise<void>): EmptyEntry {
-		return {
-			key: 'xlsx-import',
-			label: t('importFromXlsx'),
-			preview: { hint: t('xlsxImportPreviewHint') },
-			bind: (ctx) => {
-				// A modal (FuzzySuggestModal), unlike the grid picker, isn't a hover
-				// flyout anchored to this button — click-only, matching how every
-				// other Obsidian file/command picker is invoked.
-				ctx.button.addEventListener('click', () => {
-					if (ctx.inserting()) return;
-					openXlsxFilePicker(this.plugin.app, (file) => ctx.insert(() => insert(file)));
-				});
-			},
-		};
-	}
+	/** Every kind of source, in the order a block is matched: the first whose fields a block has is its kind. Made
+	 *  once, so the kind of a block is the same object from one draw to the next. */
+	private readonly sourceKinds: readonly SourceKind[] = [xlsxSourceKind, tasksSourceKind(this.plugin.tasks)];
+
+	/** What a source may ask of this block. */
+	private readonly sourceHost: SourceHost = {
+		app: this.plugin.app,
+		sourcePath: this.sourcePath,
+		rerender: () => this.render(),
+		writeBlock: (text) => this.insertBlock(text),
+		queueCell: (op) => this.handleStructuralOp(op),
+		chainWrite: (write) => (this.writeChain = this.writeChain.then(write, write)),
+	};
 
 	private async handleStructuralOp(op: StructuralOpV2): Promise<void> {
 		await this.queueOp({ kind: 'cell', op });
 	}
 
 	private async handleWorkbookOp(op: WorkbookOpV2): Promise<void> {
-		this.convertToWorkbook();
+		// A source's workbook (an .xlsx file's sheets) is not the block's: it must not be wrapped into one.
+		if (!this.blockSource) this.convertToWorkbook();
 		await this.queueOp({ kind: 'workbook', op });
 	}
 
@@ -1120,17 +995,6 @@ export class TableBlock extends MarkdownRenderChild {
 		const sheet: SheetDefV2 = { ...this.model, id: genId('s', existingIds) };
 		this.workbook = { version: 3, activeSheetId: sheet.id, sheets: [sheet] };
 		this.model = null;
-	}
-
-	/** The xlsx-backed counterpart to handleWorkbookOp's `set-active-sheet` —
-	 *  used instead of it because there's no file content to write back to
-	 *  (see queueOp's isXlsxBacked guard). Just remembers the choice and
-	 *  re-runs render() in place: render() re-derives a fresh WorkbookV3 from
-	 *  the file every time, and xlsxActiveSheetId is what tells that fresh copy
-	 *  which sheet to reactivate. */
-	private async switchXlsxSheet(sheetId: string): Promise<void> {
-		this.xlsxActiveSheetId = sheetId;
-		await this.render();
 	}
 
 	/** The reading-view check above is only meaningful once the container is in
@@ -1156,122 +1020,9 @@ export class TableBlock extends MarkdownRenderChild {
 		await this.render();
 	}
 
-	/** The real xlsx sheet title `writeXlsxOps` should target — mirrors exactly
-	 *  the `sheetName` render()'s xlsx-loading branch passed to `readXlsxAsModel`
-	 *  when it read the file, so a write lands on the same sheet it was read
-	 *  from. `undefined` is a valid answer in both the single-sheet case (the
-	 *  block never pinned one) and lets `writeXlsxOps` fall back to the sole
-	 *  visible sheet — same fallback `readXlsxAsModel` itself uses. */
-	private xlsxActiveSheetName(): string | undefined {
-		if (this.workbook) return this.workbook.sheets.find(s => s.id === this.workbook?.activeSheetId)?.name;
-		return this.xlsxShell?.xlsxSource?.sheet;
-	}
-
-	/** Phase 1 of xlsx WRITE support — see queueOp's isXlsxBacked branch and
-	 *  CLAUDE.md's "xlsx write support" section. Same same-tick batching shape
-	 *  as queueOp's own YAML path (pendingOps/writeBackScheduled), applied to
-	 *  the external .xlsx file instead: reads the file's CURRENT bytes fresh
-	 *  (never a cached in-memory Workbook — matches how this.model/this.workbook
-	 *  are already re-derived from disk on every render()), applies the whole
-	 *  batch, and writes once. The vault 'modify' event a SUCCESSFUL write fires
-	 *  is picked up by the SAME watcher (refreshXlsxWatch)
-	 *  that already handles an external editor changing the file — no separate
-	 *  "refresh after my own write" path needed for the success case.
-	 *
-	 *  Failure needs its own explicit handling, though (reported: a cell edit
-	 *  "succeeded" on screen — the typed text stayed visible — while the file
-	 *  itself hadn't changed at all, e.g. because it was open and locked in
-	 *  Excel at the time, with no error shown anywhere). Two separate gaps
-	 *  produced that symptom together: (1) neither readBinary/writeXlsxOps nor
-	 *  modifyBinary was ever wrapped in a try/catch, so a rejected write just
-	 *  vanished as an unhandled promise rejection — nothing surfaced it; (2) the
-	 *  on-screen "success" was never real in the first place — the cell editor's
-	 *  own save() (renderEditMode.ts) intentionally leaves its edited text in the
-	 *  DOM after a value change, on the assumption that the vault 'modify' event
-	 *  from a successful write will trigger the watcher's re-render
-	 *  shortly after, which replaces that DOM with the real (freshly re-read)
-	 *  content. That assumption holds for a successful write; a FAILED one never
-	 *  fires 'modify' at all, so nothing ever corrects the optimistic-looking but
-	 *  never-actually-saved text — until the note is closed and reopened, i.e.
-	 *  the very next full render(), which is what the report's "closing and
-	 *  reopening shows no change" observation was actually seeing. Fixed by
-	 *  catching here, surfacing a Notice, and explicitly re-rendering on failure
-	 *  — re-deriving fresh from the (unchanged) file corrects the stale DOM
-	 *  immediately instead of leaving it looking wrong until the next reopen. */
-	private async handleXlsxWrite(op: XlsxWritableOp): Promise<void> {
-		this.xlsxPendingOps.push(op);
-		if (this.xlsxWriteScheduled) return;
-		this.xlsxWriteScheduled = true;
-		await new Promise<void>(resolve => { window.setTimeout(resolve, 0); });
-		this.xlsxWriteScheduled = false;
-		const ops = this.xlsxPendingOps;
-		this.xlsxPendingOps = [];
-		const file = this.xlsxFile;
-		if (!file) return;
-		try {
-			const bytes = await this.plugin.app.vault.readBinary(file);
-			const written = await writeXlsxOps(bytes, this.xlsxActiveSheetName(), ops);
-			const buffer = written.buffer.slice(written.byteOffset, written.byteOffset + written.byteLength) as ArrayBuffer;
-			await (this.writeChain = this.writeChain.then(
-				() => this.plugin.app.vault.modifyBinary(file, buffer),
-				() => this.plugin.app.vault.modifyBinary(file, buffer),
-			));
-		} catch (err) {
-			new Notice(`${t('xlsxWriteFailed')}: ${err instanceof Error ? err.message : String(err)}`);
-			await this.render();
-		}
-	}
-
-	/** Called at the end of every render()'s xlsx-loading branch (whether or
-	 *  not this table currently turns out to be xlsx-backed) to keep the vault
-	 *  'modify' watcher pointed at whatever file (if any) is CURRENTLY bound —
-	 *  editing xlsxSource.path by hand, or the table no longer being
-	 *  xlsx-backed at all, both need the old watcher (if any) torn down rather
-	 *  than left running against a file this table no longer represents. */
-	private refreshXlsxWatch(): void {
-		const path = this.isXlsxBacked ? this.xlsxFile?.path : undefined;
-		// Kept while the path is unchanged, so a change that arrived while this render was
-		// still parsing keeps its pending refresh.
-		if (this.xlsxWatch && this.xlsxWatch.path === path) return;
-		this.xlsxWatch?.watch.stop();
-		this.xlsxWatch = null;
-		if (!path) return;
-		// Obsidian doesn't auto-update xlsxSource.path on rename the way it does a
-		// real [[wikilink]]: it's a plain string inside the block's YAML. Rewrite it
-		// right away; a rename is one deliberate action, not a burst of autosaves.
-		// A refresh re-renders in place: there is nothing to write back that would
-		// make Obsidian reprocess the block.
-		const watch = watchXlsxFile(this.plugin.app.vault, path, {
-			onRefresh: () => { void this.render(); },
-			onRenamed: (file) => { if (file instanceof TFile) void this.handleXlsxRenamed(file); },
-		});
-		this.xlsxWatch = { path, watch };
-	}
-
-	/** The 'rename' watcher's fix: rewrite xlsxSource.path to the file's new
-	 *  location and write that into the block. Reuses insertBlock/xlsxShell —
-	 *  same reasoning as setXlsxViewWidth/Height — and unlike those, doesn't
-	 *  need a manual re-render afterward: the write itself changes the note,
-	 *  which Obsidian reprocesses on its own (same as every other insertBlock
-	 *  caller). */
-	private async handleXlsxRenamed(newFile: TFile): Promise<void> {
-		if (!this.isXlsxBacked || !this.xlsxShell?.xlsxSource) return;
-		this.xlsxShell.xlsxSource = { ...this.xlsxShell.xlsxSource, path: newFile.path };
-		await this.insertBlock(serializeTable(this.xlsxShell));
-	}
-
 	/** The toolbar buttons the kind of table offers that do not change it. */
-	private tableActions(isEmpty: boolean, isOldFormat: boolean, canEditTasksQuery: boolean): TableAction[] {
-		const actions: TableAction[] = [];
-		if (this.isXlsxBacked) {
-			actions.push(
-				{ id: 'openExternal', label: t('openInDefaultApp'), place: 'first', run: () => void this.openXlsxFileExternally() },
-				{ id: 'detachXlsx', label: t('detachFromXlsx'), place: 'first', run: () => void this.detachFromXlsx() },
-			);
-		}
-		if (canEditTasksQuery && this.model?.tasks) {
-			actions.push({ id: 'editTasksQuery', label: t('tasksQueryEdit'), place: 'first', run: () => this.editTasksQuery() });
-		}
+	private tableActions(source: BlockSource | null, isEmpty: boolean, isOldFormat: boolean, can: (type: TableOpType) => boolean): TableAction[] {
+		const actions: TableAction[] = [...(source?.actions(can) ?? [])];
 		actions.push({
 			id: 'snapshot', label: t('snapshotButton'), place: 'last',
 			run: [
@@ -1281,72 +1032,10 @@ export class TableBlock extends MarkdownRenderChild {
 			],
 		});
 		// A table already backed by an .xlsx file has "open" and "detach" for the same purpose.
-		if (!this.isXlsxBacked && !isEmpty && !isOldFormat) {
+		if ((source?.exportable ?? true) && !isEmpty && !isOldFormat) {
 			actions.push({ id: 'exportXlsx', label: t('exportToXlsx'), place: 'last', run: () => void this.exportToXlsx() });
 		}
 		return actions;
-	}
-
-	/** The left-toolbar "open in default app" button for an xlsx-backed table
-	 *  (renderer.ts's onOpenExternalFile) — hands the file straight to
-	 *  whatever the OS associates with .xlsx (real Excel, LibreOffice, …)
-	 *  rather than trying to grow real editing into this plugin's own
-	 *  read-only view. Desktop-only: `electron`'s `shell` module (already
-	 *  `external` in esbuild.config.mjs, same as `obsidian`) doesn't exist on
-	 *  mobile, and `FileSystemAdapter.getFullPath` — needed to turn a vault-
-	 *  relative path into a real OS path `shell.openPath` can use — is a
-	 *  desktop-only adapter (mobile's is a different, sandboxed adapter with
-	 *  no such concept of a plain filesystem path). */
-	private async openXlsxFileExternally(): Promise<void> {
-		if (!this.xlsxFile) return;
-		if (!Platform.isDesktopApp) {
-			new Notice(t('openInDefaultAppUnsupported'));
-			return;
-		}
-		const adapter = this.plugin.app.vault.adapter;
-		if (!(adapter instanceof FileSystemAdapter)) return;
-		const fullPath = adapter.getFullPath(this.xlsxFile.path);
-		try {
-			// A dynamic import('electron') fails at runtime in Obsidian's actual
-			// desktop app — confirmed live ("failed to resolve module specifier
-			// electron"): esbuild leaves a dynamic import of an external module
-			// as a literal `import()` expression rather than rewriting it to a
-			// require() call the way it does for a STATIC import of an external
-			// module, and Obsidian's plugin loader doesn't resolve bare
-			// specifiers through real ESM dynamic import. A plain synchronous
-			// require() compiles to a literal `require("electron")` call
-			// instead (same as any other external import in this codebase),
-			// which Electron's own CJS module system resolves natively — the
-			// same pattern used by every other Obsidian plugin that shells out
-			// to electron.
-			const err = await electronShell().openPath(fullPath);
-			if (err) new Notice(`${t('openInDefaultAppFailed')}: ${err}`);
-		} catch (err) {
-			// Surface the real reason rather than a bare generic message —
-			// "could not open" alone gives no signal on WHY (wrong path,
-			// electron require failing, no app associated with .xlsx, ...).
-			new Notice(`${t('openInDefaultAppFailed')}: ${err instanceof Error ? err.message : String(err)}`);
-		}
-	}
-
-	/** The left-toolbar "convert to plain table" button (renderer.ts's
-	 *  onDetachFromXlsx) — snapshots whatever `this.model`/`this.workbook`
-	 *  CURRENTLY holds (the last successful load from the xlsx file — real
-	 *  columns/rows/merges/styles, not a placeholder) and writes it into the
-	 *  block as ordinary v2/v3 content with no `xlsxSource` field. Reuses
-	 *  insertBlock rather than going through queueOp: there is no
-	 *  StructuralOpV2/WorkbookOpV2 for "stop being xlsx-backed", and even if
-	 *  there were, queueOp's isXlsxBacked guard would just drop it (correctly
-	 *  — see that guard's own comment) — this needs the raw-splice write
-	 *  every empty-block insert action already uses, not the reducer path.
-	 *  Once this write lands, the next reprocess parses a block with no
-	 *  xlsxSource at all, so isXlsxBacked comes back false and the table is a
-	 *  normal, fully-editable rich-table from then on — no separate
-	 *  "un-xlsx-ify" flag to maintain anywhere. */
-	private async detachFromXlsx(): Promise<void> {
-		if (!this.isXlsxBacked) return;
-		if (this.workbook) await this.insertBlock(serializeWorkbook(this.workbook));
-		else if (this.model) await this.insertBlock(serializeTable(this.model));
 	}
 
 	/** The left-toolbar snapshot button (renderer.ts's onSnapshot) — the ONE
@@ -1472,68 +1161,17 @@ export class TableBlock extends MarkdownRenderChild {
 		}
 	}
 
-	/** renderer.ts's onSetViewWidth/onSetViewHeight for an xlsx-backed table —
-	 *  mutate xlsxShell (the block's own real front-matter), never
-	 *  this.model/this.workbook (the loaded xlsx content — see xlsxShell's own
-	 *  doc comment for why that distinction matters here). */
-	private async setXlsxViewWidth(width: number | null): Promise<void> {
-		if (!this.isXlsxBacked || !this.xlsxShell) return;
-		if (width === null) delete this.xlsxShell.viewWidth;
-		else this.xlsxShell.viewWidth = width;
-		await this.insertBlock(serializeTable(this.xlsxShell));
-	}
-
-	private async setXlsxViewHeight(height: number | null): Promise<void> {
-		if (!this.isXlsxBacked || !this.xlsxShell) return;
-		if (height === null) delete this.xlsxShell.viewHeight;
-		else this.xlsxShell.viewHeight = height;
-		await this.insertBlock(serializeTable(this.xlsxShell));
-	}
-
 	private async queueOp(pending: PendingOp): Promise<void> {
 		if (!this.model && !this.workbook) return;
-		// An xlsx-backed table's `this.model`/`this.workbook` is a SYNTHETIC
-		// object built fresh from the external file on every render() call (see
-		// the xlsx-loading branch there) — it was never derived from this code block's own
-		// YAML and has nowhere honest to serialize back to (the block's real
-		// content is just `xlsxSource: {...}`, a few bytes; the in-memory model
-		// can be the entire spreadsheet). Guarding here — the single choke
-		// point every write-back op (cell AND workbook) already funnels
-		// through — is deliberate: gating each individual onOp/onWorkbookOp/
-		// onSwitchSheet callback instead would need every current AND future
-		// call site to separately remember this, and a single missed one would
-		// silently replace the file reference with a giant inline dump.
-		// Phase 1 of xlsx WRITE support (CLAUDE.md's "xlsx write support"
-		// section) narrows this from an unconditional drop to a filtered one:
-		// only `set-cell-content`/`set-col-name`/`merge-cells`/`unmerge-cells`
-		// route to the real .xlsx file (`handleXlsxWrite`); every other op type
-		// has no honest xlsx equivalent and is still dropped here exactly as
-		// before. Workbook ops (sheet add/remove/reorder) aren't in the writable
-		// set at all, so they fall through unchanged too.
-		if (this.isXlsxBacked) {
-			if (pending.kind === 'cell' && isXlsxWritableOp(pending.op)) await this.handleXlsxWrite(pending.op);
-			return;
+		// Every op passes here, whatever called for it, so a source's rules are applied here and not only in the
+		// buttons: an .xlsx table's model is the whole spreadsheet, and writing it back would inline the file.
+		const source = this.blockSource;
+		if (source) {
+			if (!source.accepts(pending.op.type)) return;
+			const routed = source.route(pending.op);
+			if (routed === true) return;
+			pending = isWorkbookOp(routed) ? { kind: 'workbook', op: routed } : { kind: 'cell', op: routed };
 		}
-
-		// A tasks table has no stored rows, so an op that names a row or a cell would act on nothing. This is the one
-		// place every op passes, whatever called for it, so what is allowed is kept here and not only in the buttons.
-		// A sort is the one row-ish thing it supports, and it is kept in the query: it becomes a `sort by` line.
-		if (this.model?.tasks && pending.kind === 'cell') {
-			let op = pending.op;
-			if (op.type === 'set-sort') {
-				const sort = op.sort;
-				// Clearing needs no column: it takes every sort line out.
-				const next = sort === null
-					? withSort(this.model.tasks.query, null, null)
-					: sortedQuery(this.model.tasks.query, this.model.columns.find(c => c.id === sort.colId)?.field, sort.dir);
-				// A column Tasks has no sort for is left as it is.
-				if (next === null) return;
-				op = { type: 'set-tasks-query', query: next };
-				pending = { kind: 'cell', op };
-			}
-			if (!tasksAccepts(op.type)) return;
-		}
-
 		// Theme/collapse instant-apply — only meaningful for cell-level ops on
 		// the active sheet's own model; a workbook op never touches these fields.
 		if (pending.kind === 'cell') {
@@ -1723,58 +1361,6 @@ export class TableBlock extends MarkdownRenderChild {
 
 	private async insertBlank(rows: number, cols: number): Promise<void> {
 		await this.insertBlock(serializeTable(buildBlankTable(rows, cols, this.defaultTheme())));
-	}
-
-	/** Inserts a minimal v2 block that just points at an external .xlsx file
-	 *  (see model.ts's `xlsxSource` doc comment) — no columns/rows of our own,
-	 *  since the next render() picks the file's actual content up from disk
-	 *  and never trusts anything written here as the real data. `file.path` is
-	 *  a full vault-root-relative path, which `getFirstLinkpathDest` (used to
-	 *  resolve it back in render()) always accepts unambiguously — same as
-	 *  every other vault-relative reference in this plugin. */
-	private async insertXlsxSource(file: TFile): Promise<void> {
-		await this.insertBlock(serializeTable({
-			version: 2, columns: [], rows: [], merges: [], styles: [],
-			xlsxSource: { path: file.path },
-		}));
-	}
-
-	/**
-	 * Inserts a tasks table (the default columns, no rows: they are found on draw), then asks for its query. Closing
-	 * the dialog without one leaves the table asking for it.
-	 */
-	private async insertTasksTable(): Promise<void> {
-		const block = buildTasksBlock(this.defaultTheme());
-		await this.insertBlock(serializeTable(block));
-		new TaskQueryModal(this.plugin.app, '', query => void this.writeTasksQuery(block, query)).open();
-	}
-
-	/** Asks for the query of this tasks table, starting from the one it has. */
-	private editTasksQuery(): void {
-		const query = this.model?.tasks?.query ?? '';
-		new TaskQueryModal(this.plugin.app, query, next => { if (next !== query) void this.handleStructuralOp({ type: 'set-tasks-query', query: next }); }).open();
-	}
-
-	/**
-	 * Saves the query asked for right after inserting. The block just written may not be this block's model yet (the
-	 * note is re-read on Obsidian's own time), so the block inserted is written again with the query in it.
-	 */
-	private async writeTasksQuery(inserted: TableModelV2, query: string): Promise<void> {
-		if (this.model?.tasks) {
-			if (query !== this.model.tasks.query) await this.handleStructuralOp({ type: 'set-tasks-query', query });
-			return;
-		}
-		if (query === '') return;
-		await this.insertBlock(serializeTable({ ...inserted, tasks: { query } }));
-	}
-
-	/** Shown in place of a tasks table that has no query yet: what is missing, and the button that asks for it. */
-	private renderMissingTasksQuery(tmp: HTMLElement, canEdit: boolean): void {
-		const box = tmp.createDiv({ cls: 'bt-template-banner bt-tasks-query-missing' });
-		box.createSpan({ cls: 'bt-template-banner-label', text: t('tasksQueryMissing') });
-		if (!canEdit) return;
-		const btn = box.createEl('button', { cls: 'bt-template-btn', text: t('tasksQueryWrite') });
-		btn.addEventListener('click', () => this.editTasksQuery());
 	}
 
 	/** Shared by insertTemplate/insertBlank/insertXlsxSource/detachFromXlsx —

@@ -158,6 +158,32 @@ test('stops listening to the vault when the table goes away', async ({ page, ren
 	expect(await listening(), 'and lets go when it is unloaded').toBe(0);
 });
 
+// A change that arrives while the table is drawing must still draw it again, so the table keeps one subscription
+// across its draws rather than taking a new one each time.
+test('keeps the same subscription to the vault across redraws', async ({ page, renderBlock }) => {
+	await renderBlock(block('not done'), { tasksFrom: NOTES });
+	const listeners = () => page.evaluate(() => [...(window as unknown as { __btTaskListeners: Set<() => void> }).__btTaskListeners]);
+	const first = await page.evaluate(() => {
+		const w = window as unknown as { __btTaskListeners: Set<() => void>; __btFirst?: () => void };
+		w.__btFirst = [...w.__btTaskListeners][0];
+		return w.__btTaskListeners.size;
+	});
+	expect(first).toBe(1);
+	for (let i = 0; i < 3; i++) {
+		await page.evaluate((n) => {
+			const w = window as unknown as { __btTaskNotes: Record<string, string>; __btTaskListeners: Set<() => void> };
+			w.__btTaskNotes[`n${n}.md`] = `- [ ] redraw ${n}\n`;
+			for (const fn of [...w.__btTaskListeners]) fn();
+		}, i);
+		await expect(page.locator('td.bt-td', { hasText: `redraw ${i}` })).toHaveCount(1);
+	}
+	expect((await listeners()).length).toBe(1);
+	expect(await page.evaluate(() => {
+		const w = window as unknown as { __btTaskListeners: Set<() => void>; __btFirst?: () => void };
+		return w.__btFirst !== undefined && w.__btTaskListeners.has(w.__btFirst);
+	}), 'the subscription is the one taken on the first draw').toBe(true);
+});
+
 test('a table that is not a tasks table does not listen to the vault', async ({ page, renderBlock }) => {
 	await renderBlock('---\nversion: 2\ncolumns:\n  - { id: c_a, name: A }\nrows:\n  - { id: r_a, cells: { c_a: x } }\n---\n');
 	expect(await page.evaluate(() => (window as unknown as { __btTaskListeners: Set<() => void> }).__btTaskListeners.size)).toBe(0);

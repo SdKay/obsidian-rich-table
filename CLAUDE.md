@@ -27,6 +27,7 @@ UI interaction → StructuralOpV2 (operations.ts) → TableBlock.handleStructura
 - Large behaviours are split into `render*.ts` siblings; pure decision logic lives apart from DOM code (`cellNav.ts`, `reorderPlan.ts`, `renderFreezePlan.ts`, `selectorLayout.ts`) so it can be unit-tested. Prefer that split for new features.
 - Tables are ID-based (`r_…`, `c_…`); styles and merges address IDs, never positions. Style targets are parsed in `styleTarget.ts`.
 - v1 (Excel-style coordinates) is migration-only (`src/history/v1`, `src/migrations`).
+- A block whose rows come from elsewhere (an `.xlsx` file, a task query) has a `BlockSource` (`blockSource.ts`) that loads it, says what it accepts and routes its ops; `TableBlock` never tests which kind it is. A new kind is one source module plus one entry in `sourceKinds`. Its rules are applied in `queueOp`, which every op passes, not only in the buttons.
 - Every write-back rebuilds the table in a fresh container. State that must survive a rebuild (hover, in-progress edit, selection) goes through a `cacheKey`-keyed handoff module (`render*Handoff.ts`), and `injectLiveSnapshot` keeps the old look in place while the new render completes. You cannot reach the previous instance's DOM from the new one.
 
 ## Core and command-line tool

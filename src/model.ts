@@ -335,11 +335,14 @@ export type CtrlColButtonId =
  *    neither onStructuralOp nor onToggleLock, only its own xlsx-specific
  *    open/detach buttons plus the universal snapshot button.
  */
-export const CTRL_COL_BUTTONS_BY_SCENARIO: { [K in 'locked' | 'unlocked' | 'xlsxRef']: CtrlColButtonId[] } = {
+export const CTRL_COL_BUTTONS_BY_SCENARIO = {
 	locked:   ['lock', 'snapshot', 'exportXlsx'],
 	unlocked: ['editTasksQuery', 'lock', 'autoFit', 'transpose', 'selectAll', 'theme', 'aggregate', 'collapse', 'viewSettings', 'views', 'newSheet', 'snapshot', 'exportXlsx'],
 	xlsxRef:  ['openExternal', 'detachXlsx', 'snapshot'],
-};
+} satisfies Record<string, CtrlColButtonId[]>;
+
+/** The kinds of table the toolbar's buttons are chosen for; the keys of the table above. */
+export type CtrlColScenario = keyof typeof CTRL_COL_BUTTONS_BY_SCENARIO;
 
 /** Each toolbar button's Lucide icon. The toolbar and the settings tab both draw it from here, so the two cannot
  *  show different icons for one button. Lock and collapse change with the table's state; see ctrlColButtonIcon. */
@@ -366,7 +369,7 @@ const CTRL_COL_BUTTON_ICON: Record<CtrlColButtonId, string> = {
  *  `model.locked` (renderer.ts), which the settings tab has a direct stand-in
  *  for: the `locked` scenario group always means "shows the locked-padlock
  *  icon here", `unlocked` always means "shows the open-padlock icon here". */
-export function ctrlColButtonIcon(id: CtrlColButtonId, scenario: 'locked' | 'unlocked' | 'xlsxRef', collapsed = false): string {
+export function ctrlColButtonIcon(id: CtrlColButtonId, scenario: CtrlColScenario, collapsed = false): string {
 	if (id === 'lock') return scenario === 'locked' ? 'lock' : 'lock-open';
 	if (id === 'collapse' && collapsed) return 'unfold-vertical';
 	return CTRL_COL_BUTTON_ICON[id];
@@ -409,7 +412,7 @@ export interface BetterTableSettings {
 	 *  itself is includable here like any other — a user can hide it too, at
 	 *  the cost of needing to hand-edit `locked: false` in the block's own
 	 *  YAML to unlock a table with no button left to do it. */
-	ctrlColHiddenButtons: { locked: CtrlColButtonId[]; unlocked: CtrlColButtonId[]; xlsxRef: CtrlColButtonId[] };
+	ctrlColHiddenButtons: Record<CtrlColScenario, CtrlColButtonId[]>;
 	/** Last plugin version this install has shown the changelog modal for —
 	 *  absent on a brand-new install, which shows nothing (there's no "update"
 	 *  to summarize yet), just records the current version as the baseline. */

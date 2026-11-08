@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import type BetterTablePlugin from './main';
-import { CTRL_COL_BUTTONS_BY_SCENARIO, ctrlColButtonIcon, type BetterTableSettings, type ChoiceType, type CtrlColButtonId } from './model';
+import { CTRL_COL_BUTTONS_BY_SCENARIO, ctrlColButtonIcon, type BetterTableSettings, type ChoiceType, type CtrlColButtonId, type CtrlColScenario } from './model';
 import { t, pick, ctrlColButtonLabel, ctrlColScenarioLabel } from './i18n';
 import { ChangelogModal } from './changelogModal';
 import { BUILTIN_THEMES } from './themes';
@@ -144,7 +144,7 @@ export class BetterTableSettingTab extends PluginSettingTab {
 		// glance instead of by label text alone.
 		new Setting(containerEl).setName(t('settingCtrlColHeading')).setHeading().setDesc(t('settingCtrlColDesc'));
 
-		const scenarios: ('locked' | 'unlocked' | 'xlsxRef')[] = ['locked', 'unlocked', 'xlsxRef'];
+		const scenarios: CtrlColScenario[] = ['locked', 'unlocked', 'xlsxRef'];
 		for (const scenario of scenarios) {
 			new Setting(containerEl).setName(ctrlColScenarioLabel(scenario)).setHeading();
 			const grid = containerEl.createDiv({ cls: 'bt-ctrlcol-grid' });
