@@ -283,25 +283,13 @@ test.describe('zoom', () => {
 		expect(widthOp.width).toBe(230); // 150 (initial) + 40 (logical delta) * 2
 	});
 
-	// Reported ("autofit-all 的表格每次调整之后...瞬间出现换行...随后又变回不换行"):
-	// on an all-auto table (no column has any explicit width — exactly what
-	// the ⊞ auto-fit-all button produces), dragging the zoom control squeezed
-	// a column, forcing a visible wrap that then self-corrected. Root cause:
-	// the zoom control's live-drag preview (renderZoomControl's applyLive)
-	// changes root's real CSS `zoom` immediately, without waiting for the
-	// eventual commit's full re-render — but renderer.ts's `rebuild()` (which
-	// re-measures and pins EVERY column's width in the !hasExplicitWidths
-	// branch, run on hover and by a ResizeObserver a live zoom change itself
-	// can trigger) used to divide by a `zoom` NUMBER captured once at render
-	// time and never updated for the live-preview change. A `rebuild()` that
-	// runs mid-drag therefore divided a now-different visual measurement by a
-	// stale factor, pinning columns to a corrupted width until the real
-	// commit's fresh render fixed it. re-hovering the table is used here
-	// instead of waiting on the ResizeObserver directly, since showSelectors()
-	// calls rebuild() unconditionally on the very next frame — deterministic,
-	// unlike the observer's own timing.
-	test('a live zoom drag does not corrupt an all-auto table\'s pinned column widths', { tag: '@geometry' }, async ({ page, renderFull }) => {
-		await renderFull(tableSource({ widths: [undefined, undefined], rows: [
+	// Reported ("autofit-all 的表格每次调整之后...瞬间出现换行...随后又变回不换行"): dragging the zoom control on an
+	// all-auto table squeezed a column for a moment, forcing a visible wrap that then self-corrected. The live preview
+	// changes the root's CSS zoom without a re-render, so anything that measures the table mid-drag has to divide by
+	// the live zoom, not one captured at render time. Re-hovering redraws the strips, which measure every column.
+	// The column does not wrap, so a line break here can only come from a wrong measurement.
+	test('a live zoom drag does not squeeze an all-auto table\'s columns', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(tableSource({ widths: [0, 0], wraps: [undefined, false], rows: [
 			{ 0: 'x', 1: 'a fairly long line of content that this auto column should track without ever squeezing narrower than its own content needs' },
 		] }));
 		await page.waitForTimeout(100);
@@ -309,7 +297,12 @@ test.describe('zoom', () => {
 		await page.waitForTimeout(100);
 
 		const col = page.locator('col[data-col="1"]');
-		const widthBefore = await col.evaluate(el => parseFloat((el as HTMLElement).style.width));
+		// Logical width: the drawn width divided by the zoom the root is drawn at right now.
+		const logicalWidth = () => col.evaluate(el => {
+			const root = el.closest('.bt-render-root') as HTMLElement;
+			return el.getBoundingClientRect().width / (parseFloat(getComputedStyle(root).zoom) || 1);
+		});
+		const widthBefore = await logicalWidth();
 		expect(widthBefore).toBeGreaterThan(0);
 
 		// Live-drag zoom to 150% via 'input' only (no commit) — the exact
@@ -328,11 +321,7 @@ test.describe('zoom', () => {
 		await page.locator('table.bt-table').hover();
 		await page.waitForTimeout(100);
 
-		// The auto column's pinned LOGICAL width must stay the same regardless
-		// of live zoom (rebuild() always divides its visual measurement back
-		// down to logical px) — it must never have been squeezed/inflated by a
-		// stale zoom factor mid-drag.
-		const widthAfter = await col.evaluate(el => parseFloat((el as HTMLElement).style.width));
+		const widthAfter = await logicalWidth();
 		expect(Math.abs(widthAfter - widthBefore)).toBeLessThan(1);
 
 		// And the content must never have been forced to wrap.

@@ -67,6 +67,7 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 			if (c.hidden)  entry.hidden = true;
 			if (c.type)    entry.type   = c.type;
 			if (c.width)   entry.width  = c.width;
+			if (typeof c.wrap === 'boolean') entry.wrap = c.wrap;
 			if (c.align)   entry.align  = c.align;
 			if (c.filter && c.filter.length > 0) entry.filter = c.filter;
 			if (c.field)   entry.field  = c.field;
@@ -114,6 +115,7 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 	if (m.theme)  obj.theme  = m.theme;
 	if (m.locked) obj.locked = true;
 	if (m.collapsed) obj.collapsed = true;
+	if (typeof m.wrap === 'boolean') obj.wrap = m.wrap;
 	if (m.sort) obj.sort = { colId: m.sort.colId, dir: m.sort.dir };
 	if (m.aggregate && m.aggregate.length > 0) obj.aggregate = m.aggregate;
 	if (typeof m.freezeRows === 'number') obj.freezeRows = m.freezeRows;

@@ -39,7 +39,7 @@ const STRUCTURAL: { [K in StructuralOpV2['type']]: OpEffect } = {
 	// A header is a cell with text in it.
 	'set-col-name': 'content',
 
-	'set-col-width': 'look', 'set-col-align': 'look', 'set-row-height': 'look',
+	'set-col-width': 'look', 'set-col-align': 'look', 'set-col-wrap': 'look', 'set-table-wrap': 'look', 'set-row-height': 'look',
 	'set-cell-style': 'look', 'set-range-style': 'look', 'split-range-style': 'look', 'set-align': 'look',
 	'set-title': 'look', 'set-footer': 'look', 'set-theme': 'look',
 	'toggle-collapse': 'look', 'set-freeze-rows': 'look', 'set-freeze-cols': 'look',

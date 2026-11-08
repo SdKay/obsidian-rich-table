@@ -70,3 +70,19 @@ describe('sameRowGeometry', () => {
 		expect(sameRowGeometry([0, 20], [0, 20, 20, 20])).toBe(false);
 	});
 });
+
+describe('stripsToRebuild, columns that moved', () => {
+	it('columns that moved while the table kept its width (an auto column grew as another shrank) rebuild the column strip', () => {
+		expect(sorted(stripsToRebuild(none, { w: 500, h: 300 }, { w: 500, h: 340 }, same, moved))).toEqual(['col']);
+	});
+	it('does not read the columns when nothing was dragged and the table is the size it was', () => {
+		let asked = 0;
+		expect(sorted(stripsToRebuild(none, { w: 500, h: 300 }, { w: 500, h: 300 }, same, () => { asked++; return true; }))).toEqual([]);
+		expect(asked).toBe(0);
+	});
+	it('does not read the columns when the table got wider, which rebuilds the column strip anyway', () => {
+		let asked = 0;
+		stripsToRebuild(none, { w: 500, h: 300 }, { w: 600, h: 300 }, same, () => { asked++; return true; });
+		expect(asked).toBe(0);
+	});
+});

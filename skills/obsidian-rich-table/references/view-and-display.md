@@ -1,6 +1,6 @@
 # Table-level display fields
 
-Optional top-level fields that change how a table looks or behaves: `theme`, `locked`, `collapsed`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId`. The theme choices themselves are listed in [themes.md](themes.md).
+Optional top-level fields that change how a table looks or behaves: `theme`, `locked`, `collapsed`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `wrap`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId`. The theme choices themselves are listed in [themes.md](themes.md).
 
 ### `theme` (string, optional)
 Built-in visual theme applied to the table. Themes control appearance only
@@ -82,6 +82,15 @@ Fixed size of the table's viewport, set by dragging the view's edges. Omit for a
 ```yaml
 viewWidth: 640
 viewHeight: 360
+```
+
+### `wrap` (boolean, optional)
+The default for every column's `wrap`; omit for `true`. With wrapping on, a column without a `width` shares out the room the view leaves (the page, or `viewWidth`) and its text folds onto several lines, down to its longest word; only content that cannot wrap (a long link, a wide image) makes the view scroll sideways. `false` keeps every column's text on one line, so a wide table scrolls sideways instead. A column's own `wrap` overrides it. The plugin writes `wrap: true` on every table it creates; do the same when creating a table, and write `false` only when the user asked for one-line columns.
+
+```yaml
+wrap: false
+columns:
+  - { id: c_1, name: Notes, wrap: true }
 ```
 
 ### `zoom` (number, optional)

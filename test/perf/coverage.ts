@@ -24,7 +24,7 @@ export const COVERAGE: { [K in TableOpType]: Coverage } = {
 	'set-cell-content': 'rebuild:set-cell-content', 'fill-cells': 'rebuild:fill-cells', 'set-cell-formula': 'rebuild:set-cell-formula',
 	'paste-values': 'rebuild:paste-values', 'paste-values-with-header': 'rebuild:paste-values-with-header', 'set-col-name': 'rebuild:set-col-name',
 	// ── look
-	'set-col-width': 'drag-col-width', 'set-col-align': 'rebuild:set-col-align', 'set-row-height': 'drag-row-height',
+	'set-col-width': 'drag-col-width', 'set-col-align': 'rebuild:set-col-align', 'set-col-wrap': 'rebuild:set-col-wrap', 'set-table-wrap': 'rebuild:set-table-wrap', 'set-row-height': 'drag-row-height',
 	'set-cell-style': 'rebuild:set-cell-style', 'set-range-style': 'rebuild:set-range-style', 'split-range-style': 'rebuild:split-range-style',
 	'set-align': 'rebuild:set-align', 'set-title': 'rebuild:set-title', 'set-footer': 'rebuild:set-footer', 'set-theme': 'rebuild:set-theme',
 	'toggle-collapse': 'rebuild:toggle-collapse', 'set-freeze-rows': 'rebuild:set-freeze-rows', 'set-freeze-cols': 'rebuild:set-freeze-cols',

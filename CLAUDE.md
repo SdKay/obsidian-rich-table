@@ -44,6 +44,8 @@ UI interaction → StructuralOpV2 (operations.ts) → TableBlock.handleStructura
 - **Top gap.** One value, `TOP_STRIP_PAD` → `--bt-sel-pad`, applies to every table (editable, locked, read-only), written once at creation; its CSS rule is deliberately doubled-class so host stylesheets cannot override it.
 - **Prefer adjacency to absolute coordinates** when positioning one element relative to another, and keep conditionals to variable assignment with one shared rendering path.
 - **Positions are logical px.** `zoom` is CSS `zoom` on the table subtree; divide measured visual rects by it. The status bar and frame live outside the zoomed subtree.
+- **Column widths live on the cells.** The table is always laid out by the browser (`table-layout: auto`); a column with a `width` pins its cells through `applyColStyle`, never the `<col>`. Read a column's width from its `<col>` rect. Only a column drag switches to fixed layout, for its own length (`freezeColWidths`).
+- **A floating panel never covers its anchor** (`placePanel`): a long press on a selected strip must land on the strip.
 - Frozen rows/columns, block reorder and similar features read live geometry; unit-test their pure planning, e2e-test the DOM.
 
 ## `.xlsx` file view and Rich Search

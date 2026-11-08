@@ -5,7 +5,6 @@ import { collapsedRowsLabel, deleteColsLabel, deleteRowsLabel, hideColsLabel, hi
 import { createLayoutSync } from './layoutSync';
 import type { CtrlColButtonId, TableModelV2 } from './model';
 import { renderAggregateRows } from './renderAggregate';
-import { colMinWidth } from './renderAutofit';
 import { renderCalendarBoard } from './renderCalendar';
 import { renderRow } from './renderCell';
 import { renderCellDragSelect } from './renderCellDragSelect';
@@ -628,62 +627,23 @@ export async function renderTable(
 		if (wasAtMaxScroll) wrapper.scrollLeft = wrapper.scrollWidth - wrapper.clientWidth;
 	};
 
-	// <colgroup> for precise column widths (used when table-layout:fixed).
-	// If no column has an explicit width we leave widths unset and let the
-	// browser size columns via table-layout:auto (natural content width).
-	const HIDDEN_COL_WIDTH = 28;
+	// One <col> per visible column (and one per run of hidden ones) names the columns for the code that measures them.
+	// Widths live on the cells (applyColStyle); the table is always laid out by the browser.
 	const colgroup = table.createEl('colgroup');
 	const visibleCols: { colEl: HTMLElement; colIdx: number }[] = [];
-	// Determine whether to use fixed layout: any visible column has an explicit width.
-	const hasExplicitWidths = model.columns.some(
-		col => col && !col.hidden && (col.width ?? 0) > 0,
-	);
-	let totalWidth = 0;
 	for (let ci = 0; ci < model.columns.length; ci++) {
 		const col = model.columns[ci];
 		if (col?.hidden) {
 			while (ci < model.columns.length && model.columns[ci]?.hidden) ci++;
 			ci--;
-			if (hasExplicitWidths) {
-				colgroup.createEl('col').style.setProperty('width', `${HIDDEN_COL_WIDTH}px`);
-				totalWidth += HIDDEN_COL_WIDTH;
-			} else {
-				colgroup.createEl('col');
-			}
+			colgroup.createEl('col');
 			continue;
 		}
 		if (!col) continue;
 		const colEl = colgroup.createEl('col');
 		colEl.dataset.col = String(ci);
 		colEl.setAttribute('data-col-id', col.id);
-		if (hasExplicitWidths) {
-			if (col.width != null) {
-				const w = Math.max(colMinWidth(), col.width);
-				colEl.style.setProperty('width', `${w}px`);
-				totalWidth += w;
-			} else {
-				// No width of its OWN while a sibling column has one (e.g. one just
-				// inserted by split-cell-col/insert-col, or any column left to auto-
-				// track its content on purpose) — this used to fall back to a flat
-				// colMinWidth() floor, which isn't really "auto", just a smaller flat
-				// number; a column marked this way instead gets measured against its
-				// actual content and pinned to that, once the table is attached and
-				// real content is rendered (applyAutoColWidths, called from
-				// tableBlock.ts post-swap — measuring here would read 0, since this
-				// runs before this table is ever attached to a live document). Left
-				// out of totalWidth for the same reason: its real contribution isn't
-				// known yet, and that same post-attach step corrects the table's
-				// overall width once every auto column has a real pinned value.
-				colEl.dataset.auto = '1';
-			}
-		}
 		visibleCols.push({ colEl, colIdx: ci });
-	}
-	if (hasExplicitWidths) {
-		// Switch to fixed layout and pin table width to prevent bloating hidden-col cells.
-		// setAttribute is used because setCssProps only handles custom properties and
-		// table-layout/width are standard properties that must override the stylesheet.
-		table.setAttribute('style', `table-layout:fixed;width:${totalWidth}px`);
 	}
 
 	// ── Drag-to-select for cell merging ──────────────────────────────────────
@@ -1009,7 +969,7 @@ export async function renderTable(
 
 	// ── Row / column selector strips (renderSelectorStrips.ts) ──
 	renderSelectorStrips({
-		model, getRegistry, component, edits, registry, hooks, root, view, wrapper, table, computeVisibleGeom, layoutSync, topStripPad: TOP_STRIP_PAD, reserveLeftPad, hasExplicitWidths, clearSel, autoFillOp, thead, tbody,
+		model, getRegistry, component, edits, registry, hooks, root, view, wrapper, table, computeVisibleGeom, layoutSync, topStripPad: TOP_STRIP_PAD, reserveLeftPad, clearSel, autoFillOp, thead, tbody,
 	});
 
 	// ── Show/hide overlays on mouse enter/leave (renderOverlays.ts) ──

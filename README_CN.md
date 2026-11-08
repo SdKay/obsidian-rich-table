@@ -419,6 +419,8 @@ footer: "每周更新 · 点击任意单元格即可编辑"
 
 **`width`/`height` 都是可选字段**——某一列/行没有 `width`/`height` 字段即为"auto"：渲染时按内容自动撑开宽高，且内容变化时持续跟随调整。拖拽调整手柄即固定为具体大小；双击手柄或点击"一键自适应"可恢复为 auto。
 
+**自动换行**——文字默认换行。auto 列在视图剩余的空间里按内容分配宽度，文字折成多行，长文字不再把表格撑出横向滚动；只有无法折行的内容（很长的链接、很宽的图片）才会滚动。有宽度的列保持其宽度，在列内换行。要让某列保持单行，在列菜单中选择**不换行**（`wrap: false`），有宽度的列超出部分以省略号截断。**视图设置 → 自动换行**可关闭整张表的换行（顶层 `wrap: false`），列自身的设置优先。
+
 **样式 target**（v2 ID 格式）：
 
 | 写法 | 含义 |
@@ -495,6 +497,7 @@ xlsxSource:
 ```rich-table
 ---
 version: 2
+wrap: true
 tasks:
   query: |
     not done
@@ -503,11 +506,11 @@ tasks:
 columns:
   - id: c_status
     name: 状态
-    width: 36
     field: status
   - id: c_body
     name: 任务
     field: body
+    align: left
   - id: c_due
     name: 截止
     field: due
@@ -515,7 +518,7 @@ columns:
 ```
 ````
 
-- **查询**的写法与 Tasks 插件一致，每行一个条件：`done` / `not done`、日期（`due before …`、`due this week`、`has due date`）、`priority`、`tags`、`path` / `filename` / `heading` / `description` 条件（含 `regex matches`）、`is recurring`、`sort by …`、`group by …`、`limit N`。在代码块里直接修改。不支持 `filter by function`、布尔组合（`AND`、`OR`、`NOT`）和预设；**插件不认识的行不会生效**，请确认表格显示的是你想要的内容。
+- **查询**的写法与 Tasks 插件一致，每行一个条件：`done` / `not done`、日期（`due before …`、`due this week`、`has due date`）、`priority`、`tags`、`path` / `filename` / `heading` / `description` 条件（含 `regex matches`）、`is recurring`、`sort by …`、`group by …`、`limit N`。可用工具栏的**编辑任务查询**修改，也可以直接改代码块。不支持 `filter by function`、布尔组合（`AND`、`OR`、`NOT`）和预设；**插件不认识的行不会生效**，请确认表格显示的是你想要的内容。
 - **列**各显示任务的一个属性（`field`）：状态、任务文字、各个日期、优先级、标签、重复规则、文件、路径、标题。可以像普通表格一样增删、排序、调宽、改名。
 - **排序**某一列会在查询里写入一行 `sort by`。顺序由查询保存，而不是行本身。
 - **不可编辑**：任务本身。任何会修改行或单元格的操作都会被拒绝；请到任务所在的笔记里修改。

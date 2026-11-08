@@ -1,217 +1,142 @@
 import { test, expect } from '../../common/test-base';
 import { tableSource } from '../../common/fixtures';
 
-// Reported ("在一个窄的但是auto宽度的cell中持续输入内容，超过宽度后会拉高cell以多行
-// 形式显示所有输入内容，退出编辑后cell会自动调整宽度变成一行显示"): a narrow auto
-// column's editor wrapped to multiple lines mid-edit, then snapped back to
-// single-line once the column caught up on commit — the mid-edit wrap was the
-// unwanted flicker. Fixed with white-space:pre on the editor (styles.css) plus
-// growColLiveForTextEdit (renderAutofit.ts), called on every keystroke: it
-// widens the <col> DOM element directly (never through onStructuralOp/the
-// model), so the editor stays single-line while typing, and the column still
-// shrinks back to whatever the committed content actually needs once a real
-// write-back rebuild happens (an auto column's whole point).
+// An edited cell is laid out the way its column is: text wraps inside a column that wraps, and stays on one line in
+// one that does not, which the browser widens as the text grows. Nothing outside the cell is changed for the edit, so
+// an edit that ends without a change (Escape, a cancelled IME composition) leaves the column as it was.
 //
-// Single-line is checked via the editor's own rendered HEIGHT against one
-// line's worth (not Range.getClientRects().length — that can return more
-// than one rect for a single visual line when a real \n is present, since a
-// \n-delimited text-node segment gets its own rect even when it doesn't wrap
-// to a new visual row).
-test.describe('a narrow auto column stays single-line while typing', () => {
-	const oneLineHeight = async (locator: import('@playwright/test').Locator) =>
-		locator.evaluate(el => el.getBoundingClientRect().height);
+// One line is told apart by the editor's height against a single short line's: Range.getClientRects() can return
+// more than one rect for one visual line when a real \n is present.
+const LONG = 'a fairly long line of text that would exceed a narrow auto column width by a lot honestly';
+const CELL = 'td[data-row="1"][data-col="1"]';
+// A view narrower than LONG on one line, so a column that does not wrap has to run past it and one that wraps folds.
+const NOWRAP = () => tableSource({ widths: [150, 0], wraps: [undefined, false], rows: [{ 0: 'x', 1: 'y' }], viewWidth: 320 });
+const WRAP = tableSource({ widths: [150, 0], rows: [{ 0: 'x', 1: 'y' }], viewWidth: 320 });
 
-	test('data cell in a mixed explicit+auto table: stays single-line and the <col> widens live, without touching the model', { tag: '@geometry' }, async ({ page, renderFull }) => {
-		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
-		const cell = 'td[data-row="1"][data-col="1"]';
-		await page.locator(cell).click();
-		const editor = page.locator(`${cell} .bt-cell-editor`);
+const cellWidth = (page: import('@playwright/test').Page, sel = CELL) =>
+	page.locator(sel).evaluate(el => el.getBoundingClientRect().width);
+const height = (locator: import('@playwright/test').Locator) => locator.evaluate(el => el.getBoundingClientRect().height);
+
+test.describe('editing a column that does not wrap', () => {
+	test('the source marks the column', async () => {
+		expect(NOWRAP()).toContain('wrap: false');
+	});
+
+	test('a data cell stays on one line and the column widens with the text, without touching the model', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(NOWRAP());
+		await page.locator(CELL).click();
+		const editor = page.locator(`${CELL} .bt-cell-editor`);
 		await expect(editor).toHaveCount(1);
+		const oneLine = await height(editor);
+		const before = await cellWidth(page);
 
-		const oneLine = await oneLineHeight(editor);
-		const widthBefore = await page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width) || 0);
-
-		await page.keyboard.type('a fairly long line of text that would exceed a narrow auto column width by a lot honestly');
-		await page.waitForTimeout(30);
-
-		const height = await editor.evaluate(el => el.getBoundingClientRect().height);
-		expect(height).toBeLessThanOrEqual(oneLine + 1);
-
-		const widthAfter = await page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width) || 0);
-		expect(widthAfter).toBeGreaterThan(widthBefore);
-
-		// growColLiveForTextEdit never dispatches an op — only the eventual
-		// content commit does — since a col-width write would persist a fixed
-		// width onto what's supposed to stay an auto-tracking column.
+		await page.keyboard.type(LONG);
+		expect(await height(editor)).toBeLessThanOrEqual(oneLine + 1);
+		expect(await cellWidth(page)).toBeGreaterThan(before + 100);
+		const g = await page.evaluate(() => { const w = document.querySelector('.bt-table-wrapper') as HTMLElement; return { scrollW: w.scrollWidth, viewW: w.clientWidth }; });
+		expect(g.scrollW, 'the line runs past the view, which scrolls').toBeGreaterThan(g.viewW + 50);
 		const ops = await page.evaluate(() => (window as unknown as { __btOps: { type: string }[] }).__btOps);
 		expect(ops.some(o => o.type === 'set-col-width')).toBe(false);
 	});
 
-	// Reported ("它是把左边这一列挤窄实现的...能不能保持其他列宽不变，整体表格宽度调大"):
-	// table-layout:fixed pins the whole <table>'s own width too, so growing only
-	// the edited column's <col> left the browser to redistribute the extra
-	// space by squeezing every OTHER column back down to keep the declared
-	// total unchanged. Fixed by growing <table>'s own width by the exact same
-	// delta as the column — the extra space then comes from the table
-	// widening, and every sibling column keeps its original width untouched.
-	test('growing the edited column widens the TABLE, not its sibling columns', { tag: '@geometry' }, async ({ page, renderFull }) => {
-		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
-		const cell = 'td[data-row="1"][data-col="1"]';
-		await page.locator(cell).click();
-		const editor = page.locator(`${cell} .bt-cell-editor`);
-		await expect(editor).toHaveCount(1);
-
-		const col0Before = await page.locator('col[data-col="0"]').evaluate(el => parseFloat((el as HTMLElement).style.width));
-		const col1Before = await page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width) || 0);
-		const tableBefore = await page.locator('table.bt-table').evaluate(el => parseFloat((el as HTMLElement).style.width));
-
-		await page.keyboard.type('a fairly long line of text that would exceed a narrow auto column width by a lot honestly');
-		await page.waitForTimeout(30);
-
-		const col0After = await page.locator('col[data-col="0"]').evaluate(el => parseFloat((el as HTMLElement).style.width));
-		const col1After = await page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width));
-		const tableAfter = await page.locator('table.bt-table').evaluate(el => parseFloat((el as HTMLElement).style.width));
-
-		expect(col0After).toBe(col0Before); // untouched — the whole point of this test
-		expect(tableAfter - tableBefore).toBeCloseTo(col1After - col1Before, 0);
+	test('growing the edited column leaves the column with a width as it was', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(NOWRAP());
+		await page.locator(CELL).click();
+		await expect(page.locator(`${CELL} .bt-cell-editor`)).toHaveCount(1);
+		const before = await cellWidth(page, 'td[data-row="1"][data-col="0"]');
+		await page.keyboard.type(LONG);
+		expect(await cellWidth(page, 'td[data-row="1"][data-col="0"]')).toBeCloseTo(before, 0);
 	});
 
-	test('header cell: typing a long column name also stays single-line and grows the column', { tag: '@geometry' }, async ({ page, renderFull }) => {
-		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
-		const headerCell = 'th[data-row="0"][data-col="1"]';
-		await page.locator(headerCell).click();
-		const editor = page.locator(`${headerCell} .bt-cell-editor`);
+	test('a header cell stays on one line too', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(NOWRAP());
+		const header = 'th[data-row="0"][data-col="1"]';
+		await page.locator(header).click();
+		const editor = page.locator(`${header} .bt-cell-editor`);
 		await expect(editor).toHaveCount(1);
-
-		const oneLine = await oneLineHeight(editor);
-		const widthBefore = await page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width) || 0);
-
+		const oneLine = await height(editor);
+		const before = await cellWidth(page, header);
 		await page.keyboard.type('A fairly long column name that exceeds its narrow auto width');
-		await page.waitForTimeout(30);
-
-		const height = await editor.evaluate(el => el.getBoundingClientRect().height);
-		expect(height).toBeLessThanOrEqual(oneLine + 1);
-
-		const widthAfter = await page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width) || 0);
-		expect(widthAfter).toBeGreaterThan(widthBefore);
+		expect(await height(editor)).toBeLessThanOrEqual(oneLine + 1);
+		expect(await cellWidth(page, header)).toBeGreaterThan(before);
 	});
 
-	test('a real newline (Shift+Enter) still renders as a genuine line break, not just suppressed wrap', { tag: '@geometry' }, async ({ page, renderFull }) => {
-		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
-		const cell = 'td[data-row="1"][data-col="1"]';
-		await page.locator(cell).click();
-		const editor = page.locator(`${cell} .bt-cell-editor`);
+	test('a real newline (Shift+Enter) is still a line break', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(NOWRAP());
+		await page.locator(CELL).click();
+		const editor = page.locator(`${CELL} .bt-cell-editor`);
 		await expect(editor).toHaveCount(1);
-
-		const oneLine = await oneLineHeight(editor);
+		const oneLine = await height(editor);
 		await page.keyboard.type('line one');
 		await page.keyboard.press('Shift+Enter');
 		await page.keyboard.type('line two');
-		await page.waitForTimeout(30);
-
-		const height = await editor.evaluate(el => el.getBoundingClientRect().height);
-		expect(height).toBeGreaterThanOrEqual(oneLine * 1.4); // genuinely two lines tall
+		expect(await height(editor)).toBeGreaterThanOrEqual(oneLine * 1.4);
 		expect(await editor.innerText()).toContain('line one');
 		expect(await editor.innerText()).toContain('line two');
 	});
 
-	test('the column shrinks back to the committed content\'s real width after a write-back rebuild', { tag: '@geometry' }, async ({ page, renderBlock }) => {
-		const r = await renderBlock(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
-		const cell = 'td[data-row="1"][data-col="1"]';
-		await page.locator(cell).click();
-		const editor = page.locator(`${cell} .bt-cell-editor`);
+	test('the column is as wide as the committed text after the write-back rebuild', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		const r = await renderBlock(NOWRAP());
+		await page.locator(CELL).click();
+		const editor = page.locator(`${CELL} .bt-cell-editor`);
 		await expect(editor).toHaveCount(1);
-
-		await page.keyboard.type('a fairly long line of text that would exceed a narrow auto column width by a lot honestly');
-		await page.waitForTimeout(30);
-		const widthDuring = await page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width) || 0);
-
+		await page.keyboard.type(LONG);
+		const during = await cellWidth(page);
 		await page.keyboard.press('Control+a');
 		await page.keyboard.type('hi');
-		await page.waitForTimeout(30);
 		await editor.evaluate(el => el.blur());
-		await page.waitForTimeout(200); // the write itself
-
-		// renderBlock doesn't rebuild on its own (see CLAUDE.md's "keyboard cell
-		// navigation" section) — reprocess() stands in for Obsidian noticing the
-		// file changed and re-running the code-block processor, which is what
-		// actually re-measures the auto column against the now-short content.
+		await expect.poll(() => r.noteText()).toContain('c_1: hi');
 		await r.reprocess();
-		await page.waitForTimeout(50);
-
-		const widthAfter = await page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width) || 0);
-		expect(widthAfter).toBeLessThan(widthDuring);
+		expect(await cellWidth(page)).toBeLessThan(during);
 	});
 
-	// Reported ("中文输入法下...输入取消,...撑开的cell没有自动收缩窄,而且我点autofitall
-	// 也无效"): growColLiveForTextEdit's width bump is undone by restoreNodes()
-	// once an edit ends with a real content change (the normal write-back →
-	// re-render cycle measures a fresh colgroup from scratch) — but an edit
-	// that ends WITHOUT one (Escape, or content that round-trips back to
-	// rawValue, e.g. an IME composition candidate the user cancels) takes the
-	// restoreNodes() branch, which only knew how to restore the cell's own
-	// child nodes, not the sibling <col>/<table> width growColLiveForTextEdit
-	// had bumped — so the column stayed stuck wide with nothing (not even
-	// auto-fit-all, which only touches col[data-auto] columns; this one had
-	// been left with a genuine inline width) able to shrink it back short of
-	// a full unrelated re-render. Fixed with captureColWidthForTextEdit
-	// (renderAutofit.ts), which snapshots both widths before any edit-time
-	// growth and is invoked from inside restoreNodes() itself, so every
-	// existing "no real change" path gets the undo for free.
-	test('an edit that ends with no real content change restores the column\'s pre-edit width', { tag: '@geometry' }, async ({ page, renderFull }) => {
-		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
-		const cell = 'td[data-row="1"][data-col="1"]';
-		await page.locator(cell).click();
-		const editor = page.locator(`${cell} .bt-cell-editor`);
+	test('an edit that ends with no change (a cancelled IME composition) leaves the column as it was', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(NOWRAP());
+		await page.locator(CELL).click();
+		const editor = page.locator(`${CELL} .bt-cell-editor`);
 		await expect(editor).toHaveCount(1);
-
-		const widthBefore = await page.locator('col[data-col="1"]').evaluate(el => (el as HTMLElement).style.width);
-
-		// Simulate an IME composition candidate that visibly widens the cell,
-		// then gets cancelled — the browser reverts the editor's content back
-		// to the original stored value with no 'compositiondata' ever confirmed,
-		// which is exactly what makes save()'s newValue === rawValue check take
-		// the restoreNodes() (no real change) branch instead of a commit.
+		const before = await cellWidth(page);
 		await editor.evaluate((el) => {
 			el.dispatchEvent(new CompositionEvent('compositionstart'));
 			const text = 'a'.repeat(130);
 			el.textContent = text;
 			el.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, data: text } as InputEventInit));
 		});
-		await page.waitForTimeout(30);
-		const widthDuring = await page.locator('col[data-col="1"]').evaluate(el => (el as HTMLElement).style.width);
-		expect(parseFloat(widthDuring)).toBeGreaterThan(parseFloat(widthBefore) || 40);
-
+		expect(await cellWidth(page)).toBeGreaterThan(before + 100);
 		await editor.evaluate((el) => {
-			el.textContent = 'y'; // reverted by the browser on a cancelled composition
+			el.textContent = 'y';
 			el.dispatchEvent(new CompositionEvent('compositionend', { data: '' }));
 			el.blur();
 		});
-		await page.waitForTimeout(50);
-
-		const widthAfter = await page.locator('col[data-col="1"]').evaluate(el => (el as HTMLElement).style.width);
-		expect(widthAfter).toBe(widthBefore);
-		const ops = await page.evaluate(() => (window as unknown as { __btOps: unknown[] }).__btOps);
-		expect(ops).toEqual([]); // genuinely no change was ever committed
+		await expect.poll(() => cellWidth(page)).toBeCloseTo(before, 0);
+		expect(await page.evaluate(() => (window as unknown as { __btOps: unknown[] }).__btOps)).toEqual([]);
 	});
 
-	test('Escape after growing an auto column restores its pre-edit width', { tag: '@geometry' }, async ({ page, renderFull }) => {
-		await renderFull(tableSource({ widths: [150, undefined], rows: [{ 0: 'x', 1: 'y' }] }));
-		const cell = 'td[data-row="1"][data-col="1"]';
-		await page.locator(cell).click();
-		const editor = page.locator(`${cell} .bt-cell-editor`);
-		await expect(editor).toHaveCount(1);
-
-		const widthBefore = await page.locator('col[data-col="1"]').evaluate(el => (el as HTMLElement).style.width);
-		await page.keyboard.type('a fairly long line of text that would exceed a narrow auto column width by a lot honestly');
-		await page.waitForTimeout(30);
-		const widthDuring = await page.locator('col[data-col="1"]').evaluate(el => (el as HTMLElement).style.width);
-		expect(parseFloat(widthDuring)).toBeGreaterThan(parseFloat(widthBefore) || 40);
-
+	test('Escape leaves the column as it was', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(NOWRAP());
+		await page.locator(CELL).click();
+		await expect(page.locator(`${CELL} .bt-cell-editor`)).toHaveCount(1);
+		const before = await cellWidth(page);
+		await page.keyboard.type(LONG);
+		expect(await cellWidth(page)).toBeGreaterThan(before + 100);
 		await page.keyboard.press('Escape');
-		await page.waitForTimeout(30);
+		await expect.poll(() => cellWidth(page)).toBeCloseTo(before, 0);
+	});
+});
 
-		const widthAfter = await page.locator('col[data-col="1"]').evaluate(el => (el as HTMLElement).style.width);
-		expect(widthAfter).toBe(widthBefore);
+test.describe('editing a column that wraps', () => {
+	test('long text wraps inside the view instead of widening the table past it', { tag: '@geometry' }, async ({ page, renderFull }) => {
+		await renderFull(WRAP);
+		await page.locator(CELL).click();
+		const editor = page.locator(`${CELL} .bt-cell-editor`);
+		await expect(editor).toHaveCount(1);
+		const oneLine = await height(editor);
+		await page.keyboard.type(LONG);
+		const g = await page.evaluate(() => {
+			const w = document.querySelector('.bt-table-wrapper') as HTMLElement;
+			return { scrollW: w.scrollWidth, viewW: w.clientWidth };
+		});
+		expect(g.scrollW).toBeLessThanOrEqual(g.viewW + 1);
+		expect(await height(editor)).toBeGreaterThan(oneLine * 1.5);
 	});
 });

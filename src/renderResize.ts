@@ -2,14 +2,14 @@ import type { Component } from 'obsidian';
 import type { TableModelV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import type { StructuralOpHandler } from './renderTypes';
-import { colMinWidth, colRightX } from './renderAutofit';
+import { colMinWidth, colRightX, colWidthOf, freezeColWidths, setFrozenColWidth } from './renderAutofit';
 import { ownCells, ownCols } from './renderOwnScope';
 
 /**
- * Wire a handle element to resize column `colIdx`: hover/drag indicator line,
- * live <col> width update, table-width re-pin, double-click auto-fit, and commit.
- * The boundary is computed from <col> geometry (colRightX) so it works even when
- * the column is covered by a header merge and has no individual header cell.
+ * Wire a handle element to resize column `colIdx`: hover/drag indicator line, live width update, double-click
+ * auto-fit, and commit. The boundary is read off the <col>, so it works even when the column is covered by a header
+ * merge and has no individual header cell. Dragging pins the column's cells to the new width the way a render pins a
+ * column that has one, so a column without a width becomes one with a width, as in Excel.
  */
 export function setupColResize(
 	handle: HTMLElement,
@@ -45,10 +45,8 @@ export function setupColResize(
 	// kept needing another special case for another scroll/view-size
 	// combination; matching the table's own DOM-nested geometry sidesteps the
 	// whole class of bug instead).
-	// parentRect/tblRect are visual (getBoundingClientRect); --ri-* are
-	// consumed as logical left/top/height, and colRightX (from style.width) is
-	// already logical — divide every visual difference/size by zoom before
-	// mixing it in, same correction shape as scrollContentOffset's own
+	// parentRect/tblRect are visual (getBoundingClientRect); --ri-* are consumed as logical left/top/height —
+	// divide every visual difference/size by zoom, same correction shape as scrollContentOffset's own
 	// (renderGeometry.ts's NO_ZOOM doc comment).
 	const makeColLine = (): HTMLElement => {
 		const parent = tbl.parentElement!;
@@ -56,7 +54,7 @@ export function setupColResize(
 		const tblRect = tbl.getBoundingClientRect();
 		const line = parent.createDiv({ cls: 'bt-resize-indicator bt-resize-indicator-col' });
 		line.setCssProps({
-			'--ri-x':      `${(tblRect.left - parentRect.left) / getZoom() + colRightX(tbl, colIdx)}px`,
+			'--ri-x':      `${(tblRect.left - parentRect.left) / getZoom() + colRightX(tbl, colIdx, getZoom())}px`,
 			'--ri-top':    `${(tblRect.top - parentRect.top) / getZoom()}px`,
 			'--ri-height': `${tblRect.height / getZoom()}px`,
 		});
@@ -93,7 +91,11 @@ export function setupColResize(
 
 		const startX = e.clientX;
 		const MIN    = colMinWidth();
-		const startW = parseInt(thisCol.style.width) || col.width || MIN;
+		const startW = Math.round(colWidthOf(thisCol, getZoom())) || col.width || MIN;
+		// For the length of the drag the table is laid out with fixed widths, every column held at the width it has
+		// now: an auto layout measures every cell again on each move, and the other columns keep still anyway, as in
+		// Excel. The op on release rebuilds the table, which lays it out again from the model.
+		const unfreeze = freezeColWidths(tbl, getZoom());
 
 		if (colLine) colLine.setCssProps({ '--bt-ri-opacity': '0.75' });
 		else { colLine = makeColLine(); colLine.setCssProps({ '--bt-ri-opacity': '0.75' }); }
@@ -114,22 +116,11 @@ export function setupColResize(
 			// correction shape used throughout renderer.ts (NO_ZOOM's doc comment).
 			const delta = Math.round((ev.clientX - startX) / getZoom());
 			const newW  = Math.max(MIN, startW + delta);
-			thisCol.style.setProperty('width', `${newW}px`);
-			// Only this column's own width changes — every other column (and the
-			// table's overall width) grows/shrinks by exactly that amount, matching
-			// both Excel's own column-resize behaviour and how row-resize already
-			// works here (bindResizeHandle below never touches any other row).
-			// Reported after an earlier version mirrored the shrink/growth onto the
-			// immediate neighbor to keep the table's total width constant — visibly
-			// inconsistent with both of those. Scoped to ownCols so resizing the
-			// OUTER table's column never sums in a nested rich-table's own <col>s.
-			const sum = ownCols(tbl)
-				.reduce((s, c) => s + (parseInt(c.style.width) || 0), 0);
-			tbl.style.setProperty('width', `${sum}px`);
+			setFrozenColWidth(tbl, thisCol, newW);
 
 			if (colLine) {
 				const parentLeft = tbl.parentElement!.getBoundingClientRect().left;
-				colLine.setCssProps({ '--ri-x': `${(tbl.getBoundingClientRect().left - parentLeft) / getZoom() + colRightX(tbl, colIdx)}px` });
+				colLine.setCssProps({ '--ri-x': `${(tbl.getBoundingClientRect().left - parentLeft) / getZoom() + colRightX(tbl, colIdx, getZoom())}px` });
 			}
 			// Grid auto-updates edge-add strip sizes — no manual repositioning needed.
 			tbl.dispatchEvent(new CustomEvent('bt-layout-changed', { detail: { axis: 'col' } }));
@@ -140,7 +131,8 @@ export function setupColResize(
 			colDragging = false;
 			hideColLine();
 			const delta = Math.round((ev.clientX - startX) / getZoom());
-			if (delta === 0) return;
+			// No op, so no rebuild: the table has to be put back as it was.
+			if (delta === 0) { unfreeze(); return; }
 			const newW = Math.max(MIN, startW + delta);
 			void onStructuralOp({ type: 'set-col-width', colId: col.id, width: newW });
 		};

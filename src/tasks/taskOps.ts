@@ -10,7 +10,7 @@ import { fieldById } from './taskFields';
 /** Ops that act on columns or on the table as a whole, and mean the same without stored rows. */
 const ALLOWED = new Set<StructuralOpV2['type']>([
 	'insert-col', 'delete-col', 'move-col', 'move-cols', 'hide-col', 'show-col-group',
-	'set-col-name', 'set-col-width', 'set-col-align', 'set-col-type',
+	'set-col-name', 'set-col-width', 'set-col-align', 'set-col-wrap', 'set-table-wrap', 'set-col-type',
 	'set-title', 'set-tasks-query', 'set-footer', 'set-theme', 'toggle-lock', 'toggle-collapse',
 	'set-freeze-rows', 'set-freeze-cols', 'set-view-width', 'set-view-height',
 	'set-status-bar-mode', 'set-status-bar-scroll-width', 'set-zoom',

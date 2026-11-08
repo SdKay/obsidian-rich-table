@@ -11,24 +11,26 @@ export interface TaskField {
 	label: string;
 	/** The Tasks sort line this field's column sorts by; absent when Tasks has none for it. */
 	sort?: SortKey;
+	/** Text reads from the left; a mark or a date sits in the middle, the table's default. */
+	align?: 'left';
 }
 
 /** In the order they are offered. */
 export const TASK_FIELDS: readonly TaskField[] = [
 	{ id: 'status', label: 'Status', sort: 'status' },
-	{ id: 'body', label: 'Task', sort: 'description' },
+	{ id: 'body', label: 'Task', sort: 'description', align: 'left' },
 	{ id: 'due', label: 'Due', sort: 'due' },
 	{ id: 'scheduled', label: 'Scheduled', sort: 'scheduled' },
 	{ id: 'start', label: 'Start', sort: 'start' },
 	{ id: 'created', label: 'Created', sort: 'created' },
 	{ id: 'done', label: 'Done', sort: 'done' },
 	{ id: 'priority', label: 'Priority', sort: 'priority' },
-	{ id: 'tags', label: 'Tags', sort: 'tag' },
-	{ id: 'recurrence', label: 'Repeats' },
-	{ id: 'file', label: 'File', sort: 'filename' },
-	{ id: 'path', label: 'Path', sort: 'path' },
-	{ id: 'heading', label: 'Heading', sort: 'heading' },
-	{ id: 'description', label: 'Description', sort: 'description' },
+	{ id: 'tags', label: 'Tags', sort: 'tag', align: 'left' },
+	{ id: 'recurrence', label: 'Repeats', align: 'left' },
+	{ id: 'file', label: 'File', sort: 'filename', align: 'left' },
+	{ id: 'path', label: 'Path', sort: 'path', align: 'left' },
+	{ id: 'heading', label: 'Heading', sort: 'heading', align: 'left' },
+	{ id: 'description', label: 'Description', sort: 'description', align: 'left' },
 ];
 
 /** The columns a new tasks table starts with. */

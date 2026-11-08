@@ -51,3 +51,15 @@ describe('hasQuery', () => {
 		expect(hasQuery('# to do later\n  # still nothing')).toBe(false);
 	});
 });
+
+describe('the columns a new tasks table starts with', () => {
+	const byField = (f: string) => buildTasksBlock().columns.find(c => c.field === f)!;
+	it('gives no column a width: each is as wide as its header and content need, and the text wraps', () => {
+		for (const c of buildTasksBlock().columns) expect(c.width, c.field).toBeUndefined();
+		expect(buildTasksBlock().wrap).toBe(true);
+	});
+	it('reads text from the left and leaves marks and dates centred', () => {
+		for (const f of ['body', 'tags', 'file']) expect(byField(f).align, f).toBe('left');
+		for (const f of ['status', 'due', 'priority']) expect(byField(f).align, f).toBeUndefined();
+	});
+});

@@ -86,7 +86,8 @@ Each entry has:
 | `id`     | string | — | Stable ID, e.g. `c_000000` |
 | `name`   | string | — | Column header text |
 | `type`   | string | — | Built-in or custom choice type ([cell-content.md](references/cell-content.md)) |
-| `width`  | number | auto | Column width in px |
+| `width`  | number | auto | Column width in px. Without it the column is sized to its content: one that wraps shares out the room the view leaves |
+| `wrap`   | boolean | table's `wrap`, else `true` | Whether text wraps in the column. `false` keeps it on one line (cut off at `width` when there is one) |
 | `align`  | `left` \| `center` \| `right` | — | Text alignment |
 | `hidden` | boolean | false | Hidden (collapsed) column |
 | `filter` | array of strings | — | Values to SHOW for this column (row filtering). Managed automatically by the plugin UI. |
@@ -193,7 +194,7 @@ These fields are all optional and documented in separate files. When the user's 
 | Field(s) | Reference |
 | -------- | --------- |
 | `formulas` (computed cells, `=SUM(...)`, error values) | [references/formulas.md](references/formulas.md) |
-| `theme`, `locked`, `collapsed`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId` | [references/view-and-display.md](references/view-and-display.md) |
+| `theme`, `locked`, `collapsed`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `wrap`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId` | [references/view-and-display.md](references/view-and-display.md) |
 | `sheets`/`active_sheet` (multi-sheet, `version: 3`), `xlsxSource` | [references/workbook-and-xlsx.md](references/workbook-and-xlsx.md) |
 | `tasks` (rows are the tasks a Tasks-plugin query finds), `columns[].field` | [references/tasks.md](references/tasks.md) |
 | `styles[].target` grammar and cascade | [references/styles.md](references/styles.md) |

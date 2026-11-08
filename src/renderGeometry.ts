@@ -208,10 +208,8 @@ export function computeVisibleGeom(table: HTMLElement, root: HTMLElement, wrappe
  * every table — no nested-vs-top-level distinction). Kept as a standalone,
  * DOM-derived function rather than reusing that closure-local one because it
  * must run from tableBlock.ts's render(), AFTER the atomic DOM swap that
- * first makes the table's own container genuinely attached and measurable —
- * the same reason applyAutoColWidths (renderAutofit.ts) is its own
- * standalone post-swap call rather than something renderTable() does
- * internally (it runs against a still-detached tree there). Runs for every
+ * first makes the table's own container genuinely attached and measurable
+ * (renderTable() itself runs against a still-detached tree). Runs for every
  * `.bt-render-root` a render just produced, a NESTED table's own root
  * included — found by the exact same blanket query, with no special-casing
  * of its own to tell the two apart (see tableBlock.ts).

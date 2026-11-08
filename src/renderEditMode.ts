@@ -7,7 +7,6 @@ import { labelFormulaToIds } from './formulaLabel';
 import { decidePaste, insertPlainText, payloadOf, takePlainPaste, type ClipboardPayload } from './editorPaste';
 import { trackCellContextMenu } from './renderEditorMenu';
 import { mountNativeCellEditor } from './nativeCellEditor';
-import { growColLiveForTextEdit, captureColWidthForTextEdit } from './renderAutofit';
 import { backspaceInList, continueList, listStartAnyNumber, renumberLists } from './cellList';
 
 /** The text with its numbered lists numbered the way they are shown, so what is stored and what is seen agree. */
@@ -244,8 +243,7 @@ export function enterLineEdit(
 /**
  * Prototype: edits a plain text cell in Obsidian's own Markdown editor, so
  * completions (`[[`, `==`, `#`, `/`) are the real ones. Covers commit, cancel and
- * Tab/Enter navigation only; formulas, live column growth and rebuild-resume are
- * not wired. Returns false when the native editor can't be built, so the caller
+ * Tab/Enter navigation only; formulas and rebuild-resume are not wired. Returns false when the native editor can't be built, so the caller
  * falls back to enterEditMode.
  */
 export function enterNativeEditMode(
@@ -258,12 +256,10 @@ export function enterNativeEditMode(
 	component: Component,
 	onCellChange: CellChangeHandler,
 	onEditNavigate?: EditNavigateHandler,
-	zoom = 1,
 	cacheKey?: string,
 	initialText?: string,
 ): boolean {
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
-	const restoreColWidth = captureColWidthForTextEdit(el);
 	el.empty();
 	el.addClass('bt-editing');
 	el.style.removeProperty('box-shadow');
@@ -286,12 +282,11 @@ export function enterNativeEditMode(
 		if (commit && value !== rawValue) { void onCellChange(rowIdx, colIdx, numberedAsShown(value)); return; }
 		el.empty();
 		for (const n of savedNodes) el.appendChild(n);
-		restoreColWidth();
 	};
-	const grow = () => { draft = editor?.getValue() ?? draft; const content = host.querySelector<HTMLElement>('.cm-content'); if (content) growColLiveForTextEdit(el, content, zoom); };
+	const keepDraft = () => { draft = editor?.getValue() ?? draft; };
 	const editor = mountNativeCellEditor({
 		app, host, owner: component, sourcePath, value: initialText ?? rawValue,
-		onChange: grow,
+		onChange: keepDraft,
 		onKey: key => {
 			if (key === 'Escape') finish(false, 'stay');
 			else if (key === 'Enter') finish(true, 'stay');
@@ -303,10 +298,8 @@ export function enterNativeEditMode(
 		el.removeClass('bt-editing');
 		el.empty();
 		for (const n of savedNodes) el.appendChild(n);
-		restoreColWidth();
 		return false;
 	}
-	grow();
 	editor.view.dom.addEventListener('focusout', () => {
 		window.setTimeout(() => { if (!editor.view.dom.contains(activeDocument.activeElement)) finish(true); }, 0);
 	});
@@ -335,21 +328,12 @@ export function enterEditMode(
 	initialText?: string,
 	onEditNavigate?: EditNavigateHandler,
 	formulaHooks?: FormulaEditHooks,
-	/** Zoom factor for growColLiveForTextEdit's own visual-to-logical
-	 *  correction — see that function's doc comment (renderAutofit.ts). */
-	zoom = 1,
 ): void {
 	const savedNodes = Array.from(el.childNodes).map(n => n.cloneNode(true));
 
-	const restoreColWidth = captureColWidthForTextEdit(el);
 	const restoreNodes = () => {
 		el.empty();
 		for (const node of savedNodes) el.appendChild(node);
-		// Undoes growColLiveForTextEdit's own (DOM-only) width bump — every
-		// restoreNodes() call site means "no real change, reverting the edit
-		// in place" (no re-render is coming to fix a stale width the normal
-		// way), so the two must always travel together.
-		restoreColWidth();
 	};
 
 	el.empty();
@@ -425,10 +409,6 @@ export function enterEditMode(
 		if (!inFormulaMode && text === '=') enterFormulaMode();
 		else if (inFormulaMode && text.startsWith('==')) exitFormulaMode();
 	});
-
-	const grow = () => growColLiveForTextEdit(el, editor, zoom);
-	grow(); // seedChar/resume already set editor.textContent before any 'input' fires
-	editor.addEventListener('input', grow);
 
 	let committed = false;
 

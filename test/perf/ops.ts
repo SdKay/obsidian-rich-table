@@ -53,6 +53,9 @@ export const OPS: { [K in TableOpType]?: Make } = {
 	'set-col-type': (i) => ({ type: 'set-col-type', colId: `c_${6 + i}`, colType: 'task-status' }),
 	'set-col-width': (i) => ({ type: 'set-col-width', colId: 'c_3', width: 100 + i }),
 	'set-col-align': (i) => ({ type: 'set-col-align', colId: c(i), align: (['left', 'center', 'right'] as const)[i % 3]! }),
+	// Flip back and forth: each repetition changes the note.
+	'set-col-wrap': (i) => ({ type: 'set-col-wrap', colId: 'c_3', wrap: i % 2 === 0 ? false : null }),
+	'set-table-wrap': (i) => ({ type: 'set-table-wrap', wrap: i % 2 === 0 ? false : null }),
 	'set-row-height': (i, n) => ({ type: 'set-row-height', rowId: r(i, n), height: 30 + i }),
 	'set-cell-style': (i, n) => ({ type: 'set-cell-style', rowId: r(i, n), colId: c(i), ...style, size: 12 + i }),
 	'set-range-style': (i, n) => ({ type: 'set-range-style', target: `${r(i, n)}.${c(i)}:${r(i + 1, n)}.${c(i + 1)}`, ...style, size: 12 + i }),

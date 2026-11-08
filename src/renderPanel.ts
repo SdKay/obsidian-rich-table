@@ -9,6 +9,7 @@ import { cellEffectiveStyle } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { pinHover, showMenuPinned } from './renderHoverPin';
 import type { TableEdits, TableOpType } from './tableEdits';
+import { placePanel } from './panelPlace';
 
 export interface CellOpDef {
 	icon:    string;
@@ -191,9 +192,7 @@ let closeActivePanel: (() => void) | null = null;
  * (so the panel doesn't flash at 0,0), then call this once the content exists —
  * a fixed height estimate undershoots a tall panel (e.g. cell-ops + full style
  * section + Apply/Clear footer) and pushes the buttons below the fold, where
- * they can't be clicked. Prefers below the anchor, flips above if that
- * overflows, and finally pins to the viewport edge (with a max-height so an
- * over-tall panel scrolls internally rather than clipping its footer).
+ * they can't be clicked. Where it goes is `placePanel` (panelPlace.ts).
  */
 export function clampPanelToViewport(
 	panel: HTMLElement, anchor: DOMRect,
@@ -209,10 +208,9 @@ export function clampPanelToViewport(
 	const h = panel.offsetHeight;
 	const w = panel.offsetWidth;
 
-	let top = anchor.bottom + 4;
-	if (top + h > vh - gap) top = anchor.top - h - 4;      // flip above the anchor
-	if (top < gap || top + h > vh - gap) top = vh - gap - h; // fits neither way: pin to the bottom edge, off the selector strip
-	top = Math.max(gap, top);
+	const place = placePanel({ anchorTop: anchor.top, anchorBottom: anchor.bottom, height: h, viewportHeight: vh });
+	if (place.maxHeight !== null) panel.setCssProps({ [vars.maxHeight]: `${place.maxHeight}px` });
+	const top = place.top;
 
 	let left = anchor.left;
 	if (left + w > vw - gap) left = anchor.right - w;

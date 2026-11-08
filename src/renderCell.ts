@@ -208,7 +208,7 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 			if (colSpan > 1) el.colSpan = colSpan;
 		}
 
-		applyColStyle(el, col);
+		applyColStyle(el, col, model, colIdx, merge ? merge.endCol : colIdx);
 		applyResolvedStyle(el, styleOf(rowIdx, colIdx));
 		// Apply stored row height (height on td acts as minimum row height)
 		const rh = currentRow?.height;
@@ -407,7 +407,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		bindCellActivation(el, {
 			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
 			delayMs: 200,
-			primaryAction: (_evt, seedChar) => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, seedChar, onEditNavigate, undefined, measureZoomFactor(el)); },
+			primaryAction: (_evt, seedChar) => { if (el.isConnected) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, seedChar, onEditNavigate, undefined); },
 			panelAction: (evt) => openPanel(evt),
 		});
 	}
@@ -418,7 +418,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	// draft text was typed, instead of silently reverting to the column's stored name.
 	if (renamable && cacheKey) {
 		const resume = takeLiveEdit(cacheKey, 0, colIdx);
-		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, resume.getDraftText(), onEditNavigate, undefined, measureZoomFactor(el));
+		if (resume) enterEditMode(el, value, 0, colIdx, app, sourcePath, onCellChange, onPasteGridHeader, cacheKey, resume.getDraftText(), onEditNavigate, undefined);
 	}
 
 	// Double-click / Ctrl+click → style-and-type panel is wired via bindCellActivation above.
@@ -704,7 +704,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 	/** Plain text cells only: a formula cell keeps the built-in editor, which owns formula mode. */
 	const tryNativeEdit = (draft?: string, seedChar?: string): boolean =>
 		nativeEditorEnabled() && !seedChar && !existingFormula && editable
-		&& enterNativeEditMode(el, value, rowIdx, colIdx, app, sourcePath, component, onCellChange, onEditNavigate, measureZoomFactor(el), cacheKey, draft);
+		&& enterNativeEditMode(el, value, rowIdx, colIdx, app, sourcePath, component, onCellChange, onEditNavigate, cacheKey, draft);
 
 	const openDataPanel = () => { if (!el.hasClass('bt-editing')) openPanel({ showTextColor: true }); };
 
@@ -726,7 +726,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 			primaryAction: (_evt, seedChar) => {
 				if (!el.isConnected) return;
 				if (tryNativeEdit(undefined, seedChar)) return;
-				enterEditMode(el, formulaDisplayValue, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, seedChar, onEditNavigate, formulaHooks, measureZoomFactor(el));
+				enterEditMode(el, formulaDisplayValue, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, seedChar, onEditNavigate, formulaHooks);
 			},
 			panelAction: () => openDataPanel(),
 		});
@@ -740,7 +740,7 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		const resume = takeLiveEdit(cacheKey, rowIdx, colIdx);
 		if (resume) {
 			const draft = resume.getDraftText();
-			if (!tryNativeEdit(draft)) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, draft, onEditNavigate, formulaHooks, measureZoomFactor(el));
+			if (!tryNativeEdit(draft)) enterEditMode(el, value, rowIdx, colIdx, app, sourcePath, onCellChange, onPasteGrid, cacheKey, draft, onEditNavigate, formulaHooks);
 		}
 	}
 

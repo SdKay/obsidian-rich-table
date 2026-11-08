@@ -25,8 +25,8 @@ test('dragging column B never changes column C\'s width, and the table\'s total 
 	await expect.poll(() => page.locator('.bt-col-selector').evaluate((el: HTMLElement) => el.classList.contains('bt-strip-visible')))
 		.toBe(true);
 
-	const startWidths = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => parseInt(c.style.width)));
-	const startTableWidth = await page.locator('table.bt-table').evaluate(el => parseInt((el as HTMLElement).style.width));
+	const startWidths = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => Math.round(c.getBoundingClientRect().width)));
+	const startTableWidth = await page.locator('table.bt-table').evaluate(el => Math.round(Array.from(el.querySelectorAll('col')).reduce((s, c) => s + c.getBoundingClientRect().width, 0)));
 	expect(startWidths).toEqual([60, 60, 60]);
 	expect(startTableWidth).toBe(180);
 
@@ -40,9 +40,9 @@ test('dragging column B never changes column C\'s width, and the table\'s total 
 		const move1 = new PointerEvent('pointermove', { pointerId: 1, clientX: 340, clientY: 10, bubbles: true, cancelable: true });
 		el.dispatchEvent(move1);
 	});
-	const widthsWhileWidening = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => parseInt(c.style.width)));
+	const widthsWhileWidening = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => Math.round(c.getBoundingClientRect().width)));
 	expect(widthsWhileWidening, 'only B should have grown').toEqual([60, 100, 60]);
-	const tableWidthWhileWidening = await page.locator('table.bt-table').evaluate(el => parseInt((el as HTMLElement).style.width));
+	const tableWidthWhileWidening = await page.locator('table.bt-table').evaluate(el => Math.round(Array.from(el.querySelectorAll('col')).reduce((s, c) => s + c.getBoundingClientRect().width, 0)));
 	expect(tableWidthWhileWidening, 'the table should have grown by exactly the amount B grew').toBe(220);
 
 	await handle.evaluate((el: HTMLElement) => {
@@ -55,10 +55,10 @@ test('dragging column B never changes column C\'s width, and the table\'s total 
 		el.dispatchEvent(up);
 	});
 
-	const finalWidths = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => parseInt(c.style.width)));
+	const finalWidths = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => Math.round(c.getBoundingClientRect().width)));
 	expect(finalWidths[1], 'B clamps to its minimum').toBe(40);
 	expect(finalWidths[2], 'C must never move, clamped or not').toBe(60);
-	const finalTableWidth = await page.locator('table.bt-table').evaluate(el => parseInt((el as HTMLElement).style.width));
+	const finalTableWidth = await page.locator('table.bt-table').evaluate(el => Math.round(Array.from(el.querySelectorAll('col')).reduce((s, c) => s + c.getBoundingClientRect().width, 0)));
 	expect(finalTableWidth, "the table's total width should reflect only B's own change").toBe(160);
 
 	const ops = await page.evaluate(() => window.__btOps);

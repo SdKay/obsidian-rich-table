@@ -35,6 +35,12 @@ describe('buildBlankTable', () => {
 		expect(reparsed.rows.map(r => r.id)).toEqual(model.rows.map(r => r.id));
 	});
 
+	it('says in the block that its text wraps', () => {
+		const model = buildBlankTable(2, 3);
+		expect(model.wrap).toBe(true);
+		expect(serializeTable(model)).toMatch(/^wrap: true$/m);
+	});
+
 	it('supports a 1×1 minimum', () => {
 		const model = buildBlankTable(1, 1);
 		expect(model.columns).toHaveLength(1);

@@ -3,7 +3,8 @@ import { tableSource } from '../../common/fixtures';
 import type { Page } from '@playwright/test';
 
 // While a cell is edited, an auto column widens with its text but never past the
-// view; a fixed-width column keeps its width and the text wraps inside it.
+// view; a fixed-width column keeps its width and the text wraps inside it. The browser does this on its own: a cell
+// that wraps is laid out against the view's width while it is edited as at rest.
 const LONG = 'a fairly long line of text that goes on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on';
 const CELL = 'td[data-row="1"][data-col="1"]';
 
@@ -89,8 +90,7 @@ test('the width set while editing is not persisted', { tag: '@geometry' }, async
 	expect(ops.some(o => o.type === 'set-col-width')).toBe(false);
 });
 
-// A cell that is already wider than the view at rest (its column was sized to the whole line)
-// is brought back inside the view for the edit, instead of keeping that width.
+// A description written on one long line wraps inside the view at rest, and stays inside it while it is edited.
 const WIDE_AT_REST = `---
 version: 2
 columns:
@@ -107,11 +107,11 @@ viewWidth: 736
 ---
 `;
 
-test('an auto column that is wider than the view at rest is brought inside it for the edit', { tag: '@geometry' }, async ({ page, renderFull }) => {
+test('a long auto column wraps inside the view at rest and while it is edited', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(WIDE_AT_REST);
 	const rest = await page.evaluate(() => (document.querySelector('.bt-table-wrapper') as HTMLElement).scrollWidth);
 	const viewW = await page.evaluate(() => (document.querySelector('.bt-table-wrapper') as HTMLElement).clientWidth);
-	expect(rest, 'the fixture should overflow the view at rest').toBeGreaterThan(viewW + 100);
+	expect(rest, 'the table runs past the view at rest').toBeLessThanOrEqual(viewW + 1);
 
 	await page.locator('td[data-row="1"][data-col="2"]').click();
 	await page.locator('td[data-row="1"][data-col="2"] .bt-cell-editor').waitFor();
@@ -132,7 +132,7 @@ test('an auto column that is wider than the view at rest is brought inside it fo
 test('typing on past the limit leaves the column at the limit', { tag: '@geometry' }, async ({ page, renderFull }) => {
 	await renderFull(SPECS.mixedAuto);
 	await startEditing(page);
-	const colWidth = () => page.locator('col[data-col="1"]').evaluate(el => parseFloat((el as HTMLElement).style.width));
+	const colWidth = () => page.locator('col[data-col="1"]').evaluate(el => el.getBoundingClientRect().width);
 	let last = await colWidth();
 	let reached = 0;
 	for (const ch of LONG) {

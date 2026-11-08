@@ -211,7 +211,7 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 				};
 			});
 			// An AUTO-LAYOUT table on purpose: with explicit column widths
-			// `table-layout: fixed` pins every column, so a padding or border-width
+			// every cell is pinned to its column's width, so a padding or border-width
 			// change measures identical and this assertion would have no teeth
 			// (verified — it passed unchanged with a deliberate padding injected).
 			// Auto-layout is also the configuration the feedback loop hung in.

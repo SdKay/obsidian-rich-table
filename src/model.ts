@@ -70,6 +70,9 @@ export interface ColumnDefV2 {
 	/** Values to SHOW for this column (empty/absent = no filter). Lives on the
 	 *  column itself — deleting the column drops its filter for free. */
 	filter?: string[];
+	/** Whether text wraps inside the column. Absent = the table's `wrap`, else yes. An auto-width column that wraps
+	 *  shares out the room the view leaves; one that does not is as wide as its longest line. */
+	wrap?: boolean;
 	/** In a table with `tasks`, which property of each task the column shows (see `src/tasks/taskFields.ts`). */
 	field?: string;
 }
@@ -200,6 +203,8 @@ export interface TableModelV2 {
 	/** Column-axis mirror of `freezeRows` — freezes the first `freezeCols`
 	 *  columns. */
 	freezeCols?: number;
+	/** The default for every column's `wrap`. Absent = wrap. */
+	wrap?: boolean;
 	/** Manual view width in px. Absent = auto (hug the table's natural width,
 	 *  capped at the container, with horizontal scroll for wider tables) —
 	 *  today's behaviour, so absence keeps old tables rendering identically. */

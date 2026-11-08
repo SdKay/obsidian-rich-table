@@ -7745,6 +7745,8 @@ var STRUCTURAL_OP_TYPE_MAP = {
   "set-col-type": true,
   "set-col-width": true,
   "set-col-align": true,
+  "set-col-wrap": true,
+  "set-table-wrap": true,
   "set-row-height": true,
   "set-cell-style": true,
   "set-range-style": true,
@@ -8086,6 +8088,18 @@ function applyStructuralOpV2(model, op) {
       if (!col) break;
       if (op.align) col.align = op.align;
       else delete col.align;
+      break;
+    }
+    case "set-col-wrap": {
+      const col = model.columns.find((c) => c.id === op.colId);
+      if (!col) break;
+      if (op.wrap === null) delete col.wrap;
+      else col.wrap = op.wrap;
+      break;
+    }
+    case "set-table-wrap": {
+      if (op.wrap === null) delete model.wrap;
+      else model.wrap = op.wrap;
       break;
     }
     case "set-row-height": {
@@ -9002,6 +9016,7 @@ function parseModelFields(yaml) {
     ...typeof yaml?.theme === "string" ? { theme: yaml.theme } : {},
     ...yaml?.locked === true ? { locked: true } : {},
     ...yaml?.collapsed === true ? { collapsed: true } : {},
+    ...typeof yaml?.wrap === "boolean" ? { wrap: yaml.wrap } : {},
     ...sort ? { sort } : {},
     ...aggregate.length > 0 ? { aggregate } : {},
     ...views.length > 0 ? { views } : {},
@@ -9078,6 +9093,7 @@ function parseColumns(raw) {
     if (c.hidden === true) col.hidden = true;
     if (typeof c.type === "string") col.type = c.type;
     if (typeof c.width === "number") col.width = c.width;
+    if (typeof c.wrap === "boolean") col.wrap = c.wrap;
     if (c.align === "left" || c.align === "center" || c.align === "right") col.align = c.align;
     if (Array.isArray(c.filter)) col.filter = c.filter.map((v) => String(v));
     if (typeof c.field === "string" && c.field !== "") col.field = c.field;
@@ -9212,6 +9228,7 @@ function serializeModelFields(m) {
       if (c.hidden) entry.hidden = true;
       if (c.type) entry.type = c.type;
       if (c.width) entry.width = c.width;
+      if (typeof c.wrap === "boolean") entry.wrap = c.wrap;
       if (c.align) entry.align = c.align;
       if (c.filter && c.filter.length > 0) entry.filter = c.filter;
       if (c.field) entry.field = c.field;
@@ -9252,6 +9269,7 @@ function serializeModelFields(m) {
   if (m.theme) obj.theme = m.theme;
   if (m.locked) obj.locked = true;
   if (m.collapsed) obj.collapsed = true;
+  if (typeof m.wrap === "boolean") obj.wrap = m.wrap;
   if (m.sort) obj.sort = { colId: m.sort.colId, dir: m.sort.dir };
   if (m.aggregate && m.aggregate.length > 0) obj.aggregate = m.aggregate;
   if (typeof m.freezeRows === "number") obj.freezeRows = m.freezeRows;

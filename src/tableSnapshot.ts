@@ -87,6 +87,13 @@ function prepareSnapshotClone(root: HTMLElement): { clone: HTMLElement; cleanup:
 	if (wrapper) {
 		wrapper.classList.remove('bt-view-fixed-w', 'bt-view-fixed-h');
 		wrapper.classList.add('bt-snapshot-expanded');
+		// Wrapping columns are laid out against the view's width; at full natural width each would be one long line.
+		// The table's own width covers a table wider than the view, whose content cannot wrap.
+		const liveTable = root.querySelector<HTMLElement>('table.bt-table');
+		const liveWrapper = root.querySelector<HTMLElement>('.bt-table-wrapper');
+		const row = liveTable?.parentElement;
+		const width = Math.max(liveWrapper?.clientWidth ?? 0, row?.scrollWidth ?? 0);
+		if (width > 0) wrapper.setCssProps({ '--bt-snapshot-width': `${width}px` });
 	}
 
 	const host = document.body.createDiv({ cls: 'bt-snapshot-host' });

@@ -5,6 +5,7 @@ import {
 } from './styleTarget';
 import type { StructuralOpHandler } from './renderTypes';
 import { getMergeOrigin } from './renderGridHelpers';
+import { cellSizing } from './wrap';
 
 /**
  * Apply a ResolvedStyleV2 to an element via inline style + CSS classes.
@@ -126,9 +127,15 @@ export function cellRawValue(model: TableModelV2, r: number, c: number): string 
 	return r === 0 ? (col.name ?? '') : (model.rows[r - 1]?.cells[col.id] ?? '');
 }
 
-export function applyColStyle(el: HTMLElement, col: ColumnDefV2): void {
-	// Width is now controlled solely by <colgroup>/<col> — no CSS variable needed
+/** The column's look on one of its cells: alignment, and the width and wrapping of the columns `from`..`to` it covers. */
+export function applyColStyle(el: HTMLElement, col: ColumnDefV2, model: Pick<TableModelV2, 'columns' | 'wrap'>, from: number, to = from): void {
 	if (col.align) el.addClass(`bt-align-${col.align}`);
+	const { width, nowrap } = cellSizing(model, from, to);
+	if (width !== null) {
+		el.addClass('bt-col-fixed');
+		el.setCssProps({ '--bt-cell-w': `${width}px` });
+	}
+	if (nowrap) el.addClass('bt-col-nowrap');
 }
 
 export function applyStyleRulesV2(el: HTMLElement, rowIdx: number, colIdx: number, model: TableModelV2): void {

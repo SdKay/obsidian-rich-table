@@ -14,5 +14,5 @@ export function buildBlankTable(rows: number, cols: number, theme?: string): Tab
 		for (const col of columns) cells[col.id] = '';
 		return { id: genId('r', rowIds), cells };
 	});
-	return { version: 2, columns, rows: dataRows, merges: [], styles: [], ...(theme ? { theme } : {}) };
+	return { version: 2, columns, rows: dataRows, merges: [], styles: [], wrap: true, ...(theme ? { theme } : {}) };
 }

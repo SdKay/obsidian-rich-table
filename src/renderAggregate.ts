@@ -80,7 +80,7 @@ export function renderAggregateRows(tbody: HTMLElement, model: TableModelV2): vo
 
 			const el = tr.createEl('td', { cls: 'bt-td bt-agg-td' });
 			el.dataset.col = String(c);
-			applyColStyle(el, col);
+			applyColStyle(el, col, model, c);
 			if (!labelPlaced) {
 				labelPlaced = true;
 				el.createSpan({ cls: 'bt-agg-label', text: aggLabel(agg) });

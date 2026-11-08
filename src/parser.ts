@@ -63,6 +63,7 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 		...(typeof yaml?.theme === 'string' ? { theme: yaml.theme } : {}),
 		...(yaml?.locked === true ? { locked: true } : {}),
 		...(yaml?.collapsed === true ? { collapsed: true } : {}),
+		...(typeof yaml?.wrap === 'boolean' ? { wrap: yaml.wrap } : {}),
 		...(sort ? { sort } : {}),
 		...(aggregate.length > 0 ? { aggregate } : {}),
 		...(views.length > 0 ? { views } : {}),
@@ -188,6 +189,7 @@ function parseColumns(raw: unknown): ColumnDefV2[] {
 		if (c.hidden === true)                                   col.hidden = true;
 		if (typeof c.type  === 'string')                         col.type   = c.type;
 		if (typeof c.width === 'number')                         col.width  = c.width;
+		if (typeof c.wrap === 'boolean')                         col.wrap   = c.wrap;
 		if (c.align === 'left' || c.align === 'center' || c.align === 'right') col.align = c.align;
 		if (Array.isArray(c.filter))                             col.filter = c.filter.map(v => String(v));
 		if (typeof c.field === 'string' && c.field !== '')       col.field = c.field;

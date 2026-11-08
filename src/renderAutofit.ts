@@ -1,6 +1,6 @@
 import type { StructuralOpHandler } from './renderTypes';
-import { editWidth } from './editWidth';
-import { ownCells, ownCols } from './renderOwnScope';
+import { ownCols } from './renderOwnScope';
+import { COL_MIN_WIDTH } from './wrap';
 import { measureZoomFactor, reserveSelectorLeftPad, applyOuterFrame } from './renderGeometry';
 import { shellStyled, whenStylesReady } from './stylesReady';
 
@@ -18,56 +18,49 @@ import { shellStyled, whenStylesReady } from './stylesReady';
  */
 const PILL_MEASURE_BUFFER = 2;
 
-/**
- * Minimum column width any column may render at.
- *
- * A typed column used to reserve enough width for its WIDEST POSSIBLE option
- * label up front (~8px/char + 24px), regardless of what's actually shown —
- * reported as wasted, distracting padding around a short actual value (e.g.
- * "Done") in a column pre-sized for its type's longest label ("In
- * Progress"). Dropped in favor of starting every column at this same plain
- * floor and growing it reactively when a cell's value actually needs more
- * (see growColForChoiceValue below, called right where a choice cell's value
- * changes) — content that's actually there drives the width, not a
- * hypothetical worst case that may never occur in this table.
- */
+/** The narrowest a column with a width of its own may be. */
 export function colMinWidth(): number {
-	return 40;
+	return COL_MIN_WIDTH;
+}
+
+/** A column's width as drawn, in logical px, read off its <col>. */
+export function colWidthOf(colEl: HTMLElement, zoom: number): number {
+	return colEl.getBoundingClientRect().width / zoom;
 }
 
 /**
- * Grows a choice column to fit the value a user just picked, if it's wider
- * than the column's current width — never shrinks. Called right after a
- * choice cell's pill is updated (renderCell.ts's menu `onClick`), reading
- * the pill's own already-updated `offsetWidth` synchronously (no need to
- * wait for the write-back/re-render round trip). Same measurement math as
- * autoFitAllColWidths's own pill branch, so a value that would trigger a
- * wider fit there triggers the same width here, just reactively instead of
- * on an explicit auto-fit action.
- *
- * A no-op for a column that's currently auto (col[data-auto], or no explicit
- * width at all because nothing in this table has one) — writing a width here
- * would turn it into a genuinely fixed column, when the point of "auto" is
- * that it doesn't need this reactive nudge at all: the next render's own
- * measurement pass (applyAutoColWidths) or, in an all-auto table, the
- * browser's own native table-layout:auto already picks up the wider pill on
- * its own.
+ * Lays the table out with fixed widths, every column held at the width it is drawn at now, and returns what lays it
+ * out as before. A drag changes one column at a time; with fixed widths each move is one column's change, where an
+ * auto layout would measure every cell again.
+ */
+export function freezeColWidths(table: HTMLElement, zoom: number): () => void {
+	const cols = ownCols(table);
+	const widths = cols.map(c => colWidthOf(c, zoom));
+	cols.forEach((c, i) => c.style.setProperty('width', `${widths[i]}px`));
+	table.style.setProperty('width', `${table.getBoundingClientRect().width / zoom}px`);
+	table.addClass('bt-cols-frozen');
+	return () => {
+		for (const c of cols) c.style.removeProperty('width');
+		table.style.removeProperty('width');
+		table.removeClass('bt-cols-frozen');
+	};
+}
+
+/** Changes one column of a table laid out by `freezeColWidths`; the table grows or shrinks by the same amount. */
+export function setFrozenColWidth(table: HTMLElement, colEl: HTMLElement, width: number): void {
+	const before = parseFloat(colEl.style.width) || 0;
+	colEl.style.setProperty('width', `${width}px`);
+	const tableW = parseFloat(table.style.width) || 0;
+	table.style.setProperty('width', `${tableW + width - before}px`);
+}
+
+/**
+ * Grows a column with a width of its own to fit the value just picked in one of its cells, if it is wider than the
+ * column — never shrinks. A column without a width needs no help: the browser already sizes it to its content.
  */
 export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: HTMLElement, onStructuralOp: StructuralOpHandler, zoom = 1): void {
-	const table = cellEl.closest('table');
-	const colIdxAttr = cellEl.dataset.col;
-	if (!table || colIdxAttr === undefined) return;
-	const colEl = table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`);
-	// table-layout:fixed only gets set when at least one column has an explicit
-	// width (renderer.ts's hasExplicitWidths) — an all-auto table stays plain
-	// table-layout:auto and needs no help from here either.
-	if (!colEl || colEl.dataset.auto || (table as HTMLElement).style.tableLayout !== 'fixed') return;
-
-	// The getBoundingClientRect() fallback is visual; colEl.style.width (the
-	// normal case) is already logical — divide only the visual fallback by
-	// zoom, same correction as scrollContentOffset's own (renderGeometry.ts's
-	// NO_ZOOM doc comment).
-	const currentWidth = parseInt(colEl.style.width) || cellEl.getBoundingClientRect().width / zoom;
+	if (!cellEl.hasClass('bt-col-fixed')) return;
+	const currentWidth = cellEl.getBoundingClientRect().width / zoom;
 	const view = activeDocument.defaultView;
 	const style = view ? view.getComputedStyle(cellEl) : null;
 	const padH = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24;
@@ -76,310 +69,6 @@ export function growColForChoiceValue(cellEl: HTMLElement, colId: string, pill: 
 	if (needed > currentWidth) {
 		onStructuralOp({ type: 'set-col-width', colId, width: needed });
 	}
-}
-
-/** Snapshots the CURRENT `<col>`/`<table>` width, before any edit-time growth
- *  touches them, and returns a function that restores exactly those two
- *  values. growColLiveForTextEdit only ever grows (never shrinks) while an
- *  edit is in progress — if that edit ends WITHOUT a real content change
- *  (Escape, or a value that round-trips back to what it started as, e.g. an
- *  IME composition the user cancelled), nothing else ever puts the width
- *  back: a real content change re-renders the whole table from a fresh
- *  colgroup, but a no-op edit takes a restore-the-old-DOM-nodes path that
- *  only knows about the CELL's own children, not the `<col>`/`<table>`
- *  siblings this function touched — reported as a column staying stuck wide
- *  after a cancelled IME candidate, fixable only by forcing an unrelated
- *  full re-render (opening/closing the raw code block). Call this once,
- *  before the editor's first keystroke, and invoke the returned function
- *  from enterEditMode's own cancel/no-change paths. */
-export function captureColWidthForTextEdit(cellEl: HTMLElement): () => void {
-	delete cellEl.dataset.editReserved;
-	const table = cellEl.closest('table');
-	const colIdxAttr = cellEl.dataset.col;
-	const colEl = table && colIdxAttr !== undefined ? table.querySelector<HTMLElement>(`col[data-col="${colIdxAttr}"]`) : null;
-	const colWidth = colEl?.style.width ?? '';
-	const tableWidth = (table as HTMLElement | null)?.style.width ?? '';
-	return () => {
-		if (colEl) colEl.style.width = colWidth;
-		if (table) (table as HTMLElement).style.width = tableWidth;
-		cellEl.removeClass('bt-wrap-edit');
-		delete cellEl.dataset.editReserved;
-	};
-}
-
-/** How wide the view may be. A view with a width of its own is exactly that wide; one that
- *  follows its content (max-content, capped at 100%) can grow as far as its container. */
-function viewWidthOf(wrapper: HTMLElement): number {
-	if (wrapper.hasClass('bt-view-fixed-w')) return wrapper.clientWidth;
-	return wrapper.parentElement?.clientWidth ?? wrapper.clientWidth;
-}
-
-/** Live-preview counterpart for a plain text cell mid-edit: on every
- *  keystroke, widens the `<col>` DOM element directly (never through
- *  onStructuralOp) so the editor — kept single-line by white-space:pre,
- *  styles.css — never wraps while typing, and grows `<table>`'s own width by
- *  the same amount so the extra space comes from the TABLE widening rather
- *  than every sibling column being squeezed back down to keep the declared
- *  total unchanged. DOM-only and deliberately so: an AUTO column
- *  (col[data-auto], or every column in an all-auto table) is supposed to
- *  shrink back to whatever the committed content actually needs once
- *  editing ends, so persisting a width here would defeat that. A
- *  col[data-auto]'s width is unset (or the previous auto-fit's fallback), so
- *  the current-width fallback below always starts from the CELL's own real
- *  rendered width, not a stale/absent col width. Never shrinks — see
- *  captureColWidthForTextEdit above for the matching "undo" half. */
-export function growColLiveForTextEdit(cellEl: HTMLElement, editor: HTMLElement, zoom = 1): void {
-	const table = cellEl.closest('table');
-	const colIdxAttr = cellEl.dataset.col;
-	if (!table || colIdxAttr === undefined) return;
-	const startCol = Number(colIdxAttr);
-	const span = Math.max(1, (cellEl as HTMLTableCellElement).colSpan || 1);
-	// A merged cell is as wide as the columns it spans; the growth lands on the last of them.
-	const colEl = table.querySelector<HTMLElement>(`col[data-col="${startCol + span - 1}"]`);
-	if (!colEl) return;
-	let spanned = 0;
-	for (let i = 0; i < span - 1; i++) {
-		const sibling = table.querySelector<HTMLElement>(`col[data-col="${startCol + i}"]`);
-		spanned += sibling ? sibling.getBoundingClientRect().width / zoom : 0;
-	}
-
-	// getBoundingClientRect() is visual; scrollWidth (below) is logical — both
-	// need to end up in the same (logical) space before comparing, same
-	// correction as scrollContentOffset's own (renderGeometry.ts's NO_ZOOM
-	// doc comment).
-	const currentWidth = parseFloat(colEl.style.width) || colEl.getBoundingClientRect().width / zoom;
-	const view = activeDocument.defaultView;
-	const style = view ? view.getComputedStyle(cellEl) : null;
-	const padH = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24;
-	const borderH = style ? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) : 2;
-	// A wrapped editor reports the width it was squeezed to, not the text's own,
-	// so the one-line width is measured with wrapping off.
-	cellEl.removeClass('bt-wrap-edit');
-	const needed = Math.ceil(editor.scrollWidth + padH + borderH - spanned);
-
-	// Fixed columns carry an explicit width in a fixed-layout table; auto ones
-	// are marked, or live in a table with no widths at all.
-	const fixed = (table as HTMLElement).style.tableLayout === 'fixed' && !colEl.dataset.auto;
-	const wrapper = table.closest<HTMLElement>('.bt-table-wrapper');
-	// What the view leaves for this column once the others have their share: the
-	// table is centred, so where the cell sits on screen says nothing about it.
-	// The strip beside the table (add column) is part of the same row and takes
-	// its own width out of the view. The other columns are measured one by one, not
-	// as the table's width minus this column's: that difference moves by a few px
-	// with every key typed and the limit would creep down with it.
-	// What the others and the strip take is fixed for the length of the edit once first worked out:
-	// the figure shifts by a pixel or two as the column changes, and a limit that moves would not
-	// hold. The view is read every time: a pane that narrows or widens mid-edit moves the limit with it.
-	let reserved = Number(cellEl.dataset.editReserved);
-	if (!Number.isFinite(reserved)) {
-		const rowEl = table.parentElement;
-		const besideTable = rowEl ? Math.max(0, rowEl.scrollWidth - (table as HTMLElement).offsetWidth) : 0;
-		let others = 0;
-		for (const other of Array.from(table.querySelectorAll<HTMLElement>('col[data-col]'))) {
-			if (other !== colEl) others += other.getBoundingClientRect().width / zoom;
-		}
-		reserved = others + besideTable;
-		cellEl.dataset.editReserved = String(reserved);
-	}
-	const room = wrapper ? viewWidthOf(wrapper) - reserved : Number.POSITIVE_INFINITY;
-	const result = editWidth({ needed, current: currentWidth, fixed, room });
-	cellEl.toggleClass('bt-wrap-edit', result.wrap);
-	if (result.width === currentWidth) return;
-	colEl.style.setProperty('width', `${result.width}px`);
-	// table-layout:fixed pins the TABLE's own width too (renderer.ts's
-	// hasExplicitWidths branch) — without also growing it by this column's
-	// exact delta, the browser redistributes the extra width by squeezing
-	// every sibling column back down to keep the declared total unchanged,
-	// which is the opposite of what "grow while editing" should look like
-	// (reported: typing into a narrow column visibly narrowed the column to
-	// its LEFT). An all-auto table (table-layout:auto) sets no width on
-	// `table` at all, so there's nothing to grow there — it already expands
-	// on its own with no squeezing, hence the pinnedWidth guard below.
-	const pinnedWidth = parseFloat((table as HTMLElement).style.width);
-	if (Number.isFinite(pinnedWidth) && pinnedWidth > 0) {
-		(table as HTMLElement).style.setProperty('width', `${pinnedWidth + (result.width - currentWidth)}px`);
-	}
-}
-
-/**
- * Auto-fit every column's width in one pass. Measures each cell in place: toggles
- * white-space:nowrap on its content to get the intrinsic single-line width, then
- * restores it. Interleaving those writes and reads across every cell in every
- * column would force one synchronous layout per cell (classic layout thrashing),
- * which gets dramatically slower under heavy theme CSS (animations, gradients,
- * filters make every forced layout more expensive) — so this is strictly phased
- * instead: add every nowrap class first, read every width in one batch, then
- * remove every class, so the browser only needs one layout pass for the whole
- * table regardless of how many columns/cells are involved.
- */
-export function autoFitAllColWidths(
-	tbl: HTMLElement,
-	cols: { colIdx: number; minW: number }[],
-	zoom = 1,
-): Map<number, number> {
-	const results = new Map<number, number>();
-	for (const { colIdx, minW } of cols) results.set(colIdx, minW);
-
-	const pills:        { colIdx: number; el: HTMLElement }[] = [];
-	const medias:       { colIdx: number; el: HTMLElement }[] = [];
-	const textSpans:    { colIdx: number; el: HTMLElement }[] = [];
-	const nowrapEls:    { colIdx: number; el: HTMLElement }[] = [];
-	const nestedTables: { colIdx: number; el: HTMLElement }[] = [];
-
-	// Phase 1 — classify cells and apply the one write each nowrap target needs. No reads yet.
-	for (const { colIdx } of cols) {
-		const cells = ownCells(tbl).filter(e => e.dataset.col === String(colIdx));
-		for (const cell of cells) {
-			if ((cell.tagName === 'TD' || cell.tagName === 'TH') && (cell as HTMLTableCellElement).colSpan > 1) continue;
-
-			// A nested rich-table block, rendered as its own .bt-render-root — its
-			// .bt-table-wrapper has `max-width: 100%` (styles.css), capping its own
-			// offsetWidth/clientWidth down to whatever the OUTER cell already
-			// happens to be, so either would just measure the cap and never grow
-			// the column to fit. scrollWidth is the wrapper's true content width
-			// regardless of that cap. Checked before the header-text/pill/media
-			// branches below — a nested table has its own header text/pills/svg
-			// deep inside it that would otherwise satisfy one of those branches
-			// first and measure just that one inner piece. No write needed here:
-			// scrollWidth isn't affected by white-space, so nothing to toggle.
-			const nestedWrapper = cell.querySelector<HTMLElement>('.bt-render-root .bt-table-wrapper');
-			if (nestedWrapper) { nestedTables.push({ colIdx, el: nestedWrapper }); continue; }
-
-			// Header cell text span — checked BEFORE pill/media below: a header
-			// cell's own SVG icons (the filter button, the live-sort indicator)
-			// would otherwise match the
-			// media check first and get measured instead of the actual header
-			// text, capping the "fit" at whatever tiny width an icon has. Force
-			// nowrap before reading offsetWidth below — if the column is already
-			// too narrow, the header text is already wrapped, and offsetWidth on
-			// a wrapped inline span reports the widest wrapped line, not the
-			// text's true natural width.
-			const textSpan = cell.querySelector<HTMLElement>('.bt-th-text');
-			if (textSpan) { textSpan.addClass('bt-nowrap-measure'); textSpans.push({ colIdx, el: textSpan }); continue; }
-			const pill = cell.querySelector<HTMLElement>('.bt-choice');
-			if (pill) { pills.push({ colIdx, el: pill }); continue; }
-			// Rendered diagram/embed (mermaid/plantuml, an inline <svg> with its own
-			// width/viewBox — a <canvas>-based renderer looks the same here). These
-			// size themselves from their own attributes, not text flow: forcing
-			// white-space:nowrap on an ancestor (the generic text branch below)
-			// does nothing for them. No write needed here either: unlike text, an
-			// svg/canvas's own box isn't affected by white-space, so nothing to
-			// toggle. Data cells only — a header cell never reaches here, having
-			// already continued above.
-			const media = cell.querySelector<HTMLElement>('svg, canvas');
-			if (media) { medias.push({ colIdx, el: media }); continue; }
-			const text = cell.textContent?.trim() ?? '';
-			if (!text) continue;
-			const pEls = Array.from(cell.querySelectorAll<HTMLElement>('p'));
-			const targets = pEls.length > 0 ? pEls : [cell];
-			for (const target of targets) {
-				target.addClass('bt-nowrap-measure');
-				nowrapEls.push({ colIdx, el: target });
-			}
-		}
-	}
-
-	// Phase 2 — read everything. No writes are interleaved here, so the browser
-	// computes layout once (lazily, on the first read below) and reuses it for the rest.
-	const view = activeDocument.defaultView;
-	const grow = (colIdx: number, w: number) => {
-		results.set(colIdx, Math.max(results.get(colIdx) ?? 0, w));
-	};
-	const padBorder = (cell: HTMLElement) => {
-		const style = view ? view.getComputedStyle(cell) : null;
-		return {
-			padH:    style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 24,
-			borderH: style ? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth) : 2,
-		};
-	};
-	for (const { colIdx, el } of nestedTables) {
-		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
-		grow(colIdx, el.scrollWidth + padH + borderH);
-	}
-	for (const { colIdx, el } of pills) {
-		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
-		grow(colIdx, el.offsetWidth + PILL_MEASURE_BUFFER + padH + borderH);
-	}
-	for (const { colIdx, el } of medias) {
-		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
-		// getBoundingClientRect() is visual; padH/borderH (from getComputedStyle,
-		// unaffected by zoom) and the eventual col width write are logical —
-		// divide only the visual term, same correction as scrollContentOffset's
-		// own (renderGeometry.ts's NO_ZOOM doc comment).
-		grow(colIdx, el.getBoundingClientRect().width / zoom + padH + borderH);
-	}
-	for (const { colIdx, el } of textSpans) {
-		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
-		// Buffer by one letter-spacing unit — engines don't consistently include
-		// the trailing letter-spacing after the last character in the measured
-		// width, so a theme with non-zero letter-spacing (e.g. plain's bold
-		// header text) can measure a hair short of what's actually needed.
-		const style = view ? view.getComputedStyle(el) : null;
-		const letterSpacing = style ? parseFloat(style.letterSpacing) || 0 : 0;
-		grow(colIdx, el.offsetWidth + letterSpacing + padH + borderH);
-	}
-	for (const { colIdx, el } of nowrapEls) {
-		const { padH, borderH } = padBorder(el.closest<HTMLElement>('td, th') ?? el);
-		const range = activeDocument.createRange();
-		range.selectNodeContents(el);
-		// Same visual-vs-logical correction as the medias branch above.
-		const rw = range.getBoundingClientRect().width / zoom;
-		if (rw > 0) grow(colIdx, rw + padH + borderH);
-	}
-
-	// Phase 3 — cleanup writes.
-	for (const { el } of nowrapEls) el.removeClass('bt-nowrap-measure');
-	for (const { el } of textSpans) el.removeClass('bt-nowrap-measure');
-
-	for (const [colIdx, w] of results) results.set(colIdx, Math.ceil(w));
-	return results;
-}
-
-/**
- * Pins every column the renderer left unmeasured (col[data-auto], set in
- * renderer.ts's colgroup build — a column with no width of its own,
- * coexisting with a sibling that DOES have one, so the whole table is
- * table-layout:fixed and every <col> needs an explicit px width) to its own
- * actual current content width, and corrects the table's overall width to
- * match. Must run after the table is attached to a live, painted document —
- * autoFitAllColWidths reads real layout (offsetWidth/getBoundingClientRect),
- * which a still-detached or not-yet-reflowed table can't provide — see
- * tableBlock.ts's render(), which calls this right after its own atomic
- * DOM swap and forced reflow.
- *
- * The data-auto marker is intentionally NOT removed after measuring: this
- * whole <colgroup> is rebuilt from scratch on every render (freshly derived
- * from the model's current column widths each time), and growColForChoiceValue
- * (above) needs to keep telling an auto column apart from a genuinely fixed
- * one for as long as this particular rendered table lives, not just up to
- * the first measurement.
- *
- * A no-op when nothing is marked — the common case, since an all-auto table
- * (no column has an explicit width at all) never sets table-layout:fixed in
- * the first place and needs no help from here; native table-layout:auto
- * already tracks content on its own, for free.
- */
-export function applyAutoColWidths(table: HTMLElement): void {
-	const autoCols = Array.from(table.querySelectorAll<HTMLElement>('col[data-auto]'))
-		.map(colEl => ({ colEl, colIdx: parseInt(colEl.dataset.col ?? '-1') }))
-		.filter((c): c is { colEl: HTMLElement; colIdx: number } => c.colIdx >= 0);
-	if (autoCols.length === 0) return;
-
-	// Measured back off `table` itself (this call site — tableBlock.ts's
-	// post-swap pass — has no access to renderer.ts's own closure-local
-	// `zoom`) — safe here since `table` is always attached with real,
-	// non-zero content by this point (see measureZoomFactor's own doc comment
-	// on why that's specifically NOT safe for an arbitrary/possibly-zero-sized
-	// element).
-	const zoom = measureZoomFactor(table);
-	const fits = autoFitAllColWidths(table, autoCols.map(c => ({ colIdx: c.colIdx, minW: colMinWidth() })), zoom);
-	for (const { colEl, colIdx } of autoCols) {
-		colEl.style.setProperty('width', `${fits.get(colIdx) ?? colMinWidth()}px`);
-	}
-
-	const totalWidth = Array.from(table.querySelectorAll<HTMLElement>('col'))
-		.reduce((sum, c) => sum + (parseInt(c.style.width) || 0), 0);
-	table.style.setProperty('width', `${totalWidth}px`);
 }
 
 /**
@@ -403,17 +92,15 @@ export function applyAutoColWidths(table: HTMLElement): void {
  * (short of an unusual per-cell font-size override), so there is nothing
  * further to learn from checking a second one.
  *
- * Must run after the table is attached to a live, painted document, same
- * reasoning as applyAutoColWidths above (getBoundingClientRect/
- * getComputedStyle on a still-detached tree reads zero/nonsense).
+ * Must run after the table is attached to a live, painted document
+ * (getBoundingClientRect/getComputedStyle on a still-detached tree reads zero).
  */
 export function applyCodeLineHeightFix(table: HTMLElement): void {
 	const code = table.querySelector<HTMLElement>('.bt-td code, .bt-th code');
 	if (!code) return;
 	const line = code.closest('p') ?? code.parentElement;
 	if (!line) return;
-	// Measured back off `table` itself — same reasoning as applyAutoColWidths'
-	// own call to measureZoomFactor just above.
+	// Measured back off `table` itself: this runs after attach, with no access to the renderer's own zoom.
 	const zoom = measureZoomFactor(table);
 	// Measure the line's TRUE rendered height via a plain, padding-free probe
 	// inserted right next to the code element, in the same line box — reading
@@ -444,14 +131,11 @@ export function applyCodeLineHeightFix(table: HTMLElement): void {
 	table.style.setProperty('--bt-cell-line-height', `${codeHeight / zoom}px`);
 }
 
-/** A column's right edge, in px offset from the table's own left border edge, summing <col> widths in DOM order. */
-export function colRightX(tbl: HTMLElement, colIdx: number): number {
-	let x = 0;
-	for (const c of ownCols(tbl)) {
-		x += parseInt(c.style.width) || 0;
-		if (c.dataset.col !== undefined && parseInt(c.dataset.col) === colIdx) break;
-	}
-	return x;
+/** A column's right edge, in logical px from the table's own left border edge. */
+export function colRightX(tbl: HTMLElement, colIdx: number, zoom = 1): number {
+	const colEl = ownCols(tbl).find(c => c.dataset.col === String(colIdx));
+	if (!colEl) return 0;
+	return (colEl.getBoundingClientRect().right - tbl.getBoundingClientRect().left) / zoom;
 }
 
 /**
@@ -469,7 +153,6 @@ export function settleRenderedTables(container: HTMLElement): void {
 }
 
 function settleNow(container: HTMLElement): void {
-	container.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyAutoColWidths);
 	container.querySelectorAll<HTMLElement>('table.bt-table').forEach(applyCodeLineHeightFix);
 	container.querySelectorAll<HTMLElement>('.bt-render-root').forEach(reserveSelectorLeftPad);
 	container.querySelectorAll<HTMLElement>('.bt-render-root').forEach(applyOuterFrame);

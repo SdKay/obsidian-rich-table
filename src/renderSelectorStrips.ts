@@ -25,12 +25,13 @@ import type { ChoiceRegistry } from './choiceRegistry';
 import type { TableEdits, TableOpType } from './tableEdits';
 import { sameRowGeometry, stripsToRebuild, type RowGeometry, type StripAxis } from './stripRebuildPlan';
 import type { LayoutSync } from './layoutSync';
+import { columnWraps } from './wrap';
 
 /** Every operation the strips can lead to; they are drawn when the table can do one of them. */
 export const SELECTOR_STRIP_OPS: readonly TableOpType[] = [
 	'set-col-width', 'set-row-height', 'move-col', 'move-cols', 'move-row', 'move-rows', 'reorder-rows', 'reorder-aggregate',
 	'clear-aggregate', 'toggle-aggregate', 'set-sort', 'set-freeze-cols', 'set-freeze-rows', 'insert-col', 'insert-row',
-	'hide-col', 'hide-row', 'delete-col', 'delete-row', 'set-col-align', 'fill-cells', 'set-range-style',
+	'hide-col', 'hide-row', 'delete-col', 'delete-row', 'set-col-align', 'set-col-wrap', 'fill-cells', 'set-range-style',
 ];
 
 export interface RenderSelectorStripsContext {
@@ -48,7 +49,6 @@ export interface RenderSelectorStripsContext {
 	layoutSync: LayoutSync;
 	topStripPad: number;
 	reserveLeftPad: () => void;
-	hasExplicitWidths: boolean;
 	clearSel: () => void;
 	autoFillOp: (axis: 'row' | 'col', lo: number, hi: number) => CellOpEntry | undefined;
 	thead: HTMLElement;
@@ -56,7 +56,7 @@ export interface RenderSelectorStripsContext {
 }
 
 export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
-	const { model, getRegistry, component, edits, registry, hooks, root, view, wrapper, table, computeVisibleGeom, layoutSync, reserveLeftPad, hasExplicitWidths, clearSel, autoFillOp, thead, tbody } = ctx;
+	const { model, getRegistry, component, edits, registry, hooks, root, view, wrapper, table, computeVisibleGeom, layoutSync, reserveLeftPad, clearSel, autoFillOp, thead, tbody } = ctx;
 	const TOP_STRIP_PAD = ctx.topStripPad;
 	// Drop-indicator helper shared by the strips' Ctrl/Cmd+drag
 	// reorder below — clears whatever the last drag frame drew before the next
@@ -163,6 +163,16 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 		};
 
 		const BOTH: ReadonlySet<StripAxis> = new Set<StripAxis>(['col', 'row']);
+		/** Every column's left (relative to the table) and width, in logical px. */
+		const readCols = (): number[] => {
+			const tableLeft = table.getBoundingClientRect().left;
+			const flat: number[] = [];
+			for (const c of ownCols(table)) {
+				const r = c.getBoundingClientRect();
+				flat.push((r.left - tableLeft) / view.zoom, r.width / view.zoom);
+			}
+			return flat;
+		};
 		/** Every row's top (relative to the table) and height, in logical px, in the order the rows appear. */
 		const readRows = (): { trs: HTMLElement[]; geom: Map<HTMLElement, { top: number; height: number }>; flat: number[] } => {
 			const tableTop = table.getBoundingClientRect().top;
@@ -183,102 +193,21 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 			// What is selected is marked on the table's cells and on both strips, so a selection redraws everything.
 			if (selAxis !== null || (doCols && doRows)) updateTableHighlights();
 
-			// In auto layout (no explicit widths, e.g. the empty-block template) the <col>
-			// elements never get a width set at render time — see hasExplicitWidths above —
-			// so every offset computed below from col.style.width would read 0 and collapse
-			// the selector/resize-seam positions to the left edge. Measure each physical
-			// column's actual rendered width from an unspanned header/data cell and pin it
-			// onto the <col> so the existing col.style.width reads further down stay correct.
-			if (!hasExplicitWidths) {
-				const measured = new Map<string, number>();
-				// A column that's colspan-merged in EVERY row it appears in (e.g. a
-				// header merge spanning it plus a different data-row merge also
-				// spanning it) never turns up as an unspanned cell anywhere, so the
-				// loop below would never measure it — reported as the selector
-				// strip's column boundaries drifting off from that column onward,
-				// since its <col> kept whatever stale/empty width it had before,
-				// collapsing that column's contribution to 0 in the cumulative
-				// left-offset sum further down. Colspan cells are still recorded
-				// here (not skipped outright) as a fallback candidate — an equal
-				// share of the merged cell's own rendered width — applied only to
-				// whichever columns never get a precise unspanned measurement.
-				const spanned: { startCol: number; span: number; width: number }[] = [];
-				const rows = [
-					...ownRows(thead),
-					...ownRows(tbody),
-				];
-				for (const tr of rows) {
-					for (const cell of Array.from(tr.querySelectorAll<HTMLTableCellElement>('[data-col]'))) {
-						const ci = cell.dataset.col;
-						if (ci === undefined) continue;
-						if (cell.colSpan > 1) {
-							spanned.push({ startCol: parseInt(ci), span: cell.colSpan, width: cell.getBoundingClientRect().width / view.zoom });
-							continue;
-						}
-						if (measured.has(ci)) continue;
-						measured.set(ci, cell.getBoundingClientRect().width / view.zoom);
-					}
-				}
-				for (const { startCol, span, width } of spanned) {
-					const share = width / span;
-					for (let ci = startCol; ci < startCol + span; ci++) {
-						const key = String(ci);
-						if (!measured.has(key)) measured.set(key, share);
-					}
-				}
-				let pinnedTotal = 0;
-				for (const c of ownCols(table)) {
-					const ci = c.dataset.col;
-					if (ci === undefined) continue;
-					const w = measured.get(ci);
-					if (w !== undefined) { c.style.setProperty('width', `${w}px`); pinnedTotal += w; }
-				}
-				// Also pin the TABLE's own width to the just-measured total — table-
-				// layout stays 'auto' (unlike the hasExplicitWidths branch above,
-				// which switches to 'fixed'), so a column whose content genuinely
-				// grows can still expand past this on a later pass; this only
-				// removes AMBIGUITY about the table's width when content does NOT
-				// need more room. Leaving the table with no explicit width at all
-				// left auto-layout free to treat "how much width does the table
-				// get" as open-ended, which .bt-table-content-row's own
-				// width:max-content (sized from the table's contribution) could
-				// then read as bigger than the just-measured columns actually
-				// needed — and since the readout gets pinned right back onto the
-				// <col>s next cycle, this became a self-feeding ratchet: every
-				// hover (showSelectors -> rebuild()) measured a table a few px
-				// wider than last time and pinned that as the new floor, repeating
-				// indefinitely (reported: the whole table growing wider and wider
-				// across repeated hovers until it filled the page — and the column
-				// selector's own width, computed from the table's PRE-rebuild size
-				// earlier in the same hover, one step behind the growth). An
-				// explicit width removes that ambiguity: auto-layout still expands
-				// a column past it if content truly needs more (its own defined
-				// behavior for real overflow), but stops manufacturing UNNEEDED
-				// extra space just because a flex ancestor's max-content query
-				// left the door open.
-				// The columns' sum excludes the table's own border/padding, which a
-				// border-box table's width includes — pinning the bare sum squeezed the
-				// columns by that much on every rebuild.
-				const tcs = getComputedStyle(table);
-				const chrome = tcs.boxSizing === 'border-box'
-					? (parseFloat(tcs.borderLeftWidth) || 0) + (parseFloat(tcs.borderRightWidth) || 0)
-						+ (parseFloat(tcs.paddingLeft) || 0) + (parseFloat(tcs.paddingRight) || 0)
-					: 0;
-				if (pinnedTotal > 0) table.style.setProperty('width', `${pinnedTotal + chrome}px`);
-			}
-
 			// Every layout read the strips need, taken before the first write below: a read
 			// after a write re-lays the table out, and once per column and row that is the
 			// cost of this whole function.
 			const freezeColsAt = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
 			const freezeRowsAt = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
 			const colOffset = new Map<HTMLElement, number>();
+			const colWidth = new Map<HTMLElement, number>();
 			for (const c of ownCols(table)) {
+				colWidth.set(c, c.getBoundingClientRect().width / view.zoom);
 				const ci = c.dataset.col;
 				if (ci === undefined) continue;
 				const frozen = freezeColsAt !== undefined && parseInt(ci) < freezeColsAt;
 				colOffset.set(c, selectorAxisOffset(c, 'x', view.zoom, frozen));
 			}
+			if (doCols) colsBuilt = readCols();
 			const rows = doRows ? readRows() : null;
 			const rowGeom = rows?.geom ?? new Map<HTMLElement, { top: number; height: number }>();
 			const allTrs = rows?.trs ?? [];
@@ -302,16 +231,6 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 			// own left edge, which CSS Grid aligns with the table wrapper automatically.
 			if (doCols) colSel.querySelectorAll('.bt-sel-cell').forEach(e => e.remove());
 
-			// parseFloat, not parseInt: col.style.width holds a fractional px value
-			// (rebuild()'s own measurement above pins e.g. "39.9952px" for an
-			// auto-layout column) — parseInt truncates that to "39", and doing so
-			// on every column in a cumulative running sum compounds the ~1px loss
-			// per column into a growing drift, reported as the selector strip's
-			// column boundaries visibly falling further behind the table's real
-			// columns the further right you go (confirmed via logged real numbers:
-			// the drift grew by almost exactly 1px per column). Same fix applied
-			// to the resize-handle seam positions below, which summed the same
-			// truncated value.
 			// A frozen column's real table cell doesn't move on horizontal scroll
 			// (position:sticky) — its selector-strip label shouldn't either, but a
 			// non-frozen cell's parent (.bt-sel-track, below) is transformed to stay
@@ -325,7 +244,7 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 			const freezeCols = model.freezeCols !== undefined && canFreezeCols(model, model.freezeCols) ? model.freezeCols : undefined;
 			const freezeRows = model.freezeRows !== undefined && canFreezeRows(model, model.freezeRows) ? model.freezeRows : undefined;
 			if (doCols) for (const c of ownCols(table)) {
-				const w = parseFloat(c.style.width) || 0;
+				const w = colWidth.get(c) ?? 0;
 				if (c.dataset.col !== undefined) {
 					// Visible column — one cell per physical column
 					const ci = parseInt(c.dataset.col);
@@ -434,7 +353,7 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 				// extension of that line.
 				const colFrozen = freezeCols !== undefined && parseInt(dc) < freezeCols;
 				// Seam sits on the column's RIGHT edge; same frozen/non-frozen split as --cl above.
-				h.setCssProps({ '--rx': `${(colOffset.get(c) ?? 0) + (parseFloat(c.style.width) || 0)}px` });
+				h.setCssProps({ '--rx': `${(colOffset.get(c) ?? 0) + (colWidth.get(c) ?? 0)}px` });
 				h.toggleClass('bt-sel-cell-frozen', colFrozen);
 				const colDesiredParent = colFrozen ? colSel : colTrack;
 				if (h.parentElement !== colDesiredParent) colDesiredParent.appendChild(h);
@@ -460,10 +379,12 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 		let built: { w: number; h: number } | null = null;
 		/** The rows' tops and heights the row strip was built for. */
 		let rowsBuilt: RowGeometry = [];
+		/** The columns' lefts and widths the column strip was built for. */
+		let colsBuilt: RowGeometry = [];
 		const staleAxes = new Set<StripAxis>();
 		const tableSize = () => { const r = table.getBoundingClientRect(); return { w: r.width, h: r.height }; };
 		/** The strips that are out of date; empty when they are as they were built. */
-		const axesToRebuild = () => stripsToRebuild(staleAxes, built, tableSize(), () => !sameRowGeometry(rowsBuilt, readRows().flat));
+		const axesToRebuild = () => stripsToRebuild(staleAxes, built, tableSize(), () => !sameRowGeometry(rowsBuilt, readRows().flat), () => !sameRowGeometry(colsBuilt, readCols()));
 		const rebuildAndRecordSize = (axes: ReadonlySet<StripAxis> = BOTH) => {
 			rebuild(axes);
 			staleAxes.clear();
@@ -936,6 +857,21 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 						if (id) void onStructuralOp({ type: 'set-col-align', colId: id, align });
 					}
 				}), emits: ['set-col-align'] },
+				// Named after what it does to the first selected column; it sets every selected column the same way.
+				// The value it writes clears the column's own setting where that matches the table's.
+				(() => {
+					const first = model.columns[lo];
+					const wraps = first ? columnWraps(first, model) : true;
+					const tableWraps = model.wrap ?? true;
+					const next = !wraps;
+					return { emits: ['set-col-wrap'], icon: next ? 'wrap-text' : 'text', label: next ? t('wrapTextCol') : t('noWrapTextCol'),
+						action: () => {
+							for (let ci = lo; ci <= hi; ci++) {
+								const id = colId(model, ci);
+								if (id) void onStructuralOp({ type: 'set-col-wrap', colId: id, wrap: next === tableWraps ? null : next });
+							}
+						} };
+				})(),
 				...fillOps,
 				...(sortOps.length > 0 ? [{ divider: true } as CellOpEntry, ...sortOps] : []),
 				...(aggOps.length > 0 ? [{ divider: true } as CellOpEntry, ...aggOps] : []),

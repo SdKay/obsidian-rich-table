@@ -25,7 +25,7 @@ test('a column just created by split-cell-col renders at the auto-fit minimum, n
 	await block.reprocess();
 	await expect.poll(() => page.locator('col').count()).toBe(3);
 
-	const widths = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => parseInt(c.style.width)));
+	const widths = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => Math.round(c.getBoundingClientRect().width)));
 	expect(widths).toEqual([40, 40, 40]);
 });
 
@@ -46,6 +46,6 @@ test('a plain inserted column (no split involved) also renders at the auto-fit m
 	await block.reprocess();
 	await expect.poll(() => page.locator('col').count()).toBe(2);
 
-	const widths = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => parseInt(c.style.width)));
+	const widths = await page.evaluate(() => Array.from(document.querySelectorAll('col')).map(c => Math.round(c.getBoundingClientRect().width)));
 	expect(widths[1]).toBe(40);
 });

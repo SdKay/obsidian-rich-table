@@ -47,6 +47,10 @@ export type StructuralOpV2 =
 	| { type: 'set-col-type';    colId: string; colType: string | undefined }
 	| { type: 'set-col-width';   colId: string; width: number }
 	| { type: 'set-col-align';   colId: string; align: 'left' | 'center' | 'right' | null }
+	/** null clears the column's own setting, so it follows the table's. */
+	| { type: 'set-col-wrap';    colId: string; wrap: boolean | null }
+	/** null clears the table's setting, so columns without their own wrap. */
+	| { type: 'set-table-wrap';  wrap: boolean | null }
 	| { type: 'set-row-height';  rowId: string; height: number }
 	| { type: 'set-cell-style';  rowId: string; colId: string; bg: string | null; color: string | null; size: number | null; bold: boolean | null; italic: boolean | null }
 	| { type: 'set-range-style'; target: string; bg: string | null; color: string | null; size: number | null; bold: boolean | null; italic: boolean | null }
@@ -168,6 +172,8 @@ const STRUCTURAL_OP_TYPE_MAP: { [K in StructuralOpV2['type']]: true } = {
 	'set-col-type': true,
 	'set-col-width': true,
 	'set-col-align': true,
+	'set-col-wrap': true,
+	'set-table-wrap': true,
 	'set-row-height': true,
 	'set-cell-style': true,
 	'set-range-style': true,
@@ -577,6 +583,18 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			if (!col) break;
 			if (op.align) col.align = op.align;
 			else delete col.align;
+			break;
+		}
+		case 'set-col-wrap': {
+			const col = model.columns.find(c => c.id === op.colId);
+			if (!col) break;
+			if (op.wrap === null) delete col.wrap;
+			else col.wrap = op.wrap;
+			break;
+		}
+		case 'set-table-wrap': {
+			if (op.wrap === null) delete model.wrap;
+			else model.wrap = op.wrap;
 			break;
 		}
 		case 'set-row-height': {

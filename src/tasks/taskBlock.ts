@@ -5,19 +5,19 @@ import type { TableModelV2 } from '../model';
 import { genId } from '../idGen';
 import { DEFAULT_TASK_FIELDS, fieldById } from './taskFields';
 
-/** The width of the status column, which holds one mark. Every other column is sized to its content. */
-const STATUS_WIDTH = 36;
-
 /** A new tasks table starts without a query: the user writes one when it is inserted. */
 export function buildTasksBlock(theme?: string): TableModelV2 {
 	const ids = new Set<string>();
-	const columns = DEFAULT_TASK_FIELDS.map(field => ({
-		id: genId('c', ids),
-		name: fieldById(field)?.label ?? field,
-		field,
-		...(field === 'status' ? { width: STATUS_WIDTH } : {}),
-	}));
-	return { version: 2, columns, rows: [], merges: [], styles: [], tasks: { query: '' }, ...(theme ? { theme } : {}) };
+	const columns = DEFAULT_TASK_FIELDS.map(field => {
+		const def = fieldById(field);
+		return {
+			id: genId('c', ids),
+			name: def?.label ?? field,
+			field,
+			...(def?.align ? { align: def.align } : {}),
+		};
+	});
+	return { version: 2, columns, rows: [], merges: [], styles: [], wrap: true, tasks: { query: '' }, ...(theme ? { theme } : {}) };
 }
 
 /**

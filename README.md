@@ -414,6 +414,8 @@ While editing a cell, right-click opens Obsidian's own menu (Paste behaves like 
 
 **`width`/`height` are both optional** — a column/row with no `width`/`height` field is "auto": it renders at whatever size fits its content and keeps tracking that as content changes. Dragging a handle pins it to a specific size; double-clicking the handle or clicking **Auto-fit all** returns it to auto.
 
+**Wrapping** — text wraps by default. An auto column then shares out the room the view leaves and its text folds onto several lines, so long text no longer makes the table scroll sideways; only content that cannot wrap (a long link, a wide image) does. A column with a width keeps it and wraps inside it. To keep a column on one line, choose **Don't wrap text** in its column menu (`wrap: false`); a column with a width then cuts its text off with an ellipsis. **View settings → Wrap text** turns it off for the whole table (top-level `wrap: false`), and a column's own setting overrides it.
+
 **Style targets** (v2 ID-based):
 
 | Target | Meaning |
@@ -491,6 +493,7 @@ The easiest way to create one: insert an empty `rich-table` block and click **In
 ```rich-table
 ---
 version: 2
+wrap: true
 tasks:
   query: |
     not done
@@ -499,11 +502,11 @@ tasks:
 columns:
   - id: c_status
     name: Status
-    width: 36
     field: status
   - id: c_body
     name: Task
     field: body
+    align: left
   - id: c_due
     name: Due
     field: due
@@ -511,7 +514,7 @@ columns:
 ```
 ````
 
-- **The query** is written as in the Tasks plugin, one condition per line: `done` / `not done`, dates (`due before …`, `due this week`, `has due date`), `priority`, `tags`, `path` / `filename` / `heading` / `description` conditions (including `regex matches`), `is recurring`, `sort by …`, `group by …`, `limit N`. Edit it in the block. `filter by function`, boolean groups (`AND`, `OR`, `NOT`) and presets are not supported; **a line the plugin does not understand is not applied**, so check that the table shows what you meant.
+- **The query** is written as in the Tasks plugin, one condition per line: `done` / `not done`, dates (`due before …`, `due this week`, `has due date`), `priority`, `tags`, `path` / `filename` / `heading` / `description` conditions (including `regex matches`), `is recurring`, `sort by …`, `group by …`, `limit N`. Edit it with **Edit tasks query** in the toolbar, or in the block. `filter by function`, boolean groups (`AND`, `OR`, `NOT`) and presets are not supported; **a line the plugin does not understand is not applied**, so check that the table shows what you meant.
 - **Columns** each show one property of the task (`field`): status, task text, any of its dates, priority, tags, recurrence, file, path, heading. Add, remove, reorder, resize and rename them as in any table.
 - **Sorting** a column writes a `sort by` line into the query. It is the query that holds the order, not the rows.
 - **Not editable**: the tasks themselves. Anything that would change a row or a cell is refused; change the task in its note.

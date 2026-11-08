@@ -6,7 +6,7 @@ A table whose rows are the tasks a [Tasks](https://publish.obsidian.md/tasks/) p
 
 | Field   | Type | Description |
 | ------- | ---- | ----------- |
-| `query` | string | The query, one condition per line, in the Tasks plugin's language. An empty query (or one of only `#` comment lines) shows no rows: the table asks the user to write one. To list every task, write a condition every task meets, such as `not done` plus `done` in two tables, or `path includes /`. |
+| `query` | string | The query, one condition per line, in the Tasks plugin's language. An empty query (or one of only `#` comment lines) shows no rows: the table asks the user to write one. To list every task, write a condition every task meets, such as `path regex matches /./`. |
 
 The rows are **read from the vault on every render and never written to the note**. Do not write `rows:` for a tasks table: it is discarded on read, and the plugin's own writes never include it. Only `tasks.query` and `columns` are saved.
 
@@ -15,6 +15,7 @@ Each task is one row. A task keeps its row across refreshes, so styles and selec
 ```yaml
 ---
 version: 2
+wrap: true
 tasks:
   query: |
     not done
@@ -23,11 +24,11 @@ tasks:
 columns:
   - id: c_status
     name: Status
-    width: 36
     field: status
   - id: c_body
     name: Task
     field: body
+    align: left
   - id: c_due
     name: Due
     field: due
@@ -50,7 +51,7 @@ Which property of each task the column shows. A column without `field` is empty 
 | `heading` | The heading the task sits under |
 | `description` | The task text as written, dates and tags included |
 
-A new tasks table shows `status`, `body`, `due`, `priority`, `tags`, `file`. The user can add, reorder, resize and re-point columns like in any table.
+A new tasks table shows `status`, `body`, `due`, `priority`, `tags`, `file`. No column gets a width: each is as wide as its header and content need, and with `wrap: true` the text columns share out the room left. The user can add, reorder, resize and re-point columns like in any table.
 
 ### Query language
 

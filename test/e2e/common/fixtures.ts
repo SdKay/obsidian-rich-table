@@ -17,7 +17,7 @@ export interface TableSpec {
 	 * all is an AUTO-LAYOUT table, which is a materially different case: the
 	 * browser derives every column width from content, so anything that changes a
 	 * cell's box (padding, border width) changes measured geometry, whereas with
-	 * explicit widths `table-layout: fixed` pins them and hides such a change.
+	 * explicit widths every cell is pinned to its column's width and hides such a change.
 	 */
 	widths: number[];
 	/**
@@ -28,6 +28,8 @@ export interface TableSpec {
 	 * to be able to ask for one.
 	 */
 	types?: (string | undefined)[];
+	/** Per-column `wrap`, positional and sparse, like `types`. */
+	wraps?: (boolean | undefined)[];
 	/**
 	 * One entry per row, mapping column index → cell text. `id` is `r_<index>`.
 	 * A row's omitted columns are empty.
@@ -61,6 +63,8 @@ export function tableSource(spec: TableSpec): string {
 		if (w > 0) parts.push(`width: ${w}`);
 		const type = spec.types?.[i];
 		if (type) parts.push(`type: ${type}`);
+		const wrap = spec.wraps?.[i];
+		if (wrap !== undefined) parts.push(`wrap: ${wrap}`);
 		lines.push(`  - { ${parts.join(', ')} }`);
 	});
 	lines.push('rows:');
@@ -121,7 +125,7 @@ export function scrollableTable(extra: Partial<TableSpec> = {}): string {
  * derives them from content and any change to a cell's box shows up as changed
  * geometry. This is the configuration the freeze/resize ResizeObserver feedback
  * loop actually hung in, and the only one where a layout-invariance assertion
- * has teeth — with explicit widths, `table-layout: fixed` pins every column and
+ * has teeth — with explicit widths every cell is pinned to its column's width and
  * a padding or border-width change measures identical.
  */
 export function autoLayoutTable(extra: Partial<TableSpec> = {}): string {

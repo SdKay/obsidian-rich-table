@@ -248,56 +248,37 @@
 	overflow: visible !important;
 	max-height: none !important;
 	height: auto !important;
-	width: max-content !important;
+	width: var(--bt-snapshot-width, max-content) !important;
 	max-width: none !important;
 }
 /* Wraps <table> + addColBtn side by side so addColBtn sits immediately to the
  * table's right without any JS left/width math.
  *
- * width:max-content + margin-inline:auto — NOT width:auto (the flex default):
- * width:auto on a block-level flex container FILLS its containing block's
- * available width whenever that width is a definite, independently-set value
- * — which .bt-table-wrapper's width normally ISN'T (it's max-content,
- * deriving from contentRow's OWN contribution, a harmless circularity that
- * resolves correctly), but very much IS once the view has a manual fixed
- * width (drag-resize, or the view-settings menu) that happens to be WIDER
- * than the table currently needs (e.g. right after "auto-fit columns"
- * shrinks them). In that case width:auto stretched contentRow to match, and
- * since neither <table> nor addColBtn grow to fill it (flex-grow:0 default),
- * both sat flush-left with dead space to their right — reported as the table
- * "not centered" after auto-fitting, with addRowBtn (sized off the wrapper's
- * own genuine width, unaffected either way) then visibly wider than the
- * shrunken, off-center table beside it. width:max-content always shrink-
- * wraps to the children's actual combined width regardless of the
- * containing block's own width, and margin-inline:auto centers that
- * shrink-wrapped box within whatever extra room a wider manual width leaves
- * — the same pattern .bt-table-wrapper itself already uses to center within
- * root.
+ * width:fit-content + margin-inline:auto. Not width:auto, which fills a view that has a manual width wider than the
+ * table and leaves the table off-centre. Not max-content either: that is the table's widest layout, so columns that
+ * wrap would never be offered less room than their longest line. fit-content hugs the table when it fits and stops at
+ * the view when it does not, which is the room the wrapping columns share out; content that cannot wrap still makes
+ * the table wider than the view, and the view scrolls.
  *
- * flex-shrink:0 on BOTH children (below): a wide/fixed-width table whose
- * content doesn't fit the available space (root narrower than the table)
- * must overflow into .bt-table-wrapper's own horizontal scroll — that's the
- * established, correct behavior for a wide table in this codebase. Flex's
- * DEFAULT shrink algorithm instead tries to squeeze both items down to fit,
- * which for addColBtn (no min-content resistance, and `overflow:hidden`
- * zeroes its automatic minimum size) meant it silently absorbed nearly the
- * entire deficit — reported as the "+" shrinking down to a thin vertical
- * line. flex-shrink:0 opts both out, forcing contentRow to render at its
- * children's full natural width and letting the wrapper's overflow-x:auto
- * take over exactly as it already does for a table with no addColBtn at all. */
+ * flex-shrink:0 on the strips beside the table (below): overflow:hidden zeroes their automatic minimum size, so the
+ * flex algorithm would squeeze them to a thin line to make room for a wide table. The table itself needs none: it
+ * cannot be laid out narrower than its content's own minimum. */
 .bt-table-content-row {
 	display: flex;
-	width: max-content;
+	width: fit-content;
 	margin-inline: auto;
 	/* Positioning context for .bt-resize-indicator (see its own comment) —
 	 * doesn't affect this element's own flex layout, since position:relative
 	 * with no offsets keeps it exactly where static flow already placed it. */
 	position: relative;
 }
-.bt-table-content-row > .bt-table,
 .bt-table-content-row > .bt-edge-add-col,
 .bt-table-content-row > .bt-view-scroll {
 	flex-shrink: 0;
+}
+.bt-table-content-row > .bt-table,
+.bt-table-content-row > .bt-edge-add-col,
+.bt-table-content-row > .bt-view-scroll {
 	/* Flex's default align-items:stretch would otherwise force <table> to
 	 * contentRow's cross-size on every layout pass — normally a no-op once
 	 * addColBtn's own height (set from the table's LAST measured height,
@@ -1595,21 +1576,16 @@
 	white-space: pre !important;
 	overflow-x: auto;
 }
-/* Cell editor is always left-aligned so code indentation is visible while typing.
- * white-space:pre (not pre-wrap): a narrow auto column must widen to fit what's
- * being typed instead of wrapping to multiple lines — renderCell.ts grows the
- * column live on every keystroke (growColLiveForTextEdit). Real newlines
- * (Shift+Enter) still render as line breaks either way; only
- * auto-wrap-on-overflow is disabled. */
+/* Cell editor is always left-aligned so code indentation is visible while typing. It wraps the way its column does:
+ * inside the column's width, or on one line in a column that does not wrap (which the browser widens as it grows).
+ * Real newlines (Shift+Enter) are line breaks either way. */
 .bt-table .bt-td .bt-cell-editor,
 .bt-table .bt-th .bt-cell-editor {
 	text-align: left;
-	white-space: pre;
-}
-/* Past the width an editing column may take (renderAutofit.ts), the text wraps. */
-.bt-table .bt-td.bt-editing.bt-wrap-edit .bt-cell-editor,
-.bt-table .bt-th.bt-editing.bt-wrap-edit .bt-cell-editor {
 	white-space: pre-wrap;
+}
+.bt-table :is(.bt-td, .bt-th).bt-col-nowrap .bt-cell-editor {
+	white-space: pre;
 }
 .bt-table .bt-td .bt-list-marker,
 .bt-table .bt-th .bt-list-marker {
@@ -1620,9 +1596,6 @@
 .bt-table .bt-th .bt-list-marker[style*="--bt-list-depth"] {
 	margin-left: calc(var(--bt-list-depth) * 1.5em);
 }
-/* Temporary class applied during autoFitColWidth measurement to get single-line width */
-.bt-nowrap-measure { white-space: nowrap !important; }
-
 /* Wikilink styling inside cells */
 .bt-table .bt-td .internal-link,
 .bt-table .bt-th .internal-link {
@@ -1694,19 +1667,18 @@
 .bt-native-editor .cm-content {
 	padding: 0;
 	min-height: 0;
+	white-space: pre-wrap;
+}
+.bt-native-editor .cm-line {
+	white-space: pre-wrap;
+}
+.bt-col-nowrap .bt-native-editor .cm-content {
 	white-space: pre;
 	width: max-content;
 	min-width: 100%;
 }
-.bt-native-editor .cm-line {
+.bt-col-nowrap .bt-native-editor .cm-line {
 	white-space: pre;
-}
-.bt-editing.bt-wrap-edit .bt-native-editor .cm-content {
-	white-space: pre-wrap;
-	width: auto;
-}
-.bt-editing.bt-wrap-edit .bt-native-editor .cm-line {
-	white-space: pre-wrap;
 }
 
 /* Date cell */
@@ -1725,8 +1697,8 @@
 	box-sizing: border-box;
 }
 
-/* Hidden column indicator — narrow ~2-char cell (width also set via <col> in colgroup) */
-.bt-table .bt-col-indicator {
+/* Hidden column indicator — narrow ~2-char cell. Doubled class: the cell rule's min-width:40px would win otherwise. */
+.bt-table.bt-table .bt-col-indicator {
 	text-align: center;
 	cursor: pointer;
 	background: var(--background-secondary);
@@ -3318,6 +3290,44 @@ mark.bt-search-hit.bt-search-hit.bt-search-hit.bt-search-hit-active {
 	min-height: 10em;
 	resize: vertical;
 	font-family: var(--font-monospace);
+}
+
+/* ── Column width and wrapping ──────────────────────────────────────────────
+ * The table is always laid out by the browser. A column with a width pins its cells to it (applyColStyle writes
+ * --bt-cell-w); max-width holds it against content that cannot wrap, which would otherwise widen the column. A column
+ * without one is sized by the browser: one that wraps shares out the room the view leaves, down to its longest word;
+ * one that does not is as wide as its longest line. Doubled class: Obsidian's table rules are more specific. */
+.bt-table.bt-table :is(.bt-td, .bt-th) {
+	white-space: normal;
+	overflow-wrap: break-word;
+	/* Obsidian resets every element to border-box; set here so min-width:40px is the cell's whole width with or
+	 * without that reset. */
+	box-sizing: border-box;
+}
+.bt-table.bt-table :is(.bt-td, .bt-th).bt-col-fixed {
+	width: var(--bt-cell-w);
+	min-width: var(--bt-cell-w);
+	max-width: var(--bt-cell-w);
+}
+.bt-table.bt-table :is(.bt-td, .bt-th).bt-col-nowrap {
+	white-space: nowrap;
+}
+/* While a column is dragged (freezeColWidths) the <col>s hold every width, so the cells give way to them. */
+.bt-table.bt-table.bt-cols-frozen {
+	table-layout: fixed;
+}
+.bt-table.bt-table.bt-cols-frozen :is(.bt-td, .bt-th).bt-col-fixed {
+	width: auto;
+	min-width: 0;
+	max-width: none;
+}
+.bt-table.bt-table :is(.bt-td, .bt-th).bt-col-fixed.bt-col-nowrap {
+	overflow: hidden;
+}
+.bt-table.bt-table :is(.bt-td, .bt-th).bt-col-fixed.bt-col-nowrap :is(p, .bt-th-text) {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* ── Built-in themes (auto-generated — do not edit below) ──── */

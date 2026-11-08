@@ -72,7 +72,7 @@ window.buildTableDom = function (model) {
 				if (colSpan > 1) el.colSpan = colSpan;
 			}
 
-			applyColStyle(el, col);
+			applyColStyle(el, col, model, colIdx, merge ? merge.endCol : colIdx);
 			applyStyleRulesV2(el, rowIdx, colIdx, model);
 
 			const value = isHeader

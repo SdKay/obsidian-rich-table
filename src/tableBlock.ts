@@ -1714,7 +1714,7 @@ export class TableBlock extends MarkdownRenderChild {
 		// inserting — same normalization (canonical field order, recomputed
 		// formulas) a real write-back applies, instead of trusting the template
 		// file's own YAML formatting to already match what the plugin would write.
-		await this.insertBlock(serializeTable(parseTable(getTemplateContent(templateId))));
+		await this.insertBlock(serializeTable({ ...parseTable(getTemplateContent(templateId)), wrap: true }));
 	}
 
 	private defaultTheme(): string | undefined {
@@ -1804,7 +1804,7 @@ export class TableBlock extends MarkdownRenderChild {
 	private async insertTemplateIntoActiveSheet(templateId: string): Promise<void> {
 		const sheet = this.activeModel;
 		if (!sheet || !this.workbook) return;
-		const content: Omit<TableModelV2, 'version'> = parseTable(getTemplateContent(templateId));
+		const content: Omit<TableModelV2, 'version'> = { ...parseTable(getTemplateContent(templateId)), wrap: true };
 		await this.handleWorkbookOp({ type: 'set-sheet-content', sheetId: (sheet as SheetDefV2).id, content });
 	}
 

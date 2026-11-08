@@ -27,12 +27,10 @@ test('an explicitly-sized typed column keeps its own narrow width, not forced up
 	expect(width).toBe(50);
 });
 
-// growColForChoiceValue's reactive nudge only matters for a column that's
-// genuinely FIXED (an explicit width of its own) — an auto column (no width
-// at all) either gets re-measured on the next render, or, in a table with no
-// fixed columns at all, is already tracked live by the browser's own native
-// table-layout:auto with no help needed. So these two exercise a column that
-// starts with its own explicit (small) width, not an auto one.
+// growColForChoiceValue's reactive nudge only matters for a column with a
+// width of its own — an auto column is sized to its content by the browser
+// with no help needed. So these two exercise a column that starts with its
+// own explicit (small) width, not an auto one.
 const FIXED_SOURCE = tableSource({
 	widths: [50],
 	types: ['task-status'],
@@ -56,8 +54,9 @@ test('picking a longer value grows the column, and a shorter one afterwards does
 	expect(widthOp, 'picking "In Progress" should have grown the column').toBeTruthy();
 	expect(widthOp!.width).toBeGreaterThan(widthBefore);
 	const grownWidth = widthOp!.width!;
+	// Stands in for the rebuild the op would cause: the column is now that wide.
 	await page.evaluate((w) => {
-		document.querySelector<HTMLElement>('col[data-col="0"]')!.style.width = `${w}px`;
+		document.querySelectorAll<HTMLElement>('[data-col="0"].bt-col-fixed').forEach(c => c.style.setProperty('--bt-cell-w', `${w}px`));
 	}, grownWidth);
 
 	await page.evaluate(() => { (window as unknown as { __btOps: unknown[] }).__btOps = []; });
@@ -70,14 +69,9 @@ test('picking a longer value grows the column, and a shorter one afterwards does
 		'picking a shorter value should not resize the column at all').toBe(false);
 });
 
-// The claim in the comment above ("an auto column... needs no help from here")
-// was previously untested — growColForChoiceValue (renderAutofit.ts) has its
-// own explicit guard (colEl.dataset.auto) meant to no-op for exactly this case,
-// but nothing exercised it. c_0 keeps its own explicit width so the table is
-// table-layout:fixed (renderer.ts's hasExplicitWidths) and c_1 gets marked
-// data-auto — the guard would only ever matter in a MIXED table like this one,
-// never in an all-auto table (which stays plain table-layout:auto and never
-// calls this function's caller in the first place).
+// The claim in the comment above ("an auto column... needs no help") — an auto
+// column beside one with a width, so a width op on it would be easy to mistake
+// for one on its neighbour.
 const MIXED_SOURCE = tableSource({
 	widths: [50, 0],
 	types: [undefined, 'task-status'],
@@ -86,8 +80,7 @@ const MIXED_SOURCE = tableSource({
 
 test('an auto typed column does not get a set-col-width op when a longer value is picked', async ({ page, renderFull }) => {
 	await renderFull(MIXED_SOURCE);
-	const colEl = page.locator('col[data-col="1"]');
-	await expect(colEl).toHaveAttribute('data-auto', '1');
+	await expect(page.locator('[data-row="1"][data-col="1"]')).not.toHaveClass(/bt-col-fixed/);
 
 	await page.locator('[data-row="1"][data-col="1"]').click();
 	await expect.poll(() => page.evaluate(() => !!window.RichTableReal.getActiveCellMenu())).toBe(true);
@@ -98,5 +91,5 @@ test('an auto typed column does not get a set-col-width op when a longer value i
 
 	const ops = await page.evaluate(() => (window as unknown as { __btOps: { type: string; colId?: string }[] }).__btOps);
 	expect(ops.some(o => o.type === 'set-col-width'),
-		'an auto column should be left for the next render to measure, not nudged by the reactive choice-value grower').toBe(false);
+		'an auto column is sized by the browser, not nudged by the reactive choice-value grower').toBe(false);
 });
