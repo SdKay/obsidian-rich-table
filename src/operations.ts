@@ -59,6 +59,8 @@ export type StructuralOpV2 =
 	 *  panel's Apply/Clear form. */
 	| { type: 'set-align';       target: string; align: 'left' | 'center' | 'right' | null }
 	| { type: 'set-title';       title: string | undefined }
+	/** Replaces the task query of a tasks table; a no-op on a table without one. */
+	| { type: 'set-tasks-query'; query: string }
 	| { type: 'set-footer';      footer: string | string[] | undefined }
 	| { type: 'set-filter';      colId: string; values: string[] | null }
 	/** Adds `agg` to the table-wide active summary rows if absent, removes it if present. */
@@ -172,6 +174,7 @@ const STRUCTURAL_OP_TYPE_MAP: { [K in StructuralOpV2['type']]: true } = {
 	'split-range-style': true,
 	'set-align': true,
 	'set-title': true,
+	'set-tasks-query': true,
 	'set-footer': true,
 	'set-filter': true,
 	'toggle-aggregate': true,
@@ -587,6 +590,10 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		// ── Metadata ──────────────────────────────────────────────────────────
 		case 'set-title': {
 			if (op.title) model.title = op.title; else delete model.title;
+			break;
+		}
+		case 'set-tasks-query': {
+			if (model.tasks) model.tasks = { query: op.query };
 			break;
 		}
 		case 'set-footer': {

@@ -569,3 +569,67 @@ styles:
 		expect(v2).toContain('target: header');
 	});
 });
+
+
+describe('tasks table round-trip', () => {
+	const SOURCE = `---
+version: 2
+tasks:
+  query: |
+    not done
+    tags include #question
+    sort by created
+columns:
+  - id: c_status
+    name: Status
+    width: 36
+    field: status
+  - id: c_body
+    name: Task
+    field: body
+---
+`;
+
+	it('reads the query, kept as written, and the field of each column', () => {
+		const m = parseTable(SOURCE);
+		expect(m.tasks).toEqual({ query: 'not done\ntags include #question\nsort by created\n' });
+		expect(m.columns.map(c => c.field)).toEqual(['status', 'body']);
+		expect(m.columns[0]).toMatchObject({ id: 'c_status', name: 'Status', width: 36, field: 'status' });
+	});
+
+	it('writes the query and the columns, and never the rows', () => {
+		const m = parseTable(SOURCE);
+		m.rows = [{ id: 'r_1', cells: { c_body: 'a task that was found' } }];
+		const out = serializeTable(m);
+		expect(out).not.toContain('rows:');
+		expect(out).not.toContain('a task that was found');
+		expect(out).toContain('field: status');
+		expect(out).toContain('tags include #question');
+		expect(parseTable(out).tasks).toEqual(m.tasks);
+	});
+
+	it('is stable: writing what was read changes nothing', () => {
+		const once = serializeTable(parseTable(SOURCE));
+		expect(serializeTable(parseTable(once))).toBe(once);
+	});
+
+	it('accepts an empty query, which finds every task', () => {
+		expect(parseTable('---\nversion: 2\ntasks:\n  query: ""\ncolumns: []\n---\n').tasks).toEqual({ query: '' });
+	});
+
+	it('ignores a tasks entry without a query rather than throwing', () => {
+		expect(parseTable('---\nversion: 2\ntasks: {}\ncolumns: []\nrows: []\n---\n').tasks).toBeUndefined();
+		expect(parseTable('---\nversion: 2\ntasks: yes\ncolumns: []\nrows: []\n---\n').tasks).toBeUndefined();
+	});
+
+	it('ignores a field that is not text, and an empty one', () => {
+		const m = parseTable('---\nversion: 2\ncolumns:\n  - { id: c_a, name: A, field: 3 }\n  - { id: c_b, name: B, field: "" }\nrows: []\n---\n');
+		expect(m.columns.map(c => c.field)).toEqual([undefined, undefined]);
+	});
+
+	it('leaves a table without tasks exactly as it was: columns, then rows, no tasks key', () => {
+		const out = serializeTable(parseTable('---\nversion: 2\ncolumns:\n  - { id: c_a, name: A }\nrows:\n  - { id: r_1, cells: { c_a: x } }\n---\n'));
+		expect(out).not.toContain('tasks');
+		expect(out.indexOf('columns:')).toBeLessThan(out.indexOf('rows:'));
+	});
+});

@@ -3306,6 +3306,20 @@ mark.bt-search-hit.bt-search-hit.bt-search-hit.bt-search-hit-active {
 	user-select: text;
 }
 
+/* ── Tasks query dialog ───────────────────────────────────────────────────── */
+.bt-tasks-query-help {
+	margin-top: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.bt-tasks-query-input {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 10em;
+	resize: vertical;
+	font-family: var(--font-monospace);
+}
+
 /* ── Built-in themes (auto-generated — do not edit below) ──── */
 /* @theme-label-en: Academic 📐 */
 /* @theme-label-zh: 学术 📐 */

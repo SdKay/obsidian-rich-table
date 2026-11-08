@@ -70,6 +70,8 @@ export interface ColumnDefV2 {
 	/** Values to SHOW for this column (empty/absent = no filter). Lives on the
 	 *  column itself — deleting the column drops its filter for free. */
 	filter?: string[];
+	/** In a table with `tasks`, which property of each task the column shows (see `src/tasks/taskFields.ts`). */
+	field?: string;
 }
 
 /**
@@ -238,6 +240,9 @@ export interface TableModelV2 {
 	 *  regenerated fresh on every read and never trusted from what's on disk in
 	 *  the code block for this kind of table — nothing here is written back. */
 	xlsxSource?: { path: string; sheet?: string };
+	/** When present, the rows are the tasks a Tasks-plugin style query finds in the vault, read fresh on every
+	 *  render and never written to the note: only `query` and the column list (`columns[].field`) are saved. */
+	tasks?: { query: string };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,7 +311,7 @@ export interface ChoiceType {
 export type CtrlColButtonId =
 	| 'openExternal' | 'detachXlsx' | 'lock' | 'autoFit' | 'transpose' | 'selectAll'
 	| 'theme' | 'aggregate' | 'collapse' | 'viewSettings' | 'views' | 'newSheet'
-	| 'snapshot' | 'exportXlsx';
+	| 'snapshot' | 'exportXlsx' | 'editTasksQuery';
 
 /**
  * The three mutually-exclusive states a table's ctrlCol can render in, and
@@ -327,7 +332,7 @@ export type CtrlColButtonId =
  */
 export const CTRL_COL_BUTTONS_BY_SCENARIO: { [K in 'locked' | 'unlocked' | 'xlsxRef']: CtrlColButtonId[] } = {
 	locked:   ['lock', 'snapshot', 'exportXlsx'],
-	unlocked: ['lock', 'autoFit', 'transpose', 'selectAll', 'theme', 'aggregate', 'collapse', 'viewSettings', 'views', 'newSheet', 'snapshot', 'exportXlsx'],
+	unlocked: ['editTasksQuery', 'lock', 'autoFit', 'transpose', 'selectAll', 'theme', 'aggregate', 'collapse', 'viewSettings', 'views', 'newSheet', 'snapshot', 'exportXlsx'],
 	xlsxRef:  ['openExternal', 'detachXlsx', 'snapshot'],
 };
 
@@ -348,6 +353,7 @@ const CTRL_COL_BUTTON_ICON: Record<CtrlColButtonId, string> = {
 	newSheet:     'copy-plus',
 	snapshot:     'camera',
 	exportXlsx:   'folder-up',
+	editTasksQuery: 'list-filter',
 };
 
 /** Settings-tab icon for one button, given which scenario group it's shown

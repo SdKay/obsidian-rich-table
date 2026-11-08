@@ -7751,6 +7751,7 @@ var STRUCTURAL_OP_TYPE_MAP = {
   "split-range-style": true,
   "set-align": true,
   "set-title": true,
+  "set-tasks-query": true,
   "set-footer": true,
   "set-filter": true,
   "toggle-aggregate": true,
@@ -8098,6 +8099,10 @@ function applyStructuralOpV2(model, op) {
     case "set-title": {
       if (op.title) model.title = op.title;
       else delete model.title;
+      break;
+    }
+    case "set-tasks-query": {
+      if (model.tasks) model.tasks = { query: op.query };
       break;
     }
     case "set-footer": {
@@ -8980,6 +8985,7 @@ function parseModelFields(yaml) {
   const sort = parseSort(yaml?.sort);
   const aggregate = parseAggregate(yaml?.aggregate);
   const views = parseViews(yaml?.views);
+  const tasks = parseTasksSource(yaml?.tasks);
   const freezeRows = parseFreezeCount(yaml?.freezeRows);
   const freezeCols = parseFreezeCount(yaml?.freezeCols);
   const viewWidth = parseViewSize(yaml?.viewWidth);
@@ -9009,8 +9015,14 @@ function parseModelFields(yaml) {
     // Only meaningful alongside a matching views[] entry — an activeViewId
     // pointing nowhere behaves exactly like it being absent (default table).
     ...typeof yaml?.activeViewId === "string" && views.some((v) => v.id === yaml.activeViewId) ? { activeViewId: yaml.activeViewId } : {},
-    ...parseXlsxSource(yaml?.xlsxSource) ? { xlsxSource: parseXlsxSource(yaml?.xlsxSource) } : {}
+    ...parseXlsxSource(yaml?.xlsxSource) ? { xlsxSource: parseXlsxSource(yaml?.xlsxSource) } : {},
+    ...tasks ? { tasks } : {}
   };
+}
+function parseTasksSource(raw) {
+  if (typeof raw !== "object" || raw === null) return void 0;
+  const q = raw.query;
+  return typeof q === "string" ? { query: q } : void 0;
 }
 function parseXlsxSource(raw) {
   if (typeof raw !== "object" || raw === null) return void 0;
@@ -9068,6 +9080,7 @@ function parseColumns(raw) {
     if (typeof c.width === "number") col.width = c.width;
     if (c.align === "left" || c.align === "center" || c.align === "right") col.align = c.align;
     if (Array.isArray(c.filter)) col.filter = c.filter.map((v) => String(v));
+    if (typeof c.field === "string" && c.field !== "") col.field = c.field;
     return col;
   }).filter((c) => c !== null);
 }
@@ -9201,8 +9214,11 @@ function serializeModelFields(m) {
       if (c.width) entry.width = c.width;
       if (c.align) entry.align = c.align;
       if (c.filter && c.filter.length > 0) entry.filter = c.filter;
+      if (c.field) entry.field = c.field;
       return entry;
     });
+  }
+  if (!m.xlsxSource && !m.tasks) {
     obj.rows = m.rows.map((r) => {
       const entry = { id: r.id };
       if (r.hidden) entry.hidden = true;
@@ -9255,6 +9271,7 @@ function serializeModelFields(m) {
     });
     if (m.activeViewId) obj.activeViewId = m.activeViewId;
   }
+  if (m.tasks) obj.tasks = { query: m.tasks.query };
   if (m.xlsxSource) {
     obj.xlsxSource = { path: m.xlsxSource.path, ...m.xlsxSource.sheet ? { sheet: m.xlsxSource.sheet } : {} };
   }

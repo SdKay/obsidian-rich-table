@@ -109,6 +109,7 @@ export function ctrlColButtonLabel(id: CtrlColButtonId): string {
 		newSheet:     'ctrlColBtnNewSheet',
 		snapshot:     'ctrlColBtnSnapshot',
 		exportXlsx:   'ctrlColBtnExportXlsx',
+		editTasksQuery: 'tasksQueryEdit',
 	};
 	return t(KEYS[id]);
 }

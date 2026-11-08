@@ -45,6 +45,7 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 	const sort    = parseSort(yaml?.sort);
 	const aggregate = parseAggregate(yaml?.aggregate);
 	const views   = parseViews(yaml?.views);
+	const tasks   = parseTasksSource(yaml?.tasks);
 	const freezeRows = parseFreezeCount(yaml?.freezeRows);
 	const freezeCols = parseFreezeCount(yaml?.freezeCols);
 	const viewWidth  = parseViewSize(yaml?.viewWidth);
@@ -77,7 +78,15 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 		...(typeof yaml?.activeViewId === 'string' && views.some(v => v.id === yaml.activeViewId)
 			? { activeViewId: yaml.activeViewId } : {}),
 		...(parseXlsxSource(yaml?.xlsxSource) ? { xlsxSource: parseXlsxSource(yaml?.xlsxSource) } : {}),
+		...(tasks ? { tasks } : {}),
 	};
+}
+
+function parseTasksSource(raw: unknown): { query: string } | undefined {
+	if (typeof raw !== 'object' || raw === null) return undefined;
+	const q = (raw as Record<string, unknown>).query;
+	// An empty query is a real one: it finds every task.
+	return typeof q === 'string' ? { query: q } : undefined;
 }
 
 function parseXlsxSource(raw: unknown): { path: string; sheet?: string } | undefined {
@@ -181,6 +190,7 @@ function parseColumns(raw: unknown): ColumnDefV2[] {
 		if (typeof c.width === 'number')                         col.width  = c.width;
 		if (c.align === 'left' || c.align === 'center' || c.align === 'right') col.align = c.align;
 		if (Array.isArray(c.filter))                             col.filter = c.filter.map(v => String(v));
+		if (typeof c.field === 'string' && c.field !== '')       col.field = c.field;
 		return col;
 	}).filter((c): c is ColumnDefV2 => c !== null);
 }

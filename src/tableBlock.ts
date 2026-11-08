@@ -9,6 +9,11 @@ import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
 import { applyWorkbookOp, isWorkbookOp, type WorkbookOpV2 } from './workbookOperations';
 import { renderSheetTabBar } from './renderSheetTabs';
+import { buildTasksTable, type TasksTable } from './tasks/taskTable';
+import { toIso } from './tasks/taskRun';
+import { buildTasksBlock, hasQuery } from './tasks/taskBlock';
+import { TaskQueryModal } from './tasks/taskQueryModal';
+import { tasksAccepts, sortedQuery, withSort } from './tasks/taskOps';
 import { applyThemeClass } from './renderThemeClass';
 import { genId } from './idGen';
 import { registerHoverState, takeHoverState } from './renderHoverHandoff';
@@ -16,6 +21,7 @@ import { registerSelectedCell } from './renderSelectionHandoff';
 import { registerCalendarMonth, clearCalendarMonth } from './renderCalendar';
 import { clearAllLiveEdits } from './renderEditHandoff';
 import { buildBlankTable } from './blankTable';
+import type { EmptyEntry } from './emptyEntries';
 import { openGridSizePicker } from './gridSizePicker';
 import { BUILTIN_TEMPLATES } from './templates/index';
 import { displayTheme, resolveDefaultTheme } from './themes';
@@ -236,6 +242,11 @@ export class TableBlock extends MarkdownRenderChild {
 	// The watcher on xlsxFile for external changes (see refreshXlsxWatch), replaced
 	// whenever the bound path changes (e.g. xlsxSource.path edited by hand).
 	private xlsxWatch: { path: string; watch: XlsxFileWatch } | null = null;
+	// A table that shows a task query. `this.model` stays the block as saved (query, columns, look: no rows) so
+	// that ops reduce on it and only it is written back; what is drawn is `tasksTable.model`, rebuilt from the
+	// vault's tasks on every render and never stored.
+	private tasksTable: TasksTable | null = null;
+	private stopTasksWatch: (() => void) | null = null;
 	// The marks the search panel's query has put on this block's cells, and the query that came with the
 	// hit it was opened from (used only by a Rich Search that cannot say when a search ends).
 	private clearSearchMarks: (() => void) | null = null;
@@ -265,6 +276,7 @@ export class TableBlock extends MarkdownRenderChild {
 		this.register(() => { liveInstances.delete(this); });
 		// Registered once here: reads the CURRENT watcher at unload time.
 		this.register(() => { this.xlsxWatch?.watch.stop(); });
+		this.register(() => { this.stopTasksWatch?.(); this.stopTasksWatch = null; });
 		this.register(this.plugin.searchPanel.follow(change => { if (change === 'hit') this.moveBright(); else this.syncSearchMarks(); }));
 		// A nested table's cacheKey (main.ts) is unique per mount — nothing will
 		// ever look it up again after THIS instance is done with it, unlike a
@@ -441,6 +453,21 @@ export class TableBlock extends MarkdownRenderChild {
 			}
 			this.refreshXlsxWatch();
 
+			// A tasks table: the rows are whatever the query finds right now. Waits for the first read of the vault,
+			// and redraws when the vault's tasks change.
+			this.tasksTable = null;
+			const tasksQueryMissing = !!this.model?.tasks && !isEmpty && !this.isXlsxBacked && !hasQuery(this.model.tasks.query);
+			if (this.model?.tasks && !isEmpty && !this.isXlsxBacked && !tasksQueryMissing) {
+				await this.plugin.tasks.whenReady();
+				this.tasksTable = buildTasksTable(this.model, this.plugin.tasks.tasks(), toIso(new Date()));
+				if (!this.stopTasksWatch) {
+					this.stopTasksWatch = this.plugin.tasks.onChange(() => { void this.render(); });
+				}
+			} else {
+				this.stopTasksWatch?.();
+				this.stopTasksWatch = null;
+			}
+
 			const active = this.activeModel;
 			// The view size is shell/block-level state (see xlsxShell's own doc
 			// comment), not per-sheet — deliberately simpler than a real
@@ -478,7 +505,13 @@ export class TableBlock extends MarkdownRenderChild {
 			// What the table accepts depends on its kind: a table written in the note takes every operation; one backed
 			// by an .xlsx file takes the ones its file can hold, plus choosing a sheet. The user's situation (policy)
 			// narrows that further.
-			const accepts = (type: TableOp['type']) => !this.isXlsxBacked || XLSX_ACCEPTED_OPS.has(type) || isXlsxWritableOp({ type });
+			const accepts = (type: TableOp['type']) => {
+				if (this.isXlsxBacked) return XLSX_ACCEPTED_OPS.has(type) || isXlsxWritableOp({ type });
+				// A tasks table has no stored rows: what names a row or a cell has nothing to act on. Sorting is
+				// accepted though it is not on the list, since queueOp turns it into a line of the query.
+				if (this.tasksTable) return tasksAccepts(type) || type === 'set-sort';
+				return true;
+			};
 			const edits = tableEdits(accepts, (effect) => policy.permits(effect), (op) => {
 				if (isWorkbookOp(op)) {
 					if (op.type === 'set-active-sheet' && this.isXlsxBacked) void this.switchXlsxSheet(op.sheetId);
@@ -491,7 +524,7 @@ export class TableBlock extends MarkdownRenderChild {
 					void this.handleStructuralOp(op);
 				}
 			});
-			const actions = this.tableActions(isEmpty, isOldFormat);
+			const actions = this.tableActions(isEmpty, isOldFormat, edits.can('set-tasks-query'));
 
 			// Which of settings.ts's three ctrlCol scenarios this table currently is.
 			const ctrlColScenario: 'locked' | 'unlocked' | 'xlsxRef' = this.isXlsxBacked ? 'xlsxRef' : locked ? 'locked' : 'unlocked';
@@ -505,12 +538,16 @@ export class TableBlock extends MarkdownRenderChild {
 			// banner below renders its own multi-template preview, so skip this
 			// render entirely rather than showing the default template as if it
 			// were the block's real (about-to-be-overwritten) content.
-			if (active && !isEmpty) {
+			if (tasksQueryMissing) {
+				this.renderMissingTasksQuery(tmp, edits.can('set-tasks-query'));
+			} else if (active && !isEmpty) {
 				// A theme that no longer exists is drawn as the one new tables get. Only for drawing: the model
 				// written back keeps the theme the note names.
 				const shown = displayTheme(active.theme, this.plugin.settings.defaultTheme);
+				// A tasks table draws the model built from the tasks found; `active` stays the block as saved.
+				const drawn = this.tasksTable?.model ?? active;
 				await renderTable(
-					shown === active.theme ? active : { ...active, theme: shown },
+					shown === active.theme ? drawn : { ...drawn, theme: shown },
 					() => this.plugin.choiceRegistry,
 					tmp,
 					this.plugin.app,
@@ -537,10 +574,12 @@ export class TableBlock extends MarkdownRenderChild {
 				// branch above and model.ts's doc comment on the field); a sheet
 				// inside an already-multi-sheet workbook has no analogous "back
 				// just this sheet with a file" path in phase 1.
-				await this.renderEmptyBanner(tmp,
-					(templateId) => this.insertTemplate(templateId),
-					(rows, cols) => this.insertBlank(rows, cols),
-					(file) => this.insertXlsxSource(file));
+				await this.renderEmptyBanner(tmp, this.emptyEntries({
+					template: (templateId) => this.insertTemplate(templateId),
+					blank: (rows, cols) => this.insertBlank(rows, cols),
+					xlsx: (file) => this.insertXlsxSource(file),
+					tasks: () => this.insertTasksTable(),
+				}), BUILTIN_TEMPLATES[0]?.id ?? 'blank');
 			} else if (active && active.columns.length === 0) {
 				// A brand-new sheet (create-sheet appends one with zero columns) or
 				// any other sheet a user emptied out completely — same banner as a
@@ -551,9 +590,10 @@ export class TableBlock extends MarkdownRenderChild {
 				// deleted, leaving 0 columns outside the normal "add a sheet" path)
 				// there's no workbook to scope into, so it falls back to the exact
 				// same whole-block replace the top-level isEmpty case already uses.
-				await this.renderEmptyBanner(tmp,
-					(templateId) => this.workbook ? this.insertTemplateIntoActiveSheet(templateId) : this.insertTemplate(templateId),
-					(rows, cols) => this.workbook ? this.insertBlankIntoActiveSheet(rows, cols) : this.insertBlank(rows, cols));
+				await this.renderEmptyBanner(tmp, this.emptyEntries({
+					template: (templateId) => this.workbook ? this.insertTemplateIntoActiveSheet(templateId) : this.insertTemplate(templateId),
+					blank: (rows, cols) => this.workbook ? this.insertBlankIntoActiveSheet(rows, cols) : this.insertBlank(rows, cols),
+				}), BUILTIN_TEMPLATES[0]?.id ?? 'blank');
 			}
 
 			// Sheet tab bar — workbook-level chrome, rendered OUTSIDE/AFTER
@@ -819,34 +859,15 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  same banner/copy, different insert targets (splice raw text into the
 	 *  file vs populate just the active sheet's own content).
 	 *
-	 *  Every built-in template (BUILTIN_TEMPLATES, auto-discovered from
-	 *  src/templates/) gets its own button, plus a fixed "insert blank table"
-	 *  button (the one option that needs a second interaction — the grid size
-	 *  picker — so it can't be a plain one-click insert like the others).
-	 *  Hovering a button live-previews its content below the banner; the
-	 *  default (nothing hovered) preview is always the first template
-	 *  (BUILTIN_TEMPLATES[0], "demo" — see generateTemplateMeta's sort). Every
-	 *  candidate is rendered once up front (all read-only, no onOp/onCellChange)
-	 *  and toggled via a class, rather than re-rendering on each hover — cheap
-	 *  enough for the handful of templates this is expected to have, and avoids
-	 *  a visible per-hover render delay.
-	 *
-	 *  `onXlsxImport`, when given, adds one more button — "Import from .xlsx" —
-	 *  that opens the vault-scoped file picker (xlsxFilePicker.ts) instead of
-	 *  inserting directly on click. It has no real table content to preview
-	 *  before a file is even chosen, so its hover preview is a plain text hint
-	 *  rather than a rendered table, using the exact same key/toggle mechanism
-	 *  every other button's preview already uses. */
-	private async renderEmptyBanner(
-		tmp: HTMLElement,
-		onTemplate: (templateId: string) => Promise<void>,
-		onBlank: (rows: number, cols: number) => Promise<void>,
-		onXlsxImport?: (file: TFile) => Promise<void>,
-	): Promise<void> {
-		const BLANK_PREVIEW_SIZE = 3;
-		const BLANK_KEY = 'blank';
-		const XLSX_KEY = 'xlsx-import';
-
+	 *  Draws one button for each entry, in the order given, and a preview of
+	 *  each below them: hovering a button shows its entry's preview, and with
+	 *  nothing hovered the preview of `defaultKey` shows. Every preview is
+	 *  rendered once up front (all read-only) and toggled by a class, rather
+	 *  than rendered on each hover — cheap enough for the few entries there
+	 *  are, and no visible per-hover delay. What choosing an entry does is the
+	 *  entry's own (emptyEntries.ts); this only lays them out and keeps them
+	 *  from racing each other. */
+	private async renderEmptyBanner(tmp: HTMLElement, entries: EmptyEntry[], defaultKey: string): Promise<void> {
 		const banner = createDiv({ cls: 'bt-template-banner' });
 		banner.createSpan({ cls: 'bt-template-banner-label', text: t('templatePreview') });
 		const btns = banner.createDiv({ cls: 'bt-template-btns' });
@@ -861,19 +882,20 @@ export class TableBlock extends MarkdownRenderChild {
 		const previewHost = createDiv({ cls: 'bt-template-preview-host' });
 		const previewEls = new Map<string, HTMLElement>();
 		const pending: Promise<void>[] = [];
-		const addPreview = (key: string, model: TableModelV2) => {
-			const el = previewHost.createDiv({ cls: 'bt-template-preview-item' });
-			previewEls.set(key, el);
-			pending.push(renderTable(model, () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this));
-		};
-		for (const tpl of BUILTIN_TEMPLATES) addPreview(tpl.id, parseTable(pick(tpl.content)));
-		addPreview(BLANK_KEY, buildBlankTable(BLANK_PREVIEW_SIZE, BLANK_PREVIEW_SIZE, this.defaultTheme()));
-		if (onXlsxImport) {
-			// No table content exists to preview before a file is even chosen —
-			// a plain text hint in the same preview slot every other button uses,
-			// not a rendered table.
-			const el = previewHost.createDiv({ cls: 'bt-template-preview-item bt-template-preview-text', text: t('xlsxImportPreviewHint') });
-			previewEls.set(XLSX_KEY, el);
+		const draw = (el: HTMLElement, model: TableModelV2) =>
+			renderTable(model, () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this);
+		for (const e of entries) {
+			if ('hint' in e.preview) {
+				// No table content exists to preview before a file is even chosen —
+				// a plain text hint in the same preview slot every other button uses,
+				// not a rendered table.
+				const el = previewHost.createDiv({ cls: 'bt-template-preview-item bt-template-preview-text', text: e.preview.hint });
+				previewEls.set(e.key, el);
+			} else {
+				const el = previewHost.createDiv({ cls: 'bt-template-preview-item' });
+				previewEls.set(e.key, el);
+				pending.push(draw(el, e.preview.model));
+			}
 		}
 
 		// A dedicated overlay rather than relying on previewHost.is-inserting's
@@ -890,7 +912,6 @@ export class TableBlock extends MarkdownRenderChild {
 		previewHost.createDiv({ cls: 'bt-template-preview-lock' });
 		await Promise.all(pending);
 
-		const defaultKey = BUILTIN_TEMPLATES[0]?.id ?? BLANK_KEY;
 		const showPreview = (key: string) => {
 			for (const [k, el] of previewEls) el.toggleClass('is-active', k === key);
 		};
@@ -921,82 +942,33 @@ export class TableBlock extends MarkdownRenderChild {
 			void fn();
 		};
 
-		// Rebuilds the "blank" preview to the exact size currently hovered in the
-		// grid picker. Cheap regardless of how often the grid-hover fires: every
-		// cell in buildBlankTable's output is empty, and renderDataCell's empty-
-		// cell branch never awaits MarkdownRenderer — so this whole render
-		// resolves within the same microtask flush, well before the next real
-		// mouseover (a later browser task) could start an overlapping one. No
-		// staleness guard needed as long as that stays true (it would be, e.g.,
-		// if a future change gave blank cells default content to render).
-		const previewBlankSize = (rows: number, cols: number) => {
-			const el = previewEls.get(BLANK_KEY);
-			if (!el) return;
-			el.empty();
-			void renderTable(buildBlankTable(rows, cols, this.defaultTheme()), () => this.plugin.choiceRegistry, el, this.plugin.app, this.sourcePath, this);
-		};
+		// An entry that opens something floating (the size picker) holds the
+		// preview while it is open: the pointer leaving the button for the
+		// picker would otherwise send the preview back to the default.
+		let held = false;
 
-		// Leftmost — "import from an external file" reads as a more fundamental
-		// choice of data source than "which built-in starting point", so it goes
-		// first, ahead of the template buttons and the blank-table button.
-		if (onXlsxImport) {
-			const xlsxBtn = btns.createEl('button', { cls: 'bt-template-btn', text: t('importFromXlsx') });
-			xlsxBtn.dataset.previewKey = XLSX_KEY;
-			// A modal (FuzzySuggestModal), unlike the grid picker, isn't a hover
-			// flyout anchored to this button — click-only, matching how every
-			// other Obsidian file/command picker is invoked.
-			xlsxBtn.addEventListener('click', () => {
-				if (inserting) return;
-				openXlsxFilePicker(this.plugin.app, (file) => lockAndInsert(() => onXlsxImport(file)));
+		for (const e of entries) {
+			const button = btns.createEl('button', { cls: 'bt-template-btn', text: e.label });
+			button.dataset.previewKey = e.key;
+			e.bind({
+				button,
+				insert: lockAndInsert,
+				showPreview: () => showPreview(e.key),
+				redraw: (model) => {
+					const el = previewEls.get(e.key);
+					if (!el) return;
+					el.empty();
+					void draw(el, model);
+				},
+				holdPreview: () => {
+					held = true;
+					// Letting go sends the preview back to the default, unless an insert has begun: then it stays on
+					// what was chosen, which is about to be written.
+					return () => { held = false; if (!inserting) showPreview(defaultKey); };
+				},
+				inserting: () => inserting,
 			});
 		}
-
-		for (const tpl of BUILTIN_TEMPLATES) {
-			const btn = btns.createEl('button', {
-				cls: 'bt-template-btn',
-				text: pick(tpl.labels),
-			});
-			btn.dataset.previewKey = tpl.id;
-			btn.addEventListener('click', () => lockAndInsert(() => onTemplate(tpl.id)));
-		}
-		// The grid size picker renders to document.body (CONFIRMED necessary via
-		// live diagnostics — see openGridSizePicker's doc comment for the
-		// measured root cause: Obsidian wraps every rendered code block in a
-		// `contain: paint` container, which hijacks position:fixed/absolute's
-		// containing block AND clips paint to its own ~127px-tall box while the
-		// block is still just this empty-state banner; no CSS position value
-		// escapes that from inside it). Being outside btns' own DOM subtree
-		// means moving the mouse up into it fires a genuine mouseleave on btns,
-		// which would otherwise revert the preview back to the default template
-		// mid-pick. Locked to the blank-table preview for as long as the picker
-		// is open, regardless of where the mouse actually is; see "Hover state
-		// & floating popups" for the same class of issue with the hover-strip
-		// show/hide machinery.
-		let pickerOpen = false;
-
-		const blankBtn = btns.createEl('button', {
-			cls: 'bt-template-btn',
-			text: t('insertBlankTable'),
-		});
-		blankBtn.dataset.previewKey = BLANK_KEY;
-		const openBlankPicker = () => {
-			if (pickerOpen || inserting) return; // already open — mouseenter can re-fire without a leave in between
-			pickerOpen = true;
-			showPreview(BLANK_KEY);
-			openGridSizePicker({
-				component: this,
-				anchor: blankBtn,
-				onConfirm: (rows, cols) => lockAndInsert(() => onBlank(rows, cols)),
-				onHover: (rows, cols) => previewBlankSize(rows, cols),
-				onClose: () => { pickerOpen = false; if (!inserting) showPreview(defaultKey); },
-			});
-		};
-		// Hover opens it directly — no click needed, matching the other buttons'
-		// hover-to-preview behavior. Click stays wired too (harmless if already
-		// open) so it's still reachable via keyboard focus + Enter/Space, which
-		// never dispatches a real mouseenter.
-		blankBtn.addEventListener('mouseenter', openBlankPicker);
-		blankBtn.addEventListener('click', openBlankPicker);
 
 		// Delegated (not per-button) so moving directly between two adjacent
 		// buttons doesn't flash back to the default preview in between. Also
@@ -1008,14 +980,123 @@ export class TableBlock extends MarkdownRenderChild {
 		// the default template (rich-table) instead of staying on whichever one
 		// was actually confirmed and is now being written.
 		btns.addEventListener('mouseover', (evt: MouseEvent) => {
-			if (pickerOpen || inserting) return;
+			if (held || inserting) return;
 			const btn = (evt.target as HTMLElement).closest<HTMLElement>('.bt-template-btn');
 			const key = btn?.dataset.previewKey;
 			if (key) showPreview(key);
 		});
-		btns.addEventListener('mouseleave', () => { if (!pickerOpen && !inserting) showPreview(defaultKey); });
+		btns.addEventListener('mouseleave', () => { if (!held && !inserting) showPreview(defaultKey); });
 
 		tmp.append(banner, previewHost);
+	}
+
+	/**
+	 * The entries the guide offers, left to right: the ways to begin as another kind of table, then each template, then
+	 * a blank table. Another kind of table is a property of the whole block, so those are given only where the block is
+	 * empty as a whole, not for a sheet or a table emptied of its columns, which can only be filled in.
+	 */
+	private emptyEntries(insert: {
+		template: (templateId: string) => Promise<void>;
+		blank: (rows: number, cols: number) => Promise<void>;
+		xlsx?: (file: TFile) => Promise<void>;
+		tasks?: () => Promise<void>;
+	}): EmptyEntry[] {
+		return [
+			...(insert.xlsx ? [this.xlsxImportEntry(insert.xlsx)] : []),
+			...(insert.tasks ? [this.tasksEntry(insert.tasks)] : []),
+			...BUILTIN_TEMPLATES.map(tpl => this.templateEntry(tpl, insert.template)),
+			this.blankEntry(insert.blank),
+		];
+	}
+
+	/** The entry for one built-in template: one click inserts it. */
+	private templateEntry(tpl: (typeof BUILTIN_TEMPLATES)[number], insert: (templateId: string) => Promise<void>): EmptyEntry {
+		return {
+			key: tpl.id,
+			label: pick(tpl.labels),
+			preview: { model: parseTable(pick(tpl.content)) },
+			bind: (ctx) => { ctx.button.addEventListener('click', () => ctx.insert(() => insert(tpl.id))); },
+		};
+	}
+
+	/** The entry for a blank table: pointing at it opens the size picker, and the preview follows the size under the pointer. */
+	private blankEntry(insert: (rows: number, cols: number) => Promise<void>): EmptyEntry {
+		const PREVIEW_SIZE = 3;
+		return {
+			key: 'blank',
+			label: t('insertBlankTable'),
+			preview: { model: buildBlankTable(PREVIEW_SIZE, PREVIEW_SIZE, this.defaultTheme()) },
+			bind: (ctx) => {
+				// The grid size picker renders to document.body (CONFIRMED necessary via
+				// live diagnostics — see openGridSizePicker's doc comment for the
+				// measured root cause: Obsidian wraps every rendered code block in a
+				// `contain: paint` container, which hijacks position:fixed/absolute's
+				// containing block AND clips paint to its own ~127px-tall box while the
+				// block is still just this empty-state banner; no CSS position value
+				// escapes that from inside it). Being outside the buttons' own DOM subtree
+				// means moving the mouse up into it fires a genuine mouseleave on them,
+				// which would otherwise revert the preview back to the default template
+				// mid-pick. Held on the blank-table preview for as long as the picker
+				// is open, regardless of where the mouse actually is; see "Hover state
+				// & floating popups" for the same class of issue with the hover-strip
+				// show/hide machinery.
+				let release: (() => void) | null = null;
+				const open = () => {
+					if (release || ctx.inserting()) return; // already open — mouseenter can re-fire without a leave in between
+					ctx.showPreview();
+					release = ctx.holdPreview();
+					openGridSizePicker({
+						component: this,
+						anchor: ctx.button,
+						onConfirm: (rows, cols) => ctx.insert(() => insert(rows, cols)),
+						// Cheap regardless of how often the grid-hover fires: every
+						// cell in buildBlankTable's output is empty, and renderDataCell's empty-
+						// cell branch never awaits MarkdownRenderer — so this whole render
+						// resolves within the same microtask flush, well before the next real
+						// mouseover (a later browser task) could start an overlapping one. No
+						// staleness guard needed as long as that stays true (it would be, e.g.,
+						// if a future change gave blank cells default content to render).
+						onHover: (rows, cols) => ctx.redraw(buildBlankTable(rows, cols, this.defaultTheme())),
+						onClose: () => { release?.(); release = null; },
+					});
+				};
+				// Hover opens it directly — no click needed, matching the other buttons'
+				// hover-to-preview behavior. Click stays wired too (harmless if already
+				// open) so it's still reachable via keyboard focus + Enter/Space, which
+				// never dispatches a real mouseenter.
+				ctx.button.addEventListener('mouseenter', open);
+				ctx.button.addEventListener('click', open);
+			},
+		};
+	}
+
+	/** The entry for a table of the tasks a query finds: one click inserts it with the default query. Whole blocks only. */
+	private tasksEntry(insert: () => Promise<void>): EmptyEntry {
+		return {
+			key: 'tasks',
+			label: t('insertTasksTable'),
+			// The tasks are in the vault, not in this block, so there is no table to show before it is inserted.
+			preview: { hint: t('tasksPreviewHint') },
+			bind: (ctx) => { ctx.button.addEventListener('click', () => ctx.insert(insert)); },
+		};
+	}
+
+	/** The entry for backing the block with an .xlsx file: a file picker opens on click. Whole blocks only. */
+	private xlsxImportEntry(insert: (file: TFile) => Promise<void>): EmptyEntry {
+		return {
+			key: 'xlsx-import',
+			label: t('importFromXlsx'),
+			preview: { hint: t('xlsxImportPreviewHint') },
+			bind: (ctx) => {
+				// A modal (FuzzySuggestModal), unlike the grid picker, isn't a hover
+				// flyout anchored to this button — click-only, matching how every
+				// other Obsidian file/command picker is invoked.
+				ctx.button.addEventListener('click', () => {
+					if (ctx.inserting()) return;
+					openXlsxFilePicker(this.plugin.app, (file) => ctx.insert(() => insert(file)));
+				});
+			},
+		};
 	}
 
 	private async handleStructuralOp(op: StructuralOpV2): Promise<void> {
@@ -1180,13 +1261,16 @@ export class TableBlock extends MarkdownRenderChild {
 	}
 
 	/** The toolbar buttons the kind of table offers that do not change it. */
-	private tableActions(isEmpty: boolean, isOldFormat: boolean): TableAction[] {
+	private tableActions(isEmpty: boolean, isOldFormat: boolean, canEditTasksQuery: boolean): TableAction[] {
 		const actions: TableAction[] = [];
 		if (this.isXlsxBacked) {
 			actions.push(
 				{ id: 'openExternal', label: t('openInDefaultApp'), place: 'first', run: () => void this.openXlsxFileExternally() },
 				{ id: 'detachXlsx', label: t('detachFromXlsx'), place: 'first', run: () => void this.detachFromXlsx() },
 			);
+		}
+		if (canEditTasksQuery && this.model?.tasks) {
+			actions.push({ id: 'editTasksQuery', label: t('tasksQueryEdit'), place: 'first', run: () => this.editTasksQuery() });
 		}
 		actions.push({
 			id: 'snapshot', label: t('snapshotButton'), place: 'last',
@@ -1431,6 +1515,25 @@ export class TableBlock extends MarkdownRenderChild {
 			return;
 		}
 
+		// A tasks table has no stored rows, so an op that names a row or a cell would act on nothing. This is the one
+		// place every op passes, whatever called for it, so what is allowed is kept here and not only in the buttons.
+		// A sort is the one row-ish thing it supports, and it is kept in the query: it becomes a `sort by` line.
+		if (this.model?.tasks && pending.kind === 'cell') {
+			let op = pending.op;
+			if (op.type === 'set-sort') {
+				const sort = op.sort;
+				// Clearing needs no column: it takes every sort line out.
+				const next = sort === null
+					? withSort(this.model.tasks.query, null, null)
+					: sortedQuery(this.model.tasks.query, this.model.columns.find(c => c.id === sort.colId)?.field, sort.dir);
+				// A column Tasks has no sort for is left as it is.
+				if (next === null) return;
+				op = { type: 'set-tasks-query', query: next };
+				pending = { kind: 'cell', op };
+			}
+			if (!tasksAccepts(op.type)) return;
+		}
+
 		// Theme/collapse instant-apply — only meaningful for cell-level ops on
 		// the active sheet's own model; a workbook op never touches these fields.
 		if (pending.kind === 'cell') {
@@ -1634,6 +1737,44 @@ export class TableBlock extends MarkdownRenderChild {
 			version: 2, columns: [], rows: [], merges: [], styles: [],
 			xlsxSource: { path: file.path },
 		}));
+	}
+
+	/**
+	 * Inserts a tasks table (the default columns, no rows: they are found on draw), then asks for its query. Closing
+	 * the dialog without one leaves the table asking for it.
+	 */
+	private async insertTasksTable(): Promise<void> {
+		const block = buildTasksBlock(this.defaultTheme());
+		await this.insertBlock(serializeTable(block));
+		new TaskQueryModal(this.plugin.app, '', query => void this.writeTasksQuery(block, query)).open();
+	}
+
+	/** Asks for the query of this tasks table, starting from the one it has. */
+	private editTasksQuery(): void {
+		const query = this.model?.tasks?.query ?? '';
+		new TaskQueryModal(this.plugin.app, query, next => { if (next !== query) void this.handleStructuralOp({ type: 'set-tasks-query', query: next }); }).open();
+	}
+
+	/**
+	 * Saves the query asked for right after inserting. The block just written may not be this block's model yet (the
+	 * note is re-read on Obsidian's own time), so the block inserted is written again with the query in it.
+	 */
+	private async writeTasksQuery(inserted: TableModelV2, query: string): Promise<void> {
+		if (this.model?.tasks) {
+			if (query !== this.model.tasks.query) await this.handleStructuralOp({ type: 'set-tasks-query', query });
+			return;
+		}
+		if (query === '') return;
+		await this.insertBlock(serializeTable({ ...inserted, tasks: { query } }));
+	}
+
+	/** Shown in place of a tasks table that has no query yet: what is missing, and the button that asks for it. */
+	private renderMissingTasksQuery(tmp: HTMLElement, canEdit: boolean): void {
+		const box = tmp.createDiv({ cls: 'bt-template-banner bt-tasks-query-missing' });
+		box.createSpan({ cls: 'bt-template-banner-label', text: t('tasksQueryMissing') });
+		if (!canEdit) return;
+		const btn = box.createEl('button', { cls: 'bt-template-btn', text: t('tasksQueryWrite') });
+		btn.addEventListener('click', () => this.editTasksQuery());
 	}
 
 	/** Shared by insertTemplate/insertBlank/insertXlsxSource/detachFromXlsx —

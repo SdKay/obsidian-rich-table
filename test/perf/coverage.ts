@@ -40,5 +40,6 @@ export const COVERAGE: { [K in TableOpType]: Coverage } = {
 	// ── workbook
 	'create-sheet': 'rebuild:create-sheet', 'delete-sheet': 'rebuild:delete-sheet', 'rename-sheet': 'rebuild:rename-sheet',
 	'reorder-sheets': 'rebuild:reorder-sheets', 'set-active-sheet': 'rebuild:set-active-sheet', 'set-sheet-tab-style': 'rebuild:set-sheet-tab-style',
+	'set-tasks-query': { exempt: 'acts only on a table that shows a task query, whose rows come from the vault; the scan has no vault of tasks to measure it on' },
 	'set-sheet-content': { exempt: 'only written when a new sheet is filled from a template or a blank grid, once; its cost is that of building the sheet' },
 };

@@ -31,6 +31,8 @@ const STRUCTURAL: { [K in StructuralOpV2['type']]: OpEffect } = {
 	'reorder-rows': 'structure', 'transpose': 'structure',
 	// A column's type changes how its cells are read and sorted, so the data itself is reinterpreted.
 	'set-col-type': 'structure',
+	// The query decides which rows there are.
+	'set-tasks-query': 'structure',
 
 	'set-cell-content': 'content', 'fill-cells': 'content', 'set-cell-formula': 'content',
 	'paste-values': 'content', 'paste-values-with-header': 'content',

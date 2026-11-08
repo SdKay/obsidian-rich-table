@@ -58,9 +58,9 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 	// always discards them and rebuilds fresh from the external file (see
 	// TableModelV2.xlsxSource's own doc comment) — so writing them out here
 	// would just be dead YAML nobody ever reads back. Every other model still
-	// writes them unconditionally, even when empty: a real (non-xlsx) table's
-	// columns/rows ARE its actual data, so "empty" there is a real, meaningful
-	// state (e.g. a freshly emptied sheet), not something to omit.
+	// writes its columns unconditionally, even when empty: they ARE its actual
+	// layout, so "empty" there is a real, meaningful state (e.g. a freshly
+	// emptied sheet), not something to omit.
 	if (!m.xlsxSource) {
 		obj.columns = m.columns.map(c => {
 			const entry: Record<string, unknown> = { id: c.id, name: c.name };
@@ -69,9 +69,14 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 			if (c.width)   entry.width  = c.width;
 			if (c.align)   entry.align  = c.align;
 			if (c.filter && c.filter.length > 0) entry.filter = c.filter;
+			if (c.field)   entry.field  = c.field;
 			return entry;
 		});
+	}
 
+	// A tasks table's rows are the tasks found at render time and are never saved; its columns are saved, since they
+	// are the table's own layout.
+	if (!m.xlsxSource && !m.tasks) {
 		obj.rows = m.rows.map(r => {
 			const entry: Record<string, unknown> = { id: r.id };
 			if (r.hidden)           entry.hidden = true;
@@ -131,6 +136,7 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 		// Only meaningful alongside the views[] entries above.
 		if (m.activeViewId) obj.activeViewId = m.activeViewId;
 	}
+	if (m.tasks) obj.tasks = { query: m.tasks.query };
 	if (m.xlsxSource) {
 		obj.xlsxSource = { path: m.xlsxSource.path, ...(m.xlsxSource.sheet ? { sheet: m.xlsxSource.sheet } : {}) };
 	}

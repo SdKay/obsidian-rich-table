@@ -32,6 +32,7 @@
   <a href="#格式说明">格式</a> ·
   <a href="#导出为-xlsx">导出为 .xlsx</a> ·
   <a href="#外部-xlsx">外部 .xlsx</a> ·
+  <a href="#任务表">任务表</a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -483,6 +484,42 @@ xlsxSource:
 笔记中的表格同样可以被搜索，搜到的是表格显示的内容：公式按计算结果，工作簿按 sheet 分别搜索。打开一条结果会滚动到对应单元格，必要时切换到它所在的 sheet，且不会修改笔记；笔记中所有已打开的表格都会标出各自的匹配。你打开的那一处匹配以完整亮度加外框显示，其余匹配变暗。标记在搜索面板保留该搜索期间一直存在，颜色取自 Rich Search 中的设置。标记还会跟随搜索范围：被搜索的文件夹和文件类型排除在外的表格笔记或 `.xlsx` 文件，即使在另一个标签页里打开也不会被标出；范围一变，标记随即出现或消失。这需要 Rich Search 提供搜索范围的版本；版本较旧时，所有打开的文件仍像以前一样被标出。
 
 ---
+
+## 任务表
+
+表格可以显示 [Tasks](https://publish.obsidian.md/tasks/) 插件风格的查询在整个笔记库里找到的任务，每个任务一行。行在每次绘制时从笔记中读取，不会写进代码块，所以你勾选或新增任务后，表格保持最新。
+
+最简单的创建方式：插入一个空的 `rich-table` 代码块，点击**插入任务表**，然后在弹出的对话框里写查询语句，每行一个条件（例如 `not done` 和 `sort by due`）。列为：状态、任务、截止、优先级、标签、文件。没有查询语句的任务表不显示任务，而是显示提示和**编写查询**按钮；之后可以用工具栏的**编辑任务查询**按钮打开同一个对话框修改。
+
+````markdown
+```rich-table
+---
+version: 2
+tasks:
+  query: |
+    not done
+    due before next week
+    sort by due
+columns:
+  - id: c_status
+    name: 状态
+    width: 36
+    field: status
+  - id: c_body
+    name: 任务
+    field: body
+  - id: c_due
+    name: 截止
+    field: due
+---
+```
+````
+
+- **查询**的写法与 Tasks 插件一致，每行一个条件：`done` / `not done`、日期（`due before …`、`due this week`、`has due date`）、`priority`、`tags`、`path` / `filename` / `heading` / `description` 条件（含 `regex matches`）、`is recurring`、`sort by …`、`group by …`、`limit N`。在代码块里直接修改。不支持 `filter by function`、布尔组合（`AND`、`OR`、`NOT`）和预设；**插件不认识的行不会生效**，请确认表格显示的是你想要的内容。
+- **列**各显示任务的一个属性（`field`）：状态、任务文字、各个日期、优先级、标签、重复规则、文件、路径、标题。可以像普通表格一样增删、排序、调宽、改名。
+- **排序**某一列会在查询里写入一行 `sort by`。顺序由查询保存，而不是行本身。
+- **不可编辑**：任务本身。任何会修改行或单元格的操作都会被拒绝；请到任务所在的笔记里修改。
+- 一个代码块只能是一种表：任务表不能与外部 `.xlsx` 或多工作表组合。
 
 ## 主题
 

@@ -459,11 +459,15 @@ export class Modal {
 		this.modalEl.append(this.titleEl, this.contentEl);
 	}
 	setTitle(title: string): this { this.titleEl.textContent = title; return this; }
+	private onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') this.close(); };
 	open(): void {
 		document.body.appendChild(this.modalEl);
+		// The real Modal closes on Escape, through close(), so onClose runs as it does there.
+		document.addEventListener('keydown', this.onKey);
 		void this.onOpen();
 	}
 	close(): void {
+		document.removeEventListener('keydown', this.onKey);
 		this.modalEl.remove();
 		this.onClose();
 	}

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '../../common/test-base';
+import { CTRL_COL_BUTTONS_BY_SCENARIO } from '../../../../src/model';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SHELL = path.join(__dirname, '../../common/shell.html');
@@ -47,7 +48,7 @@ test.describe('ctrlCol settings tab — compact chip layout', () => {
 
 		const grid = page.locator('.bt-ctrlcol-grid').nth(1); // locked, then unlocked, then xlsxRef
 		const chips = grid.locator('.bt-ctrlcol-chip');
-		await expect(chips).toHaveCount(12); // CTRL_COL_BUTTONS_BY_SCENARIO.unlocked.length
+		await expect(chips).toHaveCount(CTRL_COL_BUTTONS_BY_SCENARIO.unlocked.length);
 
 		const firstChip = chips.first();
 		await expect(firstChip.locator('.bt-ctrlcol-chip-icon svg')).toHaveCount(1);

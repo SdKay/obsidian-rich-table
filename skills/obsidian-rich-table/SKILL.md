@@ -90,6 +90,7 @@ Each entry has:
 | `align`  | `left` \| `center` \| `right` | — | Text alignment |
 | `hidden` | boolean | false | Hidden (collapsed) column |
 | `filter` | array of strings | — | Values to SHOW for this column (row filtering). Managed automatically by the plugin UI. |
+| `field`  | string | — | Only in a `tasks` table: which property of each task the column shows ([tasks.md](references/tasks.md)) |
 
 ```yaml
 - id: c_000001
@@ -194,6 +195,7 @@ These fields are all optional and documented in separate files. When the user's 
 | `formulas` (computed cells, `=SUM(...)`, error values) | [references/formulas.md](references/formulas.md) |
 | `theme`, `locked`, `collapsed`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId` | [references/view-and-display.md](references/view-and-display.md) |
 | `sheets`/`active_sheet` (multi-sheet, `version: 3`), `xlsxSource` | [references/workbook-and-xlsx.md](references/workbook-and-xlsx.md) |
+| `tasks` (rows are the tasks a Tasks-plugin query finds), `columns[].field` | [references/tasks.md](references/tasks.md) |
 | `styles[].target` grammar and cascade | [references/styles.md](references/styles.md) |
 | What a cell may contain (Markdown, math, nested tables), built-in column `type` values | [references/cell-content.md](references/cell-content.md) |
 | Complete example blocks | [references/examples.md](references/examples.md) |

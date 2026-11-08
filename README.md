@@ -32,6 +32,7 @@
   <a href="#format">Format</a> ·
   <a href="#export-as-xlsx">Export as .xlsx</a> ·
   <a href="#external-xlsx">External .xlsx</a> ·
+  <a href="#tasks-tables">Tasks</a> ·
   <a href="README_CN.md">中文</a>
 </p>
 
@@ -479,6 +480,42 @@ The tables in a note are searched too, by what they show: a formula by its resul
 
 ---
 
+
+## Tasks tables
+
+A table can show the tasks that a [Tasks](https://publish.obsidian.md/tasks/) plugin style query finds across your vault, one task per row. The rows are read from your notes every time the table is drawn and are never written into the block, so the table stays current as you tick tasks off or add new ones.
+
+The easiest way to create one: insert an empty `rich-table` block and click **Insert tasks table**, then write the query in the dialog that opens, one condition per line (for example `not done` and `sort by due`). Its columns are status, task, due, priority, tags, file. A table without a query shows a reminder and a **Write the query** button instead of rows; the toolbar's **Edit tasks query** button opens the same dialog to change it later.
+
+````markdown
+```rich-table
+---
+version: 2
+tasks:
+  query: |
+    not done
+    due before next week
+    sort by due
+columns:
+  - id: c_status
+    name: Status
+    width: 36
+    field: status
+  - id: c_body
+    name: Task
+    field: body
+  - id: c_due
+    name: Due
+    field: due
+---
+```
+````
+
+- **The query** is written as in the Tasks plugin, one condition per line: `done` / `not done`, dates (`due before …`, `due this week`, `has due date`), `priority`, `tags`, `path` / `filename` / `heading` / `description` conditions (including `regex matches`), `is recurring`, `sort by …`, `group by …`, `limit N`. Edit it in the block. `filter by function`, boolean groups (`AND`, `OR`, `NOT`) and presets are not supported; **a line the plugin does not understand is not applied**, so check that the table shows what you meant.
+- **Columns** each show one property of the task (`field`): status, task text, any of its dates, priority, tags, recurrence, file, path, heading. Add, remove, reorder, resize and rename them as in any table.
+- **Sorting** a column writes a `sort by` line into the query. It is the query that holds the order, not the rows.
+- **Not editable**: the tasks themselves. Anything that would change a row or a cell is refused; change the task in its note.
+- A block is one kind of table: a tasks table does not combine with an external `.xlsx` or with sheets.
 
 ## Themes
 

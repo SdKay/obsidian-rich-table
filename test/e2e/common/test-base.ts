@@ -177,7 +177,7 @@ export const test = base.extend<{
 	 *  why a byte array, not ArrayBuffer/Uint8Array. */
 	/** Mounts the real XlsxFileViewer on an in-memory vault holding `files` (path → bytes) and opens `open`. */
 	renderXlsxFile: (files: Record<string, number[]>, open: string, opts?: { searchHost?: FakeSearchHost; pendingReveal?: unknown; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderXlsxFileResult>;
-	renderBlock: (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown>; searchHost?: FakeSearchHost; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderBlockResult>;
+	renderBlock: (blockSource: string, opts?: { tasksFrom?: Record<string, string>; binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown>; searchHost?: FakeSearchHost; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderBlockResult>;
 }>({
 	renderReal: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
@@ -433,11 +433,11 @@ export const test = base.extend<{
 		await page.addInitScript({ path: POLYFILL });
 		await page.addInitScript({ path: FAKE_SEARCH_HOST });
 
-		const helper = async (blockSource: string, opts?: { binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown>; searchHost?: FakeSearchHost; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }): Promise<RenderBlockResult> => {
+		const helper = async (blockSource: string, opts?: { tasksFrom?: Record<string, string>; binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown>; searchHost?: FakeSearchHost; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }): Promise<RenderBlockResult> => {
 			await page.goto(`file://${SHELL}`);
 			await page.addScriptTag({ path: BUNDLE });
 
-			await page.evaluate(({ src, binaryFiles, sourcePath, settings, searchHost, initialQuery }) => {
+			await page.evaluate(({ src, tasksFrom, binaryFiles, sourcePath, settings, searchHost, initialQuery }) => {
 				const R = window.RichTableReal;
 				const NOTE = sourcePath ?? 'note.md';
 				const vault = new R.FakeVault();
@@ -454,9 +454,18 @@ export const test = base.extend<{
 				w.__btVault = vault;
 				w.__btNote = NOTE;
 				w.__btSource = src;
+				w.__btTaskNotes = { ...(tasksFrom ?? {}) };
+				w.__btTaskListeners = new Set<() => void>();
 				w.__btPlugin = {
 					app: { vault, metadataCache: new R.FakeMetadataCache(vault), fileManager: new R.FakeFileManager() },
 					choiceRegistry: new R.ChoiceRegistry([]),
+					// Stands in for the plugin's TaskSource: the tasks of the notes in `__btTaskNotes` (first `tasksFrom`, and a
+					// test may change them), and the listeners a test calls to say the vault changed.
+					tasks: {
+						whenReady: () => Promise.resolve(),
+						tasks: () => Object.entries(w.__btTaskNotes as Record<string, string>).flatMap(([path, text]) => R.scanTasks(path, text)),
+						onChange: (fn: () => void) => { (w.__btTaskListeners as Set<() => void>).add(fn); return () => { (w.__btTaskListeners as Set<() => void>).delete(fn); }; },
+					},
 					searchPanel: new R.SearchPanelFollower((window as any).__btMakeSearchHost(searchHost, initialQuery)),
 					settings: {
 						allowReadingViewEdit: true,
@@ -497,15 +506,16 @@ export const test = base.extend<{
 					return container;
 				};
 				w.__btMount();
-			}, { src: blockSource, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath, settings: opts?.settings, searchHost: opts?.searchHost, initialQuery: opts?.initialQuery });
+			}, { src: blockSource, tasksFrom: opts?.tasksFrom, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath, settings: opts?.settings, searchHost: opts?.searchHost, initialQuery: opts?.initialQuery });
 
-			// The first paint is async (a cell at a time), so wait for either
-			// outcome — a rendered table, or (an xlsx-backed block whose file
-			// can't be resolved/read) the error banner render() falls back to.
+			// The first paint is async (a cell at a time), so wait for any outcome — a rendered table, the error banner
+			// render() falls back to (an xlsx-backed block whose file can't be read), or a tasks table's request for
+			// its query.
 			await Promise.race([
 				// Attached, not visible: a table stays hidden until the plugin's stylesheet is there.
 				page.locator('.bt-table').first().waitFor({ state: 'attached' }),
 				page.locator('.bt-error').first().waitFor(),
+				page.locator('.bt-tasks-query-missing').first().waitFor(),
 			]);
 
 			return {

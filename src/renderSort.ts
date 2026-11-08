@@ -84,7 +84,9 @@ export function sortRowsByColumn(
  * multiple rows, since a rowspan requires its rows to stay physically adjacent.
  */
 export function applySortForDisplay(model: TableModelV2, registry: ChoiceRegistry): TableModelV2 {
-	if (!model.sort || hasRowSpanningMerge(model)) return model;
+	// A tasks table arrives in its final order, the query's, with group headings between the rows; `sort` is only
+	// there so the header can show it.
+	if (!model.sort || model.tasks || hasRowSpanningMerge(model)) return model;
 	const { colId: sortColId, dir } = model.sort;
 	return { ...model, rows: sortRowsByColumn(model.rows, model.columns, sortColId, dir, registry) };
 }

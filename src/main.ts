@@ -1,4 +1,5 @@
 import { Editor, MarkdownView, Plugin, parseYaml, stringifyYaml } from 'obsidian';
+import { TaskSource } from './tasks/taskSource';
 import { XlsxFileView, XLSX_VIEW_TYPE } from './xlsxFileView';
 import { enableXlsxView, disableXlsxView, type ViewRegistryLike } from './xlsxViewRegistration';
 import { setYamlAdapter } from './yamlAdapter';
@@ -38,6 +39,13 @@ export default class BetterTablePlugin extends Plugin {
 	xlsxViewRefused = false;
 	/** True when turning the view off needs a reload because Obsidian's internals are not as expected. */
 	xlsxViewNeedsReload = false;
+
+	/** The vault's tasks, for tables that show a task query. Reads nothing until the first such table asks. */
+	readonly tasks = new TaskSource(this.app);
+
+	onunload(): void {
+		this.tasks.stop();
+	}
 
 	async onload(): Promise<void> {
 		setYamlAdapter({ parse: parseYaml, stringify: stringifyYaml });
