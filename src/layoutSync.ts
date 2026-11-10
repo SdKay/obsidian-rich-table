@@ -26,8 +26,18 @@ export interface LayoutSyncOptions {
 	nextFrame: (fn: () => void) => void;
 }
 
+/**
+ * A consumer that measures and then writes, split in two so a phase can read for every consumer before any of them
+ * writes: a read after a write makes the browser lay the page out again, once for each consumer that follows.
+ */
+export interface SplitConsumer<T> {
+	read: () => T;
+	write: (measured: T) => void;
+}
+
 export interface LayoutSync {
-	register(phase: LayoutPhase, fn: () => void): () => void;
+	/** A plain function runs in the write step of its phase, after every read. */
+	register<T>(phase: LayoutPhase, consumer: (() => void) | SplitConsumer<T>): () => void;
 	/** Runs the phases unless the layout is as it was the last time, or `force` is set. */
 	run(opts?: { force?: boolean }): void;
 	/**
@@ -42,7 +52,8 @@ export interface LayoutSync {
 }
 
 export function createLayoutSync({ signature, isBusy, nextFrame }: LayoutSyncOptions): LayoutSync {
-	const consumers = new Map<LayoutPhase, Set<() => void>>(ORDER.map(p => [p, new Set()]));
+	type Entry = SplitConsumer<unknown>;
+	const consumers = new Map<LayoutPhase, Set<Entry>>(ORDER.map(p => [p, new Set()]));
 	let last: string | null = null;
 	let running = false;
 	let rebuildOwed = false;
@@ -54,8 +65,14 @@ export function createLayoutSync({ signature, isBusy, nextFrame }: LayoutSyncOpt
 	let placedAt = 0;
 
 	const call = (phase: LayoutPhase): void => {
-		for (const fn of Array.from(consumers.get(phase) ?? [])) {
-			try { fn(); } catch (err) { console.error('[rich-table] layout consumer failed', err); }
+		const entries = Array.from(consumers.get(phase) ?? []);
+		// Every measurement first: nothing has been written yet, so each read finds the layout already laid out.
+		const measured: { entry: Entry; value: unknown }[] = [];
+		for (const entry of entries) {
+			try { measured.push({ entry, value: entry.read() }); } catch (err) { console.error('[rich-table] layout consumer failed', err); }
+		}
+		for (const { entry, value } of measured) {
+			try { entry.write(value); } catch (err) { console.error('[rich-table] layout consumer failed', err); }
 		}
 	};
 
@@ -86,9 +103,12 @@ export function createLayoutSync({ signature, isBusy, nextFrame }: LayoutSyncOpt
 	};
 
 	return {
-		register(phase, fn) {
-			consumers.get(phase)?.add(fn);
-			return () => { consumers.get(phase)?.delete(fn); };
+		register(phase, consumer) {
+			const entry = (typeof consumer === 'function'
+				? { read: () => undefined, write: consumer }
+				: consumer) as Entry;
+			consumers.get(phase)?.add(entry);
+			return () => { consumers.get(phase)?.delete(entry); };
 		},
 		run,
 		schedule() {

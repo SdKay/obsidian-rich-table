@@ -204,3 +204,52 @@ describe('createLayoutSync', () => {
 		});
 	});
 });
+
+// A consumer that measures and then writes would make the browser lay the page out again for each consumer that
+// follows: every read after a write does. A consumer split into a read and a write lets a phase read everything
+// before anything is written, so a phase lays the page out once.
+describe('createLayoutSync, reads before writes', () => {
+	it('runs every read of a phase before any of its writes, in registration order', () => {
+		const { log, sync } = make();
+		sync.register('place', { read: () => log.push('read a'), write: () => log.push('write a') });
+		sync.register('place', () => log.push('plain b'));
+		sync.register('place', { read: () => log.push('read c'), write: () => log.push('write c') });
+		sync.run();
+		expect(log).toEqual(['read a', 'read c', 'write a', 'plain b', 'write c']);
+	});
+
+	it('hands each write what its own read returned', () => {
+		const { log, sync } = make();
+		sync.register('place', { read: () => 41, write: (n: number) => log.push(`got ${n + 1}`) });
+		sync.run();
+		expect(log).toEqual(['got 42']);
+	});
+
+	it('a read that fails leaves that consumer out of the write step and the others unaffected', () => {
+		const { log, sync } = make();
+		const err = console.error;
+		console.error = () => {};
+		try {
+			sync.register('place', { read: () => { throw new Error('boom'); }, write: () => log.push('write a') });
+			sync.register('place', { read: () => 1, write: () => log.push('write b') });
+			sync.run();
+		} finally { console.error = err; }
+		expect(log).toEqual(['write b']);
+	});
+
+	it('the phases still run in order', () => {
+		const { log, sync } = make();
+		sync.register('reflow', { read: () => log.push('reflow read'), write: () => log.push('reflow write') });
+		sync.register('place', { read: () => log.push('place read'), write: () => log.push('place write') });
+		sync.run();
+		expect(log).toEqual(['place read', 'place write', 'reflow read', 'reflow write']);
+	});
+
+	it('stops a split consumer when its function is called', () => {
+		const { log, sync } = make();
+		const stop = sync.register('place', { read: () => log.push('read'), write: () => log.push('write') });
+		stop();
+		sync.run();
+		expect(log).toEqual([]);
+	});
+});

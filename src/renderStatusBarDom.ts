@@ -103,9 +103,8 @@ export function renderStatusBar(ctx: StatusBarContext): void {
 		// own ::-webkit-scrollbar:horizontal rule), but the underlying scroll
 		// mechanism (wheel/trackpad/keyboard) is untouched; this is a pure
 		// read-and-mirror layer on top of it, not a replacement for it.
-		const syncScrollThumb = () => {
-			const trackWidth = statusScrollTrack.clientWidth;
-			const { scrollWidth, clientWidth, scrollLeft } = wrapper;
+		const readScrollThumb = () => ({ trackWidth: statusScrollTrack.clientWidth, scrollWidth: wrapper.scrollWidth, clientWidth: wrapper.clientWidth, scrollLeft: wrapper.scrollLeft });
+		const writeScrollThumb = ({ trackWidth, scrollWidth, clientWidth, scrollLeft }: ReturnType<typeof readScrollThumb>) => {
 			// Nothing to scroll — a native scrollbar disappears entirely here, but
 			// this control staying in flow while visually empty read as broken
 			// ("看起来像什么都没有") rather than "intentionally nothing to do" — so
@@ -125,6 +124,7 @@ export function renderStatusBar(ctx: StatusBarContext): void {
 				'--bt-status-thumb-l': `${thumbLeft}px`,
 			});
 		};
+		const syncScrollThumb = () => writeScrollThumb(readScrollThumb());
 		syncScrollThumb();
 
 		let scrollThumbSyncScheduled = false;
@@ -140,7 +140,7 @@ export function renderStatusBar(ctx: StatusBarContext): void {
 		// Content width (columns resized/added) and track width (window/pane
 		// resized, or the divider — Task 7 — moved) both invalidate the mapping.
 		watchLayout(statusScrollTrack);
-		layoutSync.register('place', syncScrollThumb);
+		layoutSync.register('place', { read: readScrollThumb, write: writeScrollThumb });
 
 		// Dragging the thumb sets wrapper.scrollLeft directly — this is pure local
 		// UI state (like scroll position itself), never written back to the model.
@@ -244,29 +244,32 @@ export function renderStatusBar(ctx: StatusBarContext): void {
 	// move layout, so the unshifted position is the measured one minus the shift applied.
 	// Run with the frame, wherever the frame is placed: both follow every change of the layout.
 	let titleShift = 0;
-	const centreTitle = (rr: DOMRect, wr: DOMRect, tableRect: DOMRect) => {
-		const titleText = root.querySelector<HTMLElement>(':scope > .bt-table-title > span');
-		if (!titleText) return;
-		const tr = titleText.getBoundingClientRect();
+	const titleText = () => root.querySelector<HTMLElement>(':scope > .bt-table-title > span');
+	/** `tr` is the title text's rectangle, read with the others before anything is written. */
+	const centreTitle = (rr: DOMRect, wr: DOMRect, tableRect: DOMRect, title: HTMLElement | null, tr: DOMRect | null) => {
+		if (!title || !tr) return;
 		const left = tr.left - titleShift;
 		const right = tr.right - titleShift;
 		const target = (Math.max(tableRect.left, wr.left) + Math.min(tableRect.right, wr.right)) / 2;
 		const shift = Math.min(Math.max(target - (left + right) / 2, rr.left - left), rr.right - right);
 		if (Math.abs(shift - titleShift) > 0.25) {
 			titleShift = shift;
-			titleText.setCssProps({ '--bt-title-center-adj': `${shift / view.zoom}px` });
+			title.setCssProps({ '--bt-title-center-adj': `${shift / view.zoom}px` });
 		}
 	};
-	hooks.updateOuterFrame = () => {
+	// Every rectangle is read before anything below writes: a read after a write lays the note out again.
+	const readOuterFrame = () => {
 		const rr = root.getBoundingClientRect();
-		if (rr.width === 0) return;
-		const shellRect = shell.getBoundingClientRect();
+		if (rr.width === 0) return null;
 		const wr = wrapper.getBoundingClientRect();
+		const title = titleText();
+		// The bar's natural (unsqueezed) width, measured with the bar and its tabs both un-clipped; skipped while
+		// the zoom slider is mid-drag (writing the bar's real width fights the native range input's drag math — the
+		// slider's drag-end callback calls this once more to flush). Measured last: it writes and reads, so the
+		// rectangles above are taken before it.
+		const shellRect = shell.getBoundingClientRect();
 		const tableRect = table.getBoundingClientRect();
-		// The bar's natural (unsqueezed) width, measured with the bar and its tabs
-		// both un-clipped; skipped while the zoom slider is mid-drag (writing the
-		// bar's real width fights the native range input's drag math — the
-		// slider's drag-end callback calls this once more to flush).
+		const titleRect = title?.getBoundingClientRect() ?? null;
 		let barNatural: number | null = null;
 		if (statusBar && statusTabs && !sliderDragging && wr.width < rr.width - 0.5) {
 			statusBar.addClass('bt-measure-natural');
@@ -275,6 +278,11 @@ export function renderStatusBar(ctx: StatusBarContext): void {
 			statusBar.removeClass('bt-measure-natural');
 			statusTabs.removeClass('bt-measure-natural');
 		}
+		return { rr, wr, shellRect, tableRect, title, titleRect, barNatural };
+	};
+	const writeOuterFrame = (m: ReturnType<typeof readOuterFrame>) => {
+		if (!m) return;
+		const { rr, wr, shellRect, tableRect, title, titleRect, barNatural } = m;
 		const { left, right } = viewSpan(rr, wr, CTRL_COL_LEFT_GAP, barNatural);
 		if (statusBar && !sliderDragging) {
 			statusBar.setCssProps({
@@ -283,13 +291,12 @@ export function renderStatusBar(ctx: StatusBarContext): void {
 			});
 		}
 		const bottom = statusBar ? shellRect.bottom : rr.bottom;
-		// outerFrame lives in `shell`, which — like the status bar itself — is
-		// never zoomed (see `shell`'s own doc comment above), so these stay RAW
-		// visual px with no `/ zoom` correction, same treatment as --sb-* just
-		// above (that comment has the full reasoning for why dividing here
-		// would double-correct an already-correctly-scaled distance).
+		// outerFrame lives in `shell`, which — like the status bar itself — is never zoomed (see `shell`'s own doc
+		// comment above), so these stay RAW visual px with no `/ zoom` correction, same treatment as --sb-* above.
 		setFrameBox(shell, { l: left - shellRect.left, t: rr.top - shellRect.top, w: right - left, h: bottom - rr.top });
-		centreTitle(rr, wr, tableRect);
+		centreTitle(rr, wr, tableRect, title, titleRect);
 	};
+	hooks.updateOuterFrame = () => writeOuterFrame(readOuterFrame());
+	layoutSync.register('place', { read: readOuterFrame, write: writeOuterFrame });
 	window.requestAnimationFrame(hooks.updateOuterFrame);
 }

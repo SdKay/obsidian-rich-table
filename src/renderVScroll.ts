@@ -45,7 +45,7 @@ export function renderVScroll(ctx: RenderVScrollContext): void {
 			viewScroll.setCssProps({ '--strip-height': `${geom.vh}px` });
 		};
 		window.requestAnimationFrame(() => positionViewScroll());
-		layoutSync.register('place', () => positionViewScroll());
+		layoutSync.register('place', { read: () => computeVisibleGeom(), write: (geom: VisibleGeom) => positionViewScroll(geom) });
 		wrapper.addEventListener('scroll', () => positionViewScroll());
 
 		// Custom scrollbar synced to wrapper's real scrollTop/scrollHeight/
@@ -53,9 +53,8 @@ export function renderVScroll(ctx: RenderVScrollContext): void {
 		// syncScrollThumb. The native track/thumb are hidden (.bt-table-
 		// wrapper's own ::-webkit-scrollbar rule); actual wheel/trackpad/
 		// keyboard scrolling is untouched.
-		const syncVScrollThumb = () => {
-			const trackHeight = viewScrollTrack.clientHeight;
-			const { scrollHeight, clientHeight, scrollTop } = wrapper;
+		const readVScrollThumb = () => ({ trackHeight: viewScrollTrack.clientHeight, scrollHeight: wrapper.scrollHeight, clientHeight: wrapper.clientHeight, scrollTop: wrapper.scrollTop });
+		const writeVScrollThumb = ({ trackHeight, scrollHeight, clientHeight, scrollTop }: ReturnType<typeof readVScrollThumb>) => {
 			if (scrollHeight <= clientHeight + 1) {
 				viewScroll.addClass('bt-view-scroll-empty');
 				viewScrollThumb.setCssProps({ '--bt-view-thumb-h': `${trackHeight}px`, '--bt-view-thumb-t': '0px' });
@@ -70,6 +69,7 @@ export function renderVScroll(ctx: RenderVScrollContext): void {
 				'--bt-view-thumb-t': `${thumbTop}px`,
 			});
 		};
+		const syncVScrollThumb = () => writeVScrollThumb(readVScrollThumb());
 		syncVScrollThumb();
 
 		let vScrollThumbSyncScheduled = false;
@@ -80,7 +80,7 @@ export function renderVScroll(ctx: RenderVScrollContext): void {
 		};
 		wrapper.addEventListener('scroll', scheduleSyncVScrollThumb);
 		watchLayout(viewScrollTrack);
-		layoutSync.register('place', syncVScrollThumb);
+		layoutSync.register('place', { read: readVScrollThumb, write: writeVScrollThumb });
 
 		// Dragging the thumb sets wrapper.scrollTop directly — pure local UI
 		// state, never written back to the model, mirroring the horizontal

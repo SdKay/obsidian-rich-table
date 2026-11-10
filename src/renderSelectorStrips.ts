@@ -1033,7 +1033,10 @@ export function renderSelectorStrips(ctx: RenderSelectorStripsContext): void {
 		// replaces every cell, which would take the one under the pointer away). A resize that says so
 		// (a column dragged, the page zoomed) makes the cells stale even when the table's size is the same.
 		const stripsShown = () => colSel.hasClass('bt-strip-visible') || rowSel.hasClass('bt-strip-visible');
-		layoutSync.register('place', () => { if (stripsShown()) positionSelectors(); });
+		layoutSync.register('place', {
+			read: () => stripsShown() ? computeVisibleGeom() : null,
+			write: (geom: VisibleGeom | null) => { if (geom) positionSelectors(geom); },
+		});
 		layoutSync.register('rebuild', () => {
 			if (!stripsShown()) return;
 			const axes = axesToRebuild();

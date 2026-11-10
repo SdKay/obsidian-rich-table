@@ -536,8 +536,7 @@ export async function renderTable(
 	// and therefore updateOuterFrame, reads) changes on a padding-only update too (hover adds --bt-sel-pad),
 	// which never touches the content box. prepareLayout/restoreLayout call updateOuterFrame() directly
 	// for that case; this is the backstop for any size-affecting change neither of them caused.
-	layoutSync.register('place', () => hooks.repositionCtrlCol());
-	layoutSync.register('place', () => hooks.updateOuterFrame());
+	layoutSync.register('place', { read: () => computeVisibleGeom(), write: (geom: VisibleGeom) => hooks.repositionCtrlCol(geom) });
 	const layoutObserver = new ResizeObserver(() => layoutSync.run());
 	layoutObserver.observe(root, { box: 'border-box' });
 	layoutObserver.observe(wrapper, { box: 'border-box' });
@@ -924,11 +923,10 @@ export async function renderTable(
 	// which exists only where the add strips do) — a locked/read-only table has a footer
 	// too and needs the same cap.
 	if (footerEl) {
-		const positionFooter = () => {
-			footerEl.setCssProps({ '--bt-footer-max-width': `${contentRow.getBoundingClientRect().width / view.zoom}px` });
-		};
-		positionFooter();
-		layoutSync.register('place', positionFooter);
+		const readFooter = () => contentRow.getBoundingClientRect().width / view.zoom;
+		const writeFooter = (width: number) => { footerEl.setCssProps({ '--bt-footer-max-width': `${width}px` }); };
+		writeFooter(readFooter());
+		layoutSync.register('place', { read: readFooter, write: writeFooter });
 	}
 
 	// ── Status bar and outer frame (renderStatusBarDom.ts) ──

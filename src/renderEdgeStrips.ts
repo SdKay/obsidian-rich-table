@@ -165,7 +165,10 @@ export function renderEdgeStrips(ctx: RenderEdgeStripsContext): void {
 		// Follows the table when it grows or shrinks by itself (cell editing adds a line) as well as when a
 		// resize says so. It sets the add column's height and the add row's max-width, which can change
 		// the layout, so it runs in the phase for that.
-		layoutSync.register('reflow', () => { if (hooks.isEdgeStripsVisible()) positionEdgeStrips(); });
+		layoutSync.register('reflow', {
+			read: () => hooks.isEdgeStripsVisible() ? computeVisibleGeom() : null,
+			write: (geom: VisibleGeom | null) => { if (geom) positionEdgeStrips(geom); },
+		});
 
 		// Horizontal scroll inside the wrapper doesn't move the wrapper (only the table
 		// content within it), so no resize/layout event fires — reposition the edge
