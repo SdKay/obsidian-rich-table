@@ -3,10 +3,12 @@
  * cell's editor holds a formula, a press on another cell picks a reference instead (renderFormulaPick.ts).
  */
 import type { FormulaPick } from './renderFormulaPick';
+import { contentOwnsPress } from './cellContentOwner';
+import { dragSelectsRange } from './dragIntent';
 
 export interface RenderCellDragSelectContext {
-	/** Whether the panel a drag opens offers anything that changes the table. */
-	canEditSelection: boolean;
+	/** Whether the table's cells can be edited. Where they cannot, a drag leaves the text to the browser; see dragIntent.ts. */
+	cellsEditable: boolean;
 	table: HTMLTableElement;
 	formulaPick: FormulaPick;
 	sel: { start: { row: number; col: number } | null; end: { row: number; col: number } | null; dragging: boolean; hasMoved: boolean; ctrlHeld: boolean };
@@ -17,7 +19,7 @@ export interface RenderCellDragSelectContext {
 }
 
 export function renderCellDragSelect(ctx: RenderCellDragSelectContext): void {
-	const { canEditSelection, table, formulaPick, sel, clearSel, updateHighlights, removeSelectionPanel, showSelectionPanel } = ctx;
+	const { cellsEditable, table, formulaPick, sel, clearSel, updateHighlights, removeSelectionPanel, showSelectionPanel } = ctx;
 	// ── Cell drag-select ─────────────────────────────────────────────────────
 	// Unified across header AND data cells, attached at the table level rather
 	// than separately to thead/tbody: a header-anchored merge can now reach
@@ -49,9 +51,10 @@ export function renderCellDragSelect(ctx: RenderCellDragSelectContext): void {
 
 	table.addEventListener('mousedown', (evt: MouseEvent) => {
 		if (evt.button !== 0) return;
-		// A table whose selection panel could change nothing (a locked one) leaves the press to the browser, whose
-		// own drag selects text inside a cell for Ctrl+C; the preventDefault below would block that.
-		if (!canEditSelection) return;
+		// A table whose cells cannot be edited (a locked one) leaves the press to the browser, whose own drag selects
+		// text inside a cell for Ctrl+C; the preventDefault below would block that. Alt asks for a range instead.
+		const rangeIntended = dragSelectsRange(cellsEditable, evt.altKey);
+		if (!rangeIntended && !formulaPick.active) return;
 		if (formulaPick.active) {
 			// A cell is mid-formula-edit — clicking ANOTHER cell inserts a
 			// reference instead of the normal drag-select/open-editor behaviour.
@@ -79,7 +82,8 @@ export function renderCellDragSelect(ctx: RenderCellDragSelectContext): void {
 		// preventDefault would block the browser from placing the cursor
 		if ((evt.target as HTMLElement).closest('.bt-editing')) return;
 		const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
-		if (!cell) return;
+		// A nested table's cells are its own; so is a control inside this table's cell.
+		if (!cell || cell.closest('table') !== table || contentOwnsPress(evt.target, cell)) return;
 		const row = parseInt(cell.dataset.row ?? '-1');
 		const col = parseInt(cell.dataset.col ?? '-1');
 		if (row < 0 || col < 0) return; // any real cell, header (row 0) included
@@ -124,7 +128,7 @@ export function renderCellDragSelect(ctx: RenderCellDragSelectContext): void {
 		}
 		if (!sel.dragging) return;
 		const cell = (evt.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
-		if (!cell) return;
+		if (!cell || cell.closest('table') !== table) return;
 		const row = parseInt(cell.dataset.row ?? '-1');
 		const col = parseInt(cell.dataset.col ?? '-1');
 		if (row < 0 || col < 0) return;

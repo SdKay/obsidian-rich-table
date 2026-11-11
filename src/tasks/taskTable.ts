@@ -48,7 +48,7 @@ export function buildTasksTable(shell: TableModelV2, tasks: readonly LocatedTask
 	const sources = new Map<string, RowSource>();
 	const first = columns[0];
 	const last = columns[columns.length - 1];
-	const grouped = result.groups.some(g => g.heading !== '');
+	const grouped = !!shell.tasks?.groups && result.groups.some(g => g.heading !== '');
 
 	result.groups.forEach((group, gi) => {
 		if (grouped && first && last) {

@@ -3,7 +3,8 @@ import { t, sortActiveLabel, typeLabel } from './i18n';
 import type { ColumnDefV2, TableModelV2 } from './model';
 import type { FormulaErrorCode } from './formula';
 import type { ChoiceRegistry } from './choiceRegistry';
-import type { CellChangeHandler, ColTypeChangeHandler, EditNavigateHandler } from './renderTypes';
+import type { CellChangeHandler, EditNavigateHandler } from './renderTypes';
+import type { ColumnKinds } from './columnKind';
 import type { TableEdits } from './tableEdits';
 import { rowId, colId, getMergeOrigin, isRowFiltered, type ResolvedMerge } from './renderGridHelpers';
 import {
@@ -20,6 +21,9 @@ import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
 import { growColForChoiceValue } from './renderAutofit';
 import { isInsideNestedTable } from './renderOwnScope';
+import { contentOwnsPress } from './cellContentOwner';
+import { toggleTaskInCell } from './cellTaskToggle';
+import { taskBoxAt, taskBoxesOf } from './cellTaskItems';
 import { listLines, listStartAnyNumber } from './cellList';
 import { measureZoomFactor } from './renderGeometry';
 
@@ -57,7 +61,7 @@ export function bindCellActivation(el: HTMLElement, opts: {
 	});
 	el.addEventListener('click', (evt: MouseEvent) => {
 		if (isEditing()) return;
-		if (opts.shouldSkip?.(evt)) return;
+		if (contentOwnsPress(evt.target, el) || opts.shouldSkip?.(evt)) return;
 		if (evt.detail >= 2) return;
 		if (opts.getSingleClickEdit()) {
 			if (evt.ctrlKey || evt.metaKey) opts.panelAction(evt);
@@ -69,7 +73,7 @@ export function bindCellActivation(el: HTMLElement, opts: {
 		timer = window.setTimeout(() => { timer = null; opts.primaryAction(saved); }, opts.delayMs);
 	});
 	el.addEventListener('dblclick', (evt: MouseEvent) => {
-		if (isEditing()) return;
+		if (isEditing() || contentOwnsPress(evt.target, el)) return;
 		if (opts.getSingleClickEdit()) return; // panel is Ctrl/Cmd+click in this mode
 		opts.panelAction(evt);
 	});
@@ -119,7 +123,8 @@ export interface RenderRowOptions {
 	/** The table's style rules, resolved once for all its cells. */
 	styleOf:         (rowIdx: number, colIdx: number) => ResolvedStyleV2;
 	onCellChange:    CellChangeHandler;
-	onColTypeChange: ColTypeChangeHandler;
+	/** What the header menu offers to make a column; see columnKind.ts. */
+	columnKinds:     (col: ColumnDefV2) => ColumnKinds;
 	/** Table identity for renderEditHandoff.ts's cross-rebuild edit resume — see that
 	 *  file for why a write-back-triggered rebuild needs this instead of just DOM refs. */
 	cacheKey?:       string;
@@ -138,7 +143,7 @@ export interface RenderRowOptions {
 export async function renderRow(options: RenderRowOptions): Promise<void> {
 	const {
 		tr, rowIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader,
-		edits, merges, styleOf, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, merges, styleOf, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
 		onEnterFormulaMode, onExitFormulaMode,
 	} = options;
 	const currentRow = rowIdx > 0 ? (model.rows[rowIdx - 1] ?? null) : null;
@@ -228,7 +233,7 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 		if (isHeader) {
 			renderHeaderCell({
 				el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-				edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+				edits, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
 			});
 		} else {
 			await renderDataCell({
@@ -253,7 +258,7 @@ export interface RenderHeaderCellOptions {
 	component:       Component;
 	edits:           TableEdits;
 	onCellChange:    CellChangeHandler;
-	onColTypeChange: ColTypeChangeHandler;
+	columnKinds:     (col: ColumnDefV2) => ColumnKinds;
 	cacheKey?:       string;
 	getSingleClickEdit?: () => boolean;
 	onEditNavigate?: EditNavigateHandler;
@@ -262,13 +267,13 @@ export interface RenderHeaderCellOptions {
 /** Every operation a header cell's panel can lead to; the panel opens when the table can do one of them. */
 const HEADER_PANEL_OPS = [
 	'unmerge-cells', 'insert-row', 'insert-col', 'hide-col', 'delete-col', 'split-cell-row', 'split-cell-col', 'set-align',
-	'set-col-type', 'set-range-style',
+	'set-col-type', 'set-col-field', 'set-range-style',
 ] as const;
 
 function renderHeaderCell(options: RenderHeaderCellOptions): void {
 	const {
 		el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
-		edits, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
 	} = options;
 	const run = edits.run;
 	// An empty header name renders an empty <span>, which — same as an empty data
@@ -296,6 +301,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 
 	const openPanel = (_evt: MouseEvent) => {
 		if (!edits.canAny(HEADER_PANEL_OPS)) return;
+		const kinds = columnKinds(col);
 		// A header cell can itself anchor a merge (across columns, or down into the data rows), so it offers the
 		// same unmerge a data cell does, or the merge could never be undone.
 		const merge = getMergeOrigin(0, colIdx, model);
@@ -345,12 +351,7 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 			showTextColor: true,
 			styleEditable: edits.can('set-range-style'),
 			cellOps: ops,
-			typeSection: edits.can('set-col-type') ? {
-				colIdx,
-				currentType: col.type,
-				getRegistry,
-				onColTypeChange,
-			} : undefined,
+			kindSection: edits.can(kinds.emits) ? { kinds, run } : undefined,
 			onApplyStyle: (bg, color, size, bold, italic) => run({ type: 'set-range-style', target: `header.${col.id}`, bg, color, size, bold, italic }),
 		});
 	};
@@ -621,6 +622,19 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 		pill.setAttribute('data-tooltip-position', 'top');
 	} else if (trimmed) {
 		await MarkdownRenderer.render(app, trimmed, el, sourcePath, component);
+		// Ticking a task writes the cell's own text. The task is found from whatever was pressed, since a theme or a
+		// plugin may hide the checkbox and draw a stand-in of its own.
+		el.addEventListener('click', (evt: MouseEvent) => {
+			const box = taskBoxAt(evt.target, el);
+			if (!box) return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			if (!edits.can('set-cell-content')) return;
+			const next = toggleTaskInCell(value, taskBoxesOf(el).indexOf(box));
+			if (next === null) return;
+			box.checked = !box.checked;
+			void onCellChange(rowIdx, colIdx, next);
+		}, true);
 		// A soft line break (a lone \n typed via Shift+Enter, as opposed to a literal
 		// <br> the user typed) is rendered by the markdown engine as "<br>\n" — the
 		// trailing \n lands as a leading newline on the following text node, which
@@ -721,7 +735,6 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 			getSingleClickEdit: () => getSingleClickEdit?.() ?? false,
 			delayMs: 200,
 			shouldSkip: (evt) =>
-				!!(evt.target as HTMLElement).closest('.internal-link') ||
 				(evt.target as HTMLElement).closest('table')?.dataset.wasDragged !== undefined,
 			primaryAction: (_evt, seedChar) => {
 				if (!el.isConnected) return;

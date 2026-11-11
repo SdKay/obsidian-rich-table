@@ -80,6 +80,8 @@ export interface RenderBlockResult {
 	blockAtLine: (line: number, path?: string) => Promise<boolean>;
 	/** The note's current text — assert write-back against this. */
 	noteText: () => Promise<string>;
+	/** Every link the table opened through workspace.openLinkText, in order. */
+	linkOpenings: () => Promise<LinkOpening[]>;
 	/** Re-runs the code-block processor the way Obsidian does after a write:
 	 *  a brand-new instance, a fresh blank container, the updated source. */
 	reprocess: () => Promise<void>;
@@ -118,6 +120,8 @@ export interface LinkOpening {
 	href: string;
 	sourcePath?: string;
 	where?: string | boolean;
+	/** The open-view state a link was opened with (`eState.line` marks a line). */
+	state?: unknown;
 }
 
 /** panel: a full Rich Search; noHit: one with the search but not the opened match; hitThrows: currentHit fails; legacy: one that predates currentQuery; throws: matchLine fails; future: an apiVersion this plugin does not know; none: not installed; scoped: a full one with inScope and onScopeChange; scopeOnly: inScope without onScopeChange; scopeListenerOnly: onScopeChange without inScope; scopeThrows: inScope fails. */
@@ -451,8 +455,12 @@ export const test = base.extend<{
 				w.__btSource = src;
 				w.__btTaskNotes = { ...(tasksFrom ?? {}) };
 				w.__btTaskListeners = new Set<() => void>();
+				w.__btOpened = [];
 				w.__btPlugin = {
-					app: { vault, metadataCache: new R.FakeMetadataCache(vault), fileManager: new R.FakeFileManager() },
+					app: {
+						vault, metadataCache: new R.FakeMetadataCache(vault), fileManager: new R.FakeFileManager(),
+						workspace: { openLinkText: (href: string, sourcePath: string, where: unknown, state: unknown) => { (w.__btOpened as unknown[]).push({ kind: 'internal', href, sourcePath, where, state }); return Promise.resolve(); } },
+					},
 					choiceRegistry: new R.ChoiceRegistry([]),
 					// Stands in for the plugin's TaskSource: the tasks of the notes in `__btTaskNotes` (first `tasksFrom`, and a
 					// test may change them), and the listeners a test calls to say the vault changed.
@@ -543,6 +551,7 @@ export const test = base.extend<{
 					const w = window as unknown as { __btNote: string };
 					return R.findBlockAt(path ?? w.__btNote, line, document.body) !== null;
 				}, { line, path }),
+				linkOpenings: () => page.evaluate(() => (window as unknown as { __btOpened: LinkOpening[] }).__btOpened),
 				noteText: () => page.evaluate(() => {
 					const w = window as unknown as { __btVault: { files: Map<string, string> }; __btNote: string };
 					return w.__btVault.files.get(w.__btNote) ?? '';

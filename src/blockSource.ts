@@ -6,7 +6,8 @@
  * A source reaches the block only through `SourceHost`.
  */
 import type { App } from 'obsidian';
-import type { CtrlColScenario, TableModelV2, WorkbookV3 } from './model';
+import type { ColumnDefV2, CtrlColScenario, TableModelV2, WorkbookV3 } from './model';
+import type { ColumnKinds } from './columnKind';
 import type { StructuralOpV2 } from './operations';
 import type { TableAction } from './renderTypes';
 import type { TableOp, TableOpType } from './tableEdits';
@@ -55,6 +56,15 @@ export interface BlockSource {
 	route(op: TableOp): true | TableOp;
 	/** The buttons this kind of table adds to the toolbar. `can` is what the user may do right now. */
 	actions(can: (type: TableOpType) => boolean): TableAction[];
+	/** What the column menu offers to change a column into, when this kind of table has its own idea of that (a
+	 *  tasks table's column shows a field of each task). Absent: a column has a type, as in a table in the note. */
+	columnKinds?(col: ColumnDefV2): ColumnKinds;
+	/** Whether the cells of this column lead to where their row came from (a tasks table's file and path). */
+	jumpColumn?(col: ColumnDefV2): boolean;
+	/** The note a row came from; null when it has none. */
+	rowNote?(rowId: string): string | null;
+	/** Opens where a row came from; `where` is what the modifier keys ask for. False when the row has no such place. */
+	openRow?(rowId: string, where: string | boolean): boolean;
 	/** Whether the block's own "export as .xlsx" fits this table. */
 	readonly exportable: boolean;
 	/** Lets go of anything held outside the block. */

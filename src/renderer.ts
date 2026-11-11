@@ -3,7 +3,7 @@ import type { ChoiceRegistry } from './choiceRegistry';
 import { FillSequenceModal } from './fillSequenceModal';
 import { collapsedRowsLabel, deleteColsLabel, deleteRowsLabel, hideColsLabel, hideRowsLabel, t } from './i18n';
 import { createLayoutSync } from './layoutSync';
-import type { CtrlColButtonId, TableModelV2 } from './model';
+import type { ColumnDefV2, CtrlColButtonId, TableModelV2 } from './model';
 import { renderAggregateRows } from './renderAggregate';
 import { renderCalendarBoard } from './renderCalendar';
 import { renderRow } from './renderCell';
@@ -29,8 +29,10 @@ import type { StripAxis } from './stripRebuildPlan';
 import { applySortForDisplay } from './renderSort';
 import { renderStatusBar } from './renderStatusBarDom';
 import { compileStyles } from './styleIndex';
-import type { CellChangeHandler, ColTypeChangeHandler, EditNavigateHandler, TableAction } from './renderTypes';
+import type { CellChangeHandler, EditNavigateHandler, TableAction } from './renderTypes';
+import { columnTypeKinds, type ColumnKinds } from './columnKind';
 import { NO_EDITS, type TableEdits } from './tableEdits';
+import { renderRowJump, type RowJump } from './renderRowJump';
 import { renderVScroll } from './renderVScroll';
 import { renderViewToolbar } from './renderViews';
 import { applyZoom, zoomFactor } from './renderZoom';
@@ -45,6 +47,10 @@ export interface RenderTableOptions {
 	edits?: TableEdits;
 	/** Toolbar buttons the kind of table offers that do not change it (open its file, snapshot, export). */
 	actions?: readonly TableAction[];
+	/** What the header menu offers to make a column, when the kind of table decides it; a column type otherwise. */
+	columnKinds?: (col: ColumnDefV2) => ColumnKinds;
+	/** Present for a table whose rows come from somewhere: which cells lead there and how to go. */
+	rowJump?: RowJump;
 	onRootReady?: (root: HTMLElement) => void;
 	isSwapping?: () => boolean;
 	/** Table identity for renderEditHandoff.ts's cross-rebuild edit resume —
@@ -78,7 +84,7 @@ export async function renderTable(
 	component: Component,
 	options: RenderTableOptions = {},
 ): Promise<void> {
-	const { edits = NO_EDITS, actions = [], onRootReady, isSwapping, cacheKey, getSingleClickEdit, hiddenCtrlColButtons, forceStatusBarPinned } = options;
+	const { edits = NO_EDITS, actions = [], columnKinds = (col: ColumnDefV2) => columnTypeKinds(col, getRegistry()), rowJump, onRootReady, isSwapping, cacheKey, getSingleClickEdit, hiddenCtrlColButtons, forceStatusBarPinned } = options;
 	if (model.columns.length === 0) return;
 	// Sort is a display-only transform: reorder a LOCAL copy of `rows` (never the
 	// object the caller holds for write-back) so every existing display-index-based
@@ -102,7 +108,6 @@ export async function renderTable(
 			run({ type: 'set-cell-content', rowId: targetRowId, colId: targetColId, value });
 		}
 	};
-	const onColTypeChange: ColTypeChangeHandler = (ci, colType) => run({ type: 'set-col-type', colId: colId(model, ci), colType });
 
 	// Snapshot for rendering; getRegistry used in event handlers for fresh lookups
 	const registry = getRegistry();
@@ -736,11 +741,11 @@ export async function renderTable(
 		},
 	});
 
-	// Whether the panel for a selected range offers anything that changes the table; a drag across cells, and
-	// "select all", lead to it only then.
+	// Whether the panel for a selected range offers anything that changes the table; "select all" leads to it only
+	// then. The panel itself opens for any range, with at least the entries that copy.
 	const canEditSelection = edits.canAny(SELECTION_PANEL_OPS);
 	const showSelectionPanel = () => {
-		if (!sel.start || !sel.end || !canEditSelection) return;
+		if (!sel.start || !sel.end) return;
 		removeSelectionPanel();
 
 		const rect = effectiveSelRect();
@@ -809,14 +814,14 @@ export async function renderTable(
 	const headerTr = thead.createEl('tr');
 	await renderRow({
 		tr: headerTr, rowIdx: 0, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: true,
-		edits, merges, styleOf, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+		edits, merges, styleOf, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
 	});
 
 	const tbody = table.createEl('tbody');
 
 	// ── Cell drag-select (renderCellDragSelect.ts) ──
 	renderCellDragSelect({
-		canEditSelection, table, formulaPick, sel, clearSel, updateHighlights, removeSelectionPanel, showSelectionPanel,
+		cellsEditable: edits.can('set-cell-content'), table, formulaPick, sel, clearSel, updateHighlights, removeSelectionPanel, showSelectionPanel,
 	});
 
 	// ── Row/cell hover highlight (merge-aware) (renderHover.ts) ──
@@ -887,13 +892,14 @@ export async function renderTable(
 			const tr = displayIdx < headerRowSpan ? thead.createEl('tr') : tbody.createEl('tr');
 			await renderRow({
 				tr, rowIdx: displayIdx, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: false,
-				edits, merges, styleOf, onCellChange, onColTypeChange, cacheKey, getSingleClickEdit, onEditNavigate,
+				edits, merges, styleOf, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
 				onEnterFormulaMode: (insertText) => formulaPick.enter(insertText),
 				onExitFormulaMode: () => formulaPick.exit(),
 			});
 			di++;
 		}
 		renderAggregateRows(tbody, model);
+		if (rowJump) renderRowJump(table, model, rowJump);
 	}
 
 	// Re-apply the Selected highlight carried across the rebuild. Has to happen

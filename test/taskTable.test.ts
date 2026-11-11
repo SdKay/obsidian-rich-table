@@ -4,8 +4,8 @@ import { scanTasks } from '../src/tasks/taskScan';
 import { buildTasksTable } from '../src/tasks/taskTable';
 
 const TODAY = '2026-11-04';
-const shell = (query: string, columns = '  - { id: c_body, name: Task, field: body }\n  - { id: c_due, name: Due, field: due }\n  - { id: c_file, name: File, field: file }') =>
-	parseTable(`---\nversion: 2\ntasks:\n  query: ${JSON.stringify(query)}\ncolumns:\n${columns}\n---\n`);
+const shell = (query: string, columns = '  - { id: c_body, name: Task, field: body }\n  - { id: c_due, name: Due, field: due }\n  - { id: c_file, name: File, field: file }', groups = true) =>
+	parseTable(`---\nversion: 2\ntasks:\n  query: ${JSON.stringify(query)}\n${groups ? '  groups: true\n' : ''}columns:\n${columns}\n---\n`);
 
 const NOTES = [
 	...scanTasks('proj/a.md', '# Plan\n- [ ] first 📅 2026-12-01\n- [x] done one ✅ 2026-01-01\n- [ ] second #q'),
@@ -73,6 +73,19 @@ describe('buildTasksTable', () => {
 
 		it('keeps the tasks of a group together, in order, after its heading', () => {
 			expect(t.model.rows.map(r => r.id.startsWith('g_') ? '#' : r.cells.c_body)).toEqual(['#', 'fourth', '#', 'third', 'first', 'second']);
+		});
+	});
+
+	describe('with the headings off, which is the default', () => {
+		const t = buildTasksTable(shell('not done\ngroup by folder\nsort by due', undefined, false), NOTES, TODAY);
+
+		it('draws no heading row and merges nothing', () => {
+			expect(t.model.rows.some(r => r.id.startsWith('g_'))).toBe(false);
+			expect(t.model.merges).toEqual([]);
+		});
+
+		it('still keeps the tasks of a group together, in the order the groups give', () => {
+			expect(t.model.rows.map(r => r.cells.c_body)).toEqual(['fourth', 'third', 'first', 'second']);
 		});
 	});
 

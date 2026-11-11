@@ -7717,6 +7717,25 @@ function serializeStyleTarget(t) {
   }
 }
 
+// src/tasks/taskFields.ts
+var TASK_FIELDS = [
+  { id: "status", label: "Status", sort: "status" },
+  { id: "body", label: "Task", sort: "description", align: "left" },
+  { id: "due", label: "Due", sort: "due" },
+  { id: "scheduled", label: "Scheduled", sort: "scheduled" },
+  { id: "start", label: "Start", sort: "start" },
+  { id: "created", label: "Created", sort: "created" },
+  { id: "done", label: "Done", sort: "done" },
+  { id: "priority", label: "Priority", sort: "priority" },
+  { id: "tags", label: "Tags", sort: "tag", align: "left" },
+  { id: "recurrence", label: "Repeats", align: "left" },
+  { id: "file", label: "File", sort: "filename", align: "left" },
+  { id: "path", label: "Path", sort: "path", align: "left" },
+  { id: "heading", label: "Heading", sort: "heading", align: "left" },
+  { id: "description", label: "Description", sort: "description", align: "left" }
+];
+var fieldById = (id) => TASK_FIELDS.find((f) => f.id === id);
+
 // src/operations.ts
 var ZOOM_MIN = 25;
 var ZOOM_MAX = 400;
@@ -7754,6 +7773,8 @@ var STRUCTURAL_OP_TYPE_MAP = {
   "set-align": true,
   "set-title": true,
   "set-tasks-query": true,
+  "set-tasks-groups": true,
+  "set-col-field": true,
   "set-footer": true,
   "set-filter": true,
   "toggle-aggregate": true,
@@ -8116,7 +8137,29 @@ function applyStructuralOpV2(model, op) {
       break;
     }
     case "set-tasks-query": {
-      if (model.tasks) model.tasks = { query: op.query };
+      if (model.tasks) model.tasks = { ...model.tasks, query: op.query };
+      break;
+    }
+    case "set-tasks-groups": {
+      if (!model.tasks) break;
+      if (op.groups) model.tasks.groups = true;
+      else delete model.tasks.groups;
+      break;
+    }
+    case "set-col-field": {
+      const col = model.columns.find((c) => c.id === op.colId);
+      if (!col) break;
+      const from = col.field ? fieldById(col.field) : void 0;
+      const to = op.field === null ? void 0 : fieldById(op.field);
+      const named = col.name !== "" && col.name !== from?.label;
+      const aligned = col.align !== from?.align;
+      if (op.field === null) delete col.field;
+      else col.field = op.field;
+      if (!named) col.name = to?.label ?? "";
+      if (!aligned) {
+        if (to?.align) col.align = to.align;
+        else delete col.align;
+      }
       break;
     }
     case "set-footer": {
@@ -9036,8 +9079,8 @@ function parseModelFields(yaml) {
 }
 function parseTasksSource(raw) {
   if (typeof raw !== "object" || raw === null) return void 0;
-  const q = raw.query;
-  return typeof q === "string" ? { query: q } : void 0;
+  const v = raw;
+  return typeof v.query === "string" ? { query: v.query, ...v.groups === true ? { groups: true } : {} } : void 0;
 }
 function parseXlsxSource(raw) {
   if (typeof raw !== "object" || raw === null) return void 0;
@@ -9289,7 +9332,7 @@ function serializeModelFields(m) {
     });
     if (m.activeViewId) obj.activeViewId = m.activeViewId;
   }
-  if (m.tasks) obj.tasks = { query: m.tasks.query };
+  if (m.tasks) obj.tasks = { query: m.tasks.query, ...m.tasks.groups ? { groups: true } : {} };
   if (m.xlsxSource) {
     obj.xlsxSource = { path: m.xlsxSource.path, ...m.xlsxSource.sheet ? { sheet: m.xlsxSource.sheet } : {} };
   }

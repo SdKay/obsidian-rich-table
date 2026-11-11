@@ -33,6 +33,9 @@ const STRUCTURAL: { [K in StructuralOpV2['type']]: OpEffect } = {
 	'set-col-type': 'structure',
 	// The query decides which rows there are.
 	'set-tasks-query': 'structure',
+	'set-tasks-groups': 'structure',
+	// What a column shows of each task: the data in it changes.
+	'set-col-field': 'structure',
 
 	'set-cell-content': 'content', 'fill-cells': 'content', 'set-cell-formula': 'content',
 	'paste-values': 'content', 'paste-values-with-header': 'content',

@@ -201,7 +201,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![Column filtering demo](docs/demo-08-filter.gif)
 
-**8 · Rich cell content** — math · bold/italic · links · images · lists · multi-line
+**8 · Rich cell content** — math · bold/italic · links · images · lists · multi-line; a task in a cell can be ticked, and a checkbox, link or nested table in a cell takes its own click instead of starting an edit
 
 > 🎬 *Demo GIF coming soon*
 
@@ -221,7 +221,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![表格折叠/展开](docs/demo-12-collapse.gif)
 
-**13 · Table lock** — 🔒 icon disables all graphical editing for that table; a cell's text stays selectable by mouse drag and copyable with the browser's own Ctrl+C, same as any other page
+**13 · Table lock** — 🔒 icon disables all graphical editing for that table; a cell's text stays selectable by mouse drag and copyable with the browser's own Ctrl+C, same as any other page; hold Alt while dragging to select a range of cells instead, whose menu can copy them as Excel or Markdown. The same goes for any table whose cells cannot be edited: a tasks table, or a table in reading view
 
 ![表格锁定](docs/demo-13-lock.gif)
 
@@ -515,7 +515,9 @@ columns:
 ````
 
 - **The query** is written as in the Tasks plugin, one condition per line: `done` / `not done`, dates (`due before …`, `due this week`, `has due date`), `priority`, `tags`, `path` / `filename` / `heading` / `description` conditions (including `regex matches`), `is recurring`, `sort by …`, `group by …`, `limit N`. Edit it with **Edit tasks query** in the toolbar, or in the block. `filter by function`, boolean groups (`AND`, `OR`, `NOT`) and presets are not supported; **a line the plugin does not understand is not applied**, so check that the table shows what you meant.
-- **Columns** each show one property of the task (`field`): status, task text, any of its dates, priority, tags, recurrence, file, path, heading. Add, remove, reorder, resize and rename them as in any table.
+- **Columns** each show one property of the task (`field`): status, task text, any of its dates, priority, tags, recurrence, file, path, heading. Add, remove, reorder, resize and rename them as in any table. To choose what a column shows, open its header menu and pick from **Field** (where other tables offer the column type); a column still named after its field takes the new field's name.
+- **Jump to the task**: in a column that shows the file or the path, click the name to open that note at the task's line; Ctrl/Cmd+click opens it in a new tab, as for any link. A table without such a column has no way to jump from.
+- **Grouping**: a `group by …` line puts the tasks of a group together. To also see a heading row before each group (its name and task count), turn on **Show group headings** in the view settings; it is off by default.
 - **Sorting** a column writes a `sort by` line into the query. It is the query that holds the order, not the rows.
 - **Not editable**: the tasks themselves. Anything that would change a row or a cell is refused; change the task in its note.
 - A block is one kind of table: a tasks table does not combine with an external `.xlsx` or with sheets.

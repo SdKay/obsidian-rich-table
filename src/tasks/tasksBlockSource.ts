@@ -2,20 +2,24 @@
  * A block whose rows are the tasks a query finds in the vault. The block keeps the query, the columns and the look;
  * the rows are built on every draw and never written. See blockSource.ts.
  */
-import { t } from '../i18n';
-import type { TableModelV2 } from '../model';
+import type { PaneType } from 'obsidian';
+import { fmt, t } from '../i18n';
+import type { ColumnDefV2, TableModelV2 } from '../model';
 import type { BlockSource, EntryHost, Loaded, Parsed, SourceHost, SourceKind } from '../blockSource';
 import type { EmptyEntry } from '../emptyEntries';
 import { serializeTable } from '../serializer';
 import { NATIVE } from '../blockSource';
 import type { TableAction } from '../renderTypes';
+import type { ColumnKinds } from '../columnKind';
+import { TASK_FIELDS, fieldById } from './taskFields';
 import type { TableOp, TableOpType } from '../tableEdits';
 import { buildTasksBlock, hasQuery } from './taskBlock';
 import { tasksAccepts, sortedQuery, withSort } from './taskOps';
 import { TaskQueryModal } from './taskQueryModal';
 import { toIso } from './taskRun';
 import type { TaskSource } from './taskSource';
-import { buildTasksTable } from './taskTable';
+import { jumpTo } from './taskJump';
+import { buildTasksTable, type RowSource } from './taskTable';
 
 export class TasksBlockSource implements BlockSource {
 	readonly exportable = true;
@@ -36,7 +40,28 @@ export class TasksBlockSource implements BlockSource {
 		await this.vaultTasks.whenReady();
 		// Kept across draws: a change that arrives while one is drawing still draws again.
 		this.stopWatch ??= this.vaultTasks.onChange(() => { void this.host.rerender(); });
-		return { kind: 'table', parsed, drawn: buildTasksTable(shell, this.vaultTasks.tasks(), toIso(new Date())).model };
+		const built = buildTasksTable(shell, this.vaultTasks.tasks(), toIso(new Date()));
+		this.places = built.sources;
+		return { kind: 'table', parsed, drawn: built.model };
+	}
+
+	/** Where each drawn row's task is, from the last draw. */
+	private places = new Map<string, RowSource>();
+
+	jumpColumn(col: ColumnDefV2): boolean {
+		return col.field === 'file' || col.field === 'path';
+	}
+
+	rowNote(rowId: string): string | null {
+		return this.places.get(rowId)?.path ?? null;
+	}
+
+	openRow(rowId: string, where: string | boolean): boolean {
+		const place = this.places.get(rowId);
+		if (!place) return false;
+		const target = jumpTo(place, this.host.sourcePath, where);
+		void this.host.app.workspace.openLinkText(target.linktext, target.sourcePath, target.where as PaneType | boolean, target.state);
+		return true;
 	}
 
 	locked = NATIVE.locked;
@@ -62,6 +87,22 @@ export class TasksBlockSource implements BlockSource {
 	actions(can: (type: TableOpType) => boolean): TableAction[] {
 		if (!can('set-tasks-query')) return [];
 		return [{ id: 'editTasksQuery', label: t('tasksQueryEdit'), place: 'first', run: () => this.editQuery() }];
+	}
+
+	/** What a column shows of each task, and the other properties it can show instead. */
+	columnKinds(col: ColumnDefV2): ColumnKinds {
+		const choice = (field: string | null, label: string) => ({
+			label, current: (col.field ?? null) === field, op: { type: 'set-col-field' as const, colId: col.id, field },
+		});
+		const current = col.field ? fieldById(col.field)?.label ?? col.field : null;
+		return {
+			label: current ? fmt('tasksFieldWithName', { field: current }) : t('tasksFieldChoose'),
+			emits: 'set-col-field',
+			groups: [
+				[choice(null, t('tasksFieldNone'))],
+				TASK_FIELDS.map(f => choice(f.id, `${f.label} (${f.id})`)),
+			],
+		};
 	}
 
 	dispose(): void {

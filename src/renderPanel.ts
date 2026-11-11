@@ -1,14 +1,15 @@
 import { Component, Menu, setIcon } from 'obsidian';
-import { t, typeLabel, hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel } from './i18n';
+import { t, hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel } from './i18n';
 import type { TableModelV2 } from './model';
 import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
-import { SPECIAL_TYPES, type ColTypeChangeHandler, type StructuralOpHandler } from './renderTypes';
+import { SPECIAL_TYPES, type StructuralOpHandler } from './renderTypes';
+import type { ColumnKinds } from './columnKind';
 import { rowId, colId, getMergeOrigin } from './renderGridHelpers';
 import { cellEffectiveStyle } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { pinHover, showMenuPinned } from './renderHoverPin';
-import type { TableEdits, TableOpType } from './tableEdits';
+import type { TableEdits, TableOp, TableOpType } from './tableEdits';
 import { placePanel } from './panelPlace';
 
 export interface CellOpDef {
@@ -100,12 +101,8 @@ export interface CellPanelConfig {
 	 *  StyleRuleV2 on load) but has no write path back to the file for it yet. */
 	styleEditable?: boolean;
 	cellOps:       CellOpEntry[];
-	typeSection?:  {
-		colIdx:          number;
-		currentType?:    string;
-		getRegistry:     () => ChoiceRegistry;
-		onColTypeChange: ColTypeChangeHandler;
-	};
+	/** The row that says what the column is and changes it; the table's kind decides the choices. */
+	kindSection?:  { kinds: ColumnKinds; run: (op: TableOp) => void };
 	onApplyStyle: (bg: string | null, color: string | null, size: number | null, bold: boolean | null, italic: boolean | null) => void;
 	onClose?:     () => void;
 }
@@ -394,7 +391,7 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 	// Close any panel that is currently open (restores preview styles on the old cells).
 	closeActivePanel?.();
 
-	const { component, anchor, els, existingStyle, inheritedStyle = {}, showTextColor, cellOps, typeSection, onApplyStyle } = config;
+	const { component, anchor, els, existingStyle, inheritedStyle = {}, showTextColor, cellOps, kindSection, onApplyStyle } = config;
 
 	const saved = els.map(e => ({
 		bg:       e.style.getPropertyValue('background-color'),
@@ -536,26 +533,23 @@ export function openCellPanel(config: CellPanelConfig): HTMLElement {
 	boldCheck?.addEventListener('change', preview);
 	italicCheck?.addEventListener('change', preview);
 
-	// Type section
-	if (typeSection) {
+	if (kindSection) {
+		const { kinds, run } = kindSection;
 		panel.createDiv({ cls: 'bt-cp-divider' });
 		const typeRow  = panel.createDiv({ cls: 'bt-cp-type-row' });
 		const typeLeft = typeRow.createDiv({ cls: 'bt-cp-type-left' });
 		const tIcon    = typeLeft.createSpan({ cls: 'bt-cp-item-icon' });
 		setIcon(tIcon, 'tag');
-		typeLeft.createSpan({ text: typeLabel(typeSection.currentType) });
+		typeLeft.createSpan({ text: kinds.label });
 		typeRow.createSpan({ cls: 'bt-cp-chevron', text: '›' });
 		typeRow.addEventListener('click', (evt: MouseEvent) => {
 			const m = new Menu();
-			m.addItem(i => { i.setTitle(t('noType')); if (!typeSection.currentType) i.setChecked(true); i.onClick(() => void typeSection.onColTypeChange(typeSection.colIdx, undefined)); });
-			m.addSeparator();
-			for (const id of SPECIAL_TYPES) {
-				m.addItem(i => { i.setTitle(id); if (id === typeSection.currentType) i.setChecked(true); i.onClick(() => void typeSection.onColTypeChange(typeSection.colIdx, id)); });
-			}
-			m.addSeparator();
-			for (const ct of typeSection.getRegistry().getAllTypes()) {
-				m.addItem(i => { i.setTitle(ct.id); if (ct.id === typeSection.currentType) i.setChecked(true); i.onClick(() => void typeSection.onColTypeChange(typeSection.colIdx, ct.id)); });
-			}
+			kinds.groups.forEach((group, gi) => {
+				if (gi > 0) m.addSeparator();
+				for (const choice of group) {
+					m.addItem(i => { i.setTitle(choice.label); if (choice.current) i.setChecked(true); i.onClick(() => run(choice.op)); });
+				}
+			});
 			showMenuPinned(m, evt);
 		});
 	}

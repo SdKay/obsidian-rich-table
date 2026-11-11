@@ -83,11 +83,11 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 	};
 }
 
-function parseTasksSource(raw: unknown): { query: string } | undefined {
+function parseTasksSource(raw: unknown): { query: string; groups?: boolean } | undefined {
 	if (typeof raw !== 'object' || raw === null) return undefined;
-	const q = (raw as Record<string, unknown>).query;
+	const v = raw as Record<string, unknown>;
 	// An empty query is a real one: it finds every task.
-	return typeof q === 'string' ? { query: q } : undefined;
+	return typeof v.query === 'string' ? { query: v.query, ...(v.groups === true ? { groups: true } : {}) } : undefined;
 }
 
 function parseXlsxSource(raw: unknown): { path: string; sheet?: string } | undefined {

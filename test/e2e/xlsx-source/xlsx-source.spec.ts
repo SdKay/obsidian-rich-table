@@ -86,6 +86,16 @@ test.describe('xlsx-backed table', () => {
 		await expect(page.getByText('Unmerge cells', { exact: false })).toBeVisible();
 	});
 
+	test('the header panel offers no column type: the file has nowhere to keep one', async ({ page, renderBlock }) => {
+		const bytes = await buildXlsxFixtureBytes({
+			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done']] }],
+		});
+		await renderBlock(blockSource(), { binaryFiles: { [XLSX_PATH]: bytes } });
+		await page.locator('th[data-row="0"][data-col="0"]').first().dblclick();
+		await expect(page.locator('.bt-cell-panel')).toBeVisible();
+		await expect(page.locator('.bt-cp-type-row')).toHaveCount(0);
+	});
+
 	test('editing a cell writes the new value into the referenced .xlsx file itself, never the note', async ({ page, renderBlock }) => {
 		const bytes = await buildXlsxFixtureBytes({
 			sheets: [{ name: 'Sheet1', grid: [['Task', 'Status'], ['Design', 'Done']] }],

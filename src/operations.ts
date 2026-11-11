@@ -2,6 +2,7 @@ import type { TableModelV2, ColumnDefV2, RowDefV2, StyleRuleV2, MergeRangeV2, Ag
 import { genId } from './idGen';
 import { parseStyleTarget, serializeStyleTarget } from './styleTarget';
 import { recomputeFormulas } from './formula';
+import { fieldById } from './tasks/taskFields';
 
 /**
  * Structural operations for v2 tables.
@@ -65,6 +66,10 @@ export type StructuralOpV2 =
 	| { type: 'set-title';       title: string | undefined }
 	/** Replaces the task query of a tasks table; a no-op on a table without one. */
 	| { type: 'set-tasks-query'; query: string }
+	/** Whether a tasks table draws a heading row before each `group by` group. */
+	| { type: 'set-tasks-groups'; groups: boolean }
+	/** Which property of each task a tasks table's column shows; null clears it. */
+	| { type: 'set-col-field'; colId: string; field: string | null }
 	| { type: 'set-footer';      footer: string | string[] | undefined }
 	| { type: 'set-filter';      colId: string; values: string[] | null }
 	/** Adds `agg` to the table-wide active summary rows if absent, removes it if present. */
@@ -181,6 +186,8 @@ const STRUCTURAL_OP_TYPE_MAP: { [K in StructuralOpV2['type']]: true } = {
 	'set-align': true,
 	'set-title': true,
 	'set-tasks-query': true,
+	'set-tasks-groups': true,
+	'set-col-field': true,
 	'set-footer': true,
 	'set-filter': true,
 	'toggle-aggregate': true,
@@ -611,7 +618,29 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			break;
 		}
 		case 'set-tasks-query': {
-			if (model.tasks) model.tasks = { query: op.query };
+			if (model.tasks) model.tasks = { ...model.tasks, query: op.query };
+			break;
+		}
+		case 'set-tasks-groups': {
+			if (!model.tasks) break;
+			if (op.groups) model.tasks.groups = true; else delete model.tasks.groups;
+			break;
+		}
+		case 'set-col-field': {
+			const col = model.columns.find(c => c.id === op.colId);
+			if (!col) break;
+			// A name or an alignment the user gave the column stays; one still as its old field had it follows the field.
+			const from = col.field ? fieldById(col.field) : undefined;
+			const to = op.field === null ? undefined : fieldById(op.field);
+			const named = col.name !== '' && col.name !== from?.label;
+			const aligned = col.align !== from?.align;
+			if (op.field === null) delete col.field;
+			else col.field = op.field;
+			if (!named) col.name = to?.label ?? '';
+			if (!aligned) {
+				if (to?.align) col.align = to.align;
+				else delete col.align;
+			}
 			break;
 		}
 		case 'set-footer': {

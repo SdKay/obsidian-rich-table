@@ -432,6 +432,8 @@ export class TableBlock extends MarkdownRenderChild {
 					this,
 					{
 						edits, actions, hiddenCtrlColButtons,
+						columnKinds: blockSource?.columnKinds?.bind(blockSource),
+						rowJump: blockSource?.jumpColumn && blockSource.openRow && blockSource.rowNote ? { column: c => blockSource.jumpColumn!(c), note: id => blockSource.rowNote!(id), open: (id, where) => blockSource.openRow!(id, where) } : undefined,
 						onRootReady: (root) => { this.renderedRoot = root; },
 						isSwapping: () => this.isRendering,
 						cacheKey: this.cacheKey,

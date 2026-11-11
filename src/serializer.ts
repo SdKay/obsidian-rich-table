@@ -138,7 +138,7 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 		// Only meaningful alongside the views[] entries above.
 		if (m.activeViewId) obj.activeViewId = m.activeViewId;
 	}
-	if (m.tasks) obj.tasks = { query: m.tasks.query };
+	if (m.tasks) obj.tasks = { query: m.tasks.query, ...(m.tasks.groups ? { groups: true } : {}) };
 	if (m.xlsxSource) {
 		obj.xlsxSource = { path: m.xlsxSource.path, ...(m.xlsxSource.sheet ? { sheet: m.xlsxSource.sheet } : {}) };
 	}

@@ -246,8 +246,9 @@ export interface TableModelV2 {
 	 *  the code block for this kind of table — nothing here is written back. */
 	xlsxSource?: { path: string; sheet?: string };
 	/** When present, the rows are the tasks a Tasks-plugin style query finds in the vault, read fresh on every
-	 *  render and never written to the note: only `query` and the column list (`columns[].field`) are saved. */
-	tasks?: { query: string };
+	 *  render and never written to the note: only `query`, `groups` and the column list (`columns[].field`) are saved.
+	 *  `groups`: draw a heading row before each `group by` group (off when absent). */
+	tasks?: { query: string; groups?: boolean };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

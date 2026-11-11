@@ -117,9 +117,27 @@ export class MarkdownRenderChild extends Component {
  * Async like the real one — renderTable awaits it per cell, and collapsing that
  * to synchronous would hide any ordering bug that depends on the await.
  */
+/** A `[[target|label]]` becomes the link Obsidian draws for it; the rest of the text stays text. */
+function appendWithLinks(p: HTMLElement, text: string): void {
+	let at = 0;
+	for (const m of text.matchAll(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g)) {
+		if (m.index > at) p.appendText(text.slice(at, m.index));
+		const a = p.createEl('a', { cls: 'internal-link', text: m[2] ?? m[1]! });
+		a.setAttribute('data-href', m[1]!);
+		a.setAttribute('href', m[1]!);
+		// Obsidian takes the click of a link it drew; the page itself never navigates to it.
+		a.addEventListener('click', e => e.preventDefault());
+		at = m.index + m[0].length;
+	}
+	if (at < text.length) p.appendText(text.slice(at));
+}
+
 export const MarkdownRenderer = {
 	render(_app: unknown, markdown: string, el: HTMLElement, _sourcePath: string, _component: unknown): Promise<void> {
-		if (markdown !== '' && !renderList(markdown, el)) el.createEl('p', { text: markdown });
+		if (markdown !== '' && !renderList(markdown, el)) {
+			const p = el.createEl('p');
+			appendWithLinks(p, markdown);
+		}
 		return Promise.resolve();
 	},
 };
@@ -157,7 +175,19 @@ function renderList(markdown: string, el: HTMLElement): boolean {
 			stack.push(top);
 		}
 		const li = document.createElement('li');
-		li.textContent = m[4]!;
+		// A task item, as Obsidian draws it: the mark becomes a checkbox in front of the text.
+		const task = /^\[(.)\] (.*)$/.exec(m[4]!);
+		if (task) {
+			li.className = 'task-list-item';
+			if (task[1] !== ' ') li.setAttribute('data-task', task[1]!);
+			const box = document.createElement('input');
+			box.type = 'checkbox';
+			box.className = 'task-list-item-checkbox';
+			box.checked = task[1] !== ' ';
+			li.append(box, task[2]!);
+		} else {
+			li.textContent = m[4]!;
+		}
 		top.list.appendChild(li);
 		top.item = li;
 	}

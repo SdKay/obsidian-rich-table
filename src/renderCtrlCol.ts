@@ -98,7 +98,7 @@ export function renderCtrlCol(ctx: RenderCtrlColContext): boolean {
 		{ id: 'collapse', label: model.collapsed ? t('expandTable') : t('collapseTable'), whileCollapsed: true, emits: ['toggle-collapse'],
 			onClick: () => run({ type: 'toggle-collapse' }) },
 		// Auto width/height (undoing a drag-resize) and the only way to add a title or footer to a table without one.
-		{ id: 'viewSettings', label: t('viewSettings'), emits: ['set-view-width', 'set-view-height', 'set-table-wrap', 'set-status-bar-mode', 'set-title', 'set-footer'], onClick: (evt) => menuAt(evt, menu => {
+		{ id: 'viewSettings', label: t('viewSettings'), emits: ['set-view-width', 'set-view-height', 'set-table-wrap', 'set-tasks-groups', 'set-status-bar-mode', 'set-title', 'set-footer'], onClick: (evt) => menuAt(evt, menu => {
 			// Unchecking pins the size the view has right now, so it doesn't jump.
 			const wrapperRect = wrapper.getBoundingClientRect();
 			const item = (can: boolean, fill: Parameters<Menu['addItem']>[0]) => { if (can) menu.addItem(fill); };
@@ -111,6 +111,9 @@ export function renderCtrlCol(ctx: RenderCtrlColContext): boolean {
 			item(edits.can('set-table-wrap'), i => i.setTitle(t('wrapTextTable')).setIcon('wrap-text')
 				.setChecked(model.wrap !== false)
 				.onClick(() => run({ type: 'set-table-wrap', wrap: model.wrap === false })));
+			item(!!model.tasks && edits.can('set-tasks-groups'), i => i.setTitle(t('showTaskGroups')).setIcon('rows-3')
+				.setChecked(model.tasks?.groups === true)
+				.onClick(() => run({ type: 'set-tasks-groups', groups: model.tasks?.groups !== true })));
 			// A 2+-sheet workbook always shows the bar (its tabs live there), so the toggle would do nothing.
 			item(!forceStatusBarPinned && edits.can('set-status-bar-mode'), i => i.setTitle(t('showStatusBar')).setIcon('panel-bottom')
 				.setChecked(model.statusBarMode !== 'hover')

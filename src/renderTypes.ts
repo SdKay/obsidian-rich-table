@@ -8,7 +8,6 @@ export type ToggleLockHandler = () => Promise<void>;
 
 // Internal adapter types — same call-shape as v1 handlers, wired through OpHandler
 export type CellChangeHandler    = (rowIdx: number, colIdx: number, value: string) => void;
-export type ColTypeChangeHandler = (colIdx: number, colType: string | undefined) => void;
 export type StructuralOpHandler  = (op: StructuralOpV2) => void;
 
 /**
