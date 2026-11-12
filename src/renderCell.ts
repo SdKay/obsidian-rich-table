@@ -231,7 +231,7 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 				: (currentRow?.cells[col.id] ?? '');
 
 		if (isHeader) {
-			renderHeaderCell({
+			await renderHeaderCell({
 				el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
 				edits, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
 			});
@@ -270,7 +270,7 @@ const HEADER_PANEL_OPS = [
 	'set-col-type', 'set-col-field', 'set-range-style',
 ] as const;
 
-function renderHeaderCell(options: RenderHeaderCellOptions): void {
+async function renderHeaderCell(options: RenderHeaderCellOptions): Promise<void> {
 	const {
 		el, value, col, colIdx, getRegistry, app, sourcePath, model, component,
 		edits, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
@@ -297,7 +297,10 @@ function renderHeaderCell(options: RenderHeaderCellOptions): void {
 		typeIcon.setAttribute('aria-label', typeLabel(col.type));
 		typeIcon.setAttribute('data-tooltip-position', 'top');
 	}
-	textSpan.appendText(value || ' ');
+	// The name goes through the same renderer as a cell's text, so a formula, a link or bold means the same in both.
+	const name = textSpan.createSpan({ cls: 'bt-th-name' });
+	if (value.trim() === '') name.appendText('\u00a0');
+	else await MarkdownRenderer.render(app, value, name, sourcePath, component);
 
 	const openPanel = (_evt: MouseEvent) => {
 		if (!edits.canAny(HEADER_PANEL_OPS)) return;

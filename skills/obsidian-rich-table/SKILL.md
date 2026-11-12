@@ -84,7 +84,7 @@ Each entry has:
 | Field    | Type | Default | Description |
 | -------- | ---- | ------- | ----------- |
 | `id`     | string | — | Stable ID, e.g. `c_000000` |
-| `name`   | string | — | Column header text |
+| `name`   | string | — | Column header text. Rendered as Markdown like a cell's text (a `$formula$`, bold, a link); the text is saved as written |
 | `type`   | string | — | Built-in or custom choice type ([cell-content.md](references/cell-content.md)) |
 | `width`  | number | auto | Column width in px. Without it the column is sized to its content: one that wraps shares out the room the view leaves |
 | `wrap`   | boolean | table's `wrap`, else `true` | Whether text wraps in the column. `false` keeps it on one line (cut off at `width` when there is one) |

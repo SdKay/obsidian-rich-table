@@ -117,19 +117,28 @@ export class MarkdownRenderChild extends Component {
  * Async like the real one — renderTable awaits it per cell, and collapsing that
  * to synchronous would hide any ordering bug that depends on the await.
  */
-/** A `[[target|label]]` becomes the link Obsidian draws for it; the rest of the text stays text. */
+/** A `[[target|label]]` becomes the link and a `$formula$` the math span Obsidian draws for them; the rest stays text. */
 function appendWithLinks(p: HTMLElement, text: string): void {
 	let at = 0;
-	for (const m of text.matchAll(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g)) {
-		if (m.index > at) p.appendText(text.slice(at, m.index));
-		const a = p.createEl('a', { cls: 'internal-link', text: m[2] ?? m[1]! });
-		a.setAttribute('data-href', m[1]!);
-		a.setAttribute('href', m[1]!);
+	for (const m of text.matchAll(/\$(?!\s)([^$\n]*[^$\s\\])\$|\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g)) {
+		if (m.index > at) appendLines(p, text.slice(at, m.index));
+		at = m.index + m[0].length;
+		if (m[1] !== undefined) { p.createSpan({ cls: 'math math-inline is-loaded', text: m[1] }); continue; }
+		const a = p.createEl('a', { cls: 'internal-link', text: m[3] ?? m[2]! });
+		a.setAttribute('data-href', m[2]!);
+		a.setAttribute('href', m[2]!);
 		// Obsidian takes the click of a link it drew; the page itself never navigates to it.
 		a.addEventListener('click', e => e.preventDefault());
-		at = m.index + m[0].length;
 	}
-	if (at < text.length) p.appendText(text.slice(at));
+	if (at < text.length) appendLines(p, text.slice(at));
+}
+
+/** A soft line break is a <br> in what Obsidian draws, followed by the newline it was made from. */
+function appendLines(p: HTMLElement, text: string): void {
+	text.split('\n').forEach((line, i) => {
+		if (i > 0) { p.createEl('br'); p.appendText('\n'); }
+		if (line !== '') p.appendText(line);
+	});
 }
 
 export const MarkdownRenderer = {

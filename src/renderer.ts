@@ -40,7 +40,7 @@ import { AUTOFIT_OFFSET, SEL_CELL, SEL_UNIT, VIEW_EDGE_GAP } from './selectorLay
 import { fillRuns } from './sequenceFill';
 import { shellStyled, whenStylesReady } from './stylesReady';
 import { colIndexToLetter } from './utils';
-import { App, Component } from 'obsidian';
+import { App, Component, MarkdownRenderer } from 'obsidian';
 
 export interface RenderTableOptions {
 	/** What the table can change and the one way to change it; nothing, when absent. */
@@ -299,7 +299,8 @@ export async function renderTable(
 	// that reserved space lands instead of dropping it outright.
 	if (model.title) {
 		const titleEl = root.createDiv({ cls: 'bt-table-title' });
-		titleEl.createSpan({ text: model.title });
+		// Rendered like a cell's text, so a formula or a link in the title means what it does there.
+		await MarkdownRenderer.render(app, model.title, titleEl.createSpan(), sourcePath, component);
 		titleEl.setCssProps({ '--bt-title-sel-pad': `${SEL_UNIT}px` });
 		if (edits.can('set-title')) {
 			titleEl.addClass('bt-text-editable');

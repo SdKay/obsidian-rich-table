@@ -452,6 +452,12 @@
 	line-height: 1.4;
 	overflow-wrap: anywhere;
 }
+/* The title is rendered like a cell's text, so its paragraph takes the title's own look and adds no space. */
+.bt-table-title p {
+	margin: 0;
+	font: inherit;
+	text-align: inherit;
+}
 /* --bt-title-center-adj (renderer.ts's updateOuterFrame) centers the text over the visible table.
  * A transform moves no other element, so it cannot change the title/table gap. */
 .bt-table-title > span {
@@ -1979,8 +1985,8 @@
 	width: var(--bt-suggest-width, 260px);
 }
 
-/* A header name is plain text, not rendered Markdown, so its line breaks need white-space to show. */
-.bt-table .bt-th .bt-th-text { white-space: pre-line; }
+/* The name is rendered like a cell's text; its paragraph is only as wide as the text, so the column's alignment places it. */
+.bt-table .bt-th .bt-th-name > p { display: inline; }
 
 /* Column-type indicator — an inline icon inside .bt-th-text, right before the
  * header's own name (renderCell.ts), not a corner overlay like filter/sort.

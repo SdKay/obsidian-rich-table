@@ -201,7 +201,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![Column filtering demo](docs/demo-08-filter.gif)
 
-**8 · Rich cell content** — math · bold/italic · links · images · lists · multi-line; a task in a cell can be ticked, and a checkbox, link or nested table in a cell takes its own click instead of starting an edit
+**8 · Rich cell content** — math · bold/italic · links · images · lists · multi-line; the title and the column names render the same way (so `$\lambda_H$` is a formula there too); a task in a cell can be ticked, and a checkbox, link or nested table in a cell takes its own click instead of starting an edit
 
 > 🎬 *Demo GIF coming soon*
 
