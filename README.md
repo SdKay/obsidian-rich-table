@@ -19,6 +19,9 @@
   <a href="https://obsidian.md/plugins?id=rich-table">
     <img src="https://img.shields.io/badge/Obsidian-Community_Plugin-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian community plugin" />
   </a>
+  <a href="https://obsidian.md/plugins?id=rich-table">
+    <img src="https://img.shields.io/badge/dynamic/json?logo=obsidian&style=flat-square&color=%237c3aed&label=obsidian%20downloads&query=%24%5B%22rich-table%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json" alt="Obsidian community downloads" />
+  </a>
   <a href="https://paypal.me/ssdking">
     <img src="https://img.shields.io/badge/Donate-PayPal-003087?style=flat-square&logo=paypal&logoColor=white" alt="Donate via PayPal" />
   </a>
@@ -485,7 +488,7 @@ The tables in a note are searched too, by what they show: a formula by its resul
 
 ## Tasks tables
 
-A table can show the tasks that a [Tasks](https://publish.obsidian.md/tasks/) plugin style query finds across your vault, one task per row. The rows are read from your notes every time the table is drawn and are never written into the block, so the table stays current as you tick tasks off or add new ones.
+A table can show the tasks that a [Tasks](https://publish.obsidian.md/tasks/) plugin style query finds across your vault, one task per row. The rows are read from your notes every time the table is drawn and are never written into the block, so the table stays current as you tick tasks off or add new ones in your notes.
 
 The easiest way to create one: insert an empty `rich-table` block and click **Insert tasks table**, then write the query in the dialog that opens, one condition per line (for example `not done` and `sort by due`). Its columns are status, task, due, priority, tags, file. A table without a query shows a reminder and a **Write the query** button instead of rows; the toolbar's **Edit tasks query** button opens the same dialog to change it later.
 
@@ -519,7 +522,7 @@ columns:
 - **Jump to the task**: in a column that shows the file or the path, click the name to open that note at the task's line; Ctrl/Cmd+click opens it in a new tab, as for any link. A table without such a column has no way to jump from.
 - **Grouping**: a `group by …` line puts the tasks of a group together. To also see a heading row before each group (its name and task count), turn on **Show group headings** in the view settings; it is off by default.
 - **Sorting** a column writes a `sort by` line into the query. It is the query that holds the order, not the rows.
-- **Not editable**: the tasks themselves. Anything that would change a row or a cell is refused; change the task in its note.
+- **Not editable**: the tasks themselves, ticking one included. Anything that would change a row or a cell is refused; change the task in its note.
 - A block is one kind of table: a tasks table does not combine with an external `.xlsx` or with sheets.
 
 ## Themes

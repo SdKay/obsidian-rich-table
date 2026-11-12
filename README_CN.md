@@ -19,6 +19,9 @@
   <a href="https://obsidian.md/plugins?id=rich-table">
     <img src="https://img.shields.io/badge/Obsidian-社区插件-7c3aed?style=flat-square&logo=obsidian&logoColor=white" alt="Obsidian 社区插件" />
   </a>
+  <a href="https://obsidian.md/plugins?id=rich-table">
+    <img src="https://img.shields.io/badge/dynamic/json?logo=obsidian&style=flat-square&color=%237c3aed&label=obsidian%20downloads&query=%24%5B%22rich-table%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json" alt="Obsidian 社区下载量" />
+  </a>
   <a href="https://paypal.me/ssdking">
     <img src="https://img.shields.io/badge/赞助-PayPal-003087?style=flat-square&logo=paypal&logoColor=white" alt="通过 PayPal 赞助" />
   </a>
@@ -489,7 +492,7 @@ xlsxSource:
 
 ## 任务表
 
-表格可以显示 [Tasks](https://publish.obsidian.md/tasks/) 插件风格的查询在整个笔记库里找到的任务，每个任务一行。行在每次绘制时从笔记中读取，不会写进代码块，所以你勾选或新增任务后，表格保持最新。
+表格可以显示 [Tasks](https://publish.obsidian.md/tasks/) 插件风格的查询在整个笔记库里找到的任务，每个任务一行。行在每次绘制时从笔记中读取，不会写进代码块，所以你在笔记里勾选或新增任务后，表格保持最新。
 
 最简单的创建方式：插入一个空的 `rich-table` 代码块，点击**插入任务表**，然后在弹出的对话框里写查询语句，每行一个条件（例如 `not done` 和 `sort by due`）。列为：状态、任务、截止、优先级、标签、文件。没有查询语句的任务表不显示任务，而是显示提示和**编写查询**按钮；之后可以用工具栏的**编辑任务查询**按钮打开同一个对话框修改。
 
@@ -523,7 +526,7 @@ columns:
 - **跳转到任务**：在显示文件或路径的列里，点击名称会打开那篇笔记并定位到任务所在行；Ctrl/Cmd+点击在新标签页打开，与普通链接一致。没有这样的列时就没有跳转入口。
 - **分组**：查询里的 `group by …` 会把同一组的任务排在一起。想在每组前面再看到一行标题（组名和任务数），在视图设置里打开**显示分组标题**；默认关闭。
 - **排序**某一列会在查询里写入一行 `sort by`。顺序由查询保存，而不是行本身。
-- **不可编辑**：任务本身。任何会修改行或单元格的操作都会被拒绝；请到任务所在的笔记里修改。
+- **不可编辑**：任务本身，勾选也不行。任何会修改行或单元格的操作都会被拒绝；请到任务所在的笔记里修改。
 - 一个代码块只能是一种表：任务表不能与外部 `.xlsx` 或多工作表组合。
 
 ## 主题
