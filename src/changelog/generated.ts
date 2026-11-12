@@ -9,6 +9,22 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.7.0", date: "2026-11-12", changes: [
+		"docs: show the community download count, and say ticking a task is done in the note",
+		"feat: a title and a column name are drawn like a cell's text",
+		"feat: a tasks table can be set up and used from the table itself",
+		"perf: a layout round measures everything before it moves anything",
+		"refactor: a table whose rows come from elsewhere keeps its rules in a source of its own",
+		"feat: columns wrap their text and share out the room the view leaves",
+		"feat: a table block can show the tasks a Tasks-style query finds",
+		"refactor: the swap of a freshly drawn table into the note is its own step",
+		"test: a performance scan finds work that grows with the size of the table",
+		"fix: gestures on large tables no longer slow down with merges, styles or frozen lines",
+		"docs: how to measure performance without measuring the test tool",
+		"fix: moving the selection with the keyboard no longer takes half a second on a large table with merged cells",
+		"refactor: the renderer is split into modules that each draw their own part",
+		"fix: an image in a cell sits in the middle of the cell, top to bottom",
+	] },
 	{ version: "1.6.3", date: "2026-11-05", changes: [
 		"docs: describe what Rich Search can search across files",
 		"fix: a long table title stays inside the view and no longer makes the note scroll sideways",
