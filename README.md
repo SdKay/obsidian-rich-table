@@ -196,7 +196,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![Resize demo](docs/demo-06-resize.gif)
 
-**6 · Title & footer** — click to edit, Shift+Enter for multi-line
+**6 · Title & footer** — click to edit, Shift+Enter for multi-line; both render Markdown (bold, italic, highlight, links, formulas), and the footer is centred under the table
 
 ![Title and footer demo](docs/demo-07-title-footer.gif)
 

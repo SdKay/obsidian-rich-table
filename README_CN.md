@@ -200,7 +200,7 @@
 
 ![调整宽高演示](docs/demo-06-resize.gif)
 
-**6 · 标题与底部备注** — 单击内联编辑，Shift+Enter 换行
+**6 · 标题与底部备注** — 单击内联编辑，Shift+Enter 换行；两者都按 Markdown 渲染（加粗、斜体、高亮、链接、公式），底部备注居中于表格下方
 
 ![标题与备注演示](docs/demo-07-title-footer.gif)
 

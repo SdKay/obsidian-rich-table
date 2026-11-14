@@ -467,6 +467,11 @@
 }
 
 /* ── Table footer ────────────────────────────────────────────────────────── */
+.bt-table-footer p {
+	margin: 0;
+	font: inherit;
+	text-align: inherit;
+}
 .bt-table-footer {
 	text-align: center;
 	/* Flush left, as wide as the table: the add-column strip and the scrollbar track sit to the table's right, so

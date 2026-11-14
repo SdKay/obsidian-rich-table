@@ -177,7 +177,7 @@ styles:
 ```
 
 ### `footer` (string or array of strings, optional)
-Displayed below the table. Supports inline Markdown. Use an array for multiple lines.
+Displayed below the table, centred under it. Supports inline Markdown (bold, italic, highlight, links, `$formula$`); each line is rendered on its own, so a block that spans lines, such as a list, does not apply. Use an array for multiple lines.
 
 ```yaml
 footer: "Last updated 2025-01"

@@ -186,14 +186,16 @@ export async function renderTable(
 	// a wide/scrollable table, the footer rendered underneath the scrollbar —
 	// container's own bottom edge sits below wrapper's, scrollbar included,
 	// so a footer appended there always lands past it, however close or far).
-	function renderFooter(parent: HTMLElement = container): HTMLElement | null {
+	async function renderFooter(parent: HTMLElement = container): Promise<HTMLElement | null> {
 		if (!model.footer || model.collapsed) return null;
 		// Flatten array and split strings on \n so YAML arrays and \n-strings both work
 		const rawLines = Array.isArray(model.footer) ? model.footer : [model.footer];
 		const lines = rawLines.flatMap(l => l.split('\n'));
 		const footerEl = parent.createDiv({ cls: 'bt-table-footer' });
+		// Each line is drawn like a cell's text and stays a line of its own: drawn together, Markdown would join
+		// consecutive lines into one paragraph.
 		for (const line of lines) {
-			footerEl.createDiv({ cls: 'bt-table-footer-line', text: line });
+			await MarkdownRenderer.render(app, line, footerEl.createDiv({ cls: 'bt-table-footer-line' }), sourcePath, component);
 		}
 		if (edits.can('set-footer')) {
 			footerEl.addClass('bt-text-editable');
@@ -350,7 +352,7 @@ export async function renderTable(
 		} else {
 			renderCalendarBoard({ model, wrapper: viewWrapper, root, view: activeView, registry, edits, cacheKey: cacheKey ?? '' });
 		}
-		renderFooter();
+		await renderFooter();
 		return;
 	}
 
@@ -918,7 +920,7 @@ export async function renderTable(
 	// Inside wrapper (before addRowBtn, see renderFooter's own comment) — NOT
 	// container's default, which would land the footer below wrapper's entire
 	// box, horizontal scrollbar included.
-	const footerEl = renderFooter(wrapper);
+	const footerEl = await renderFooter(wrapper);
 	// Caps the footer's own width to the table's rendered width, wrapping onto more lines instead of continuing to widen
 	// wrapper past the table itself (reported: "脚注的最大宽度应该不超过表格本身的宽度，超过之后应该自动换行"). The
 	// footer is flush left and as wide as the table, so its text is centred under the table: the add-column strip and
