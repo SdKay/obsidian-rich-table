@@ -73,8 +73,8 @@ footer:
 	// widened .bt-table-wrapper (width: max-content) to fit it — confirmed
 	// working-as-designed in an earlier fix, but the user's own follow-up ask
 	// is the opposite: the footer should never widen the table, only wrap.
-	// positionFooter (renderer.ts) caps --bt-footer-max-width to contentRow's
-	// (table + addColBtn) own rendered width.
+	// The footer block (renderer.ts) sets --bt-footer-width to the table's own
+	// rendered width.
 	test('a footer line longer than the table wraps onto more lines instead of widening the table', { tag: '@geometry' }, async ({ page, renderFull }) => {
 		const longFooter = '这是一个比table本身宽很多的很长很长很长很长很长很长很长很长的注脚文字';
 		await renderFull(tableSource({ widths: [50], rows: [{ 0: 'x' }], footer: longFooter }));

@@ -919,19 +919,18 @@ export async function renderTable(
 	// container's default, which would land the footer below wrapper's entire
 	// box, horizontal scrollbar included.
 	const footerEl = renderFooter(wrapper);
-	// Caps the footer's own width to contentRow's (table + addColBtn) rendered
-	// width, wrapping onto more lines instead of continuing to widen wrapper
-	// past the table itself (reported: "脚注的最大宽度应该不超过表格本身的宽
-	// 度，超过之后应该自动换行"). Same --strip-max-width pattern addRowBtn
-	// already uses just below (contentRow.getBoundingClientRect().width /
-	// zoom) — kept live via a ResizeObserver on the table, so a column resize (or the view-width drag) reflows the
-	// footer's own wrap points immediately, not just on the next full render.
+	// Caps the footer's own width to the table's rendered width, wrapping onto more lines instead of continuing to widen
+	// wrapper past the table itself (reported: "脚注的最大宽度应该不超过表格本身的宽度，超过之后应该自动换行"). The
+	// footer is flush left and as wide as the table, so its text is centred under the table: the add-column strip and
+	// the scrollbar track sit to the table's right and are not part of what it is centred under. Kept live through the
+	// layout sync, so a column resize (or the view-width drag) reflows the footer's own wrap points immediately, not
+	// just on the next full render.
 	// Unconditional (unlike positionEdgeStrips' own --strip-max-width write,
 	// which exists only where the add strips do) — a locked/read-only table has a footer
 	// too and needs the same cap.
 	if (footerEl) {
-		const readFooter = () => contentRow.getBoundingClientRect().width / view.zoom;
-		const writeFooter = (width: number) => { footerEl.setCssProps({ '--bt-footer-max-width': `${width}px` }); };
+		const readFooter = () => table.getBoundingClientRect().width / view.zoom;
+		const writeFooter = (width: number) => { footerEl.setCssProps({ '--bt-footer-width': `${width}px` }); };
 		writeFooter(readFooter());
 		layoutSync.register('place', { read: readFooter, write: writeFooter });
 	}

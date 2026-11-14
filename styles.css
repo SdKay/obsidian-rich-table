@@ -469,16 +469,17 @@
 /* ── Table footer ────────────────────────────────────────────────────────── */
 .bt-table-footer {
 	text-align: center;
-	margin: 0 auto;
+	/* Flush left, as wide as the table: the add-column strip and the scrollbar track sit to the table's right, so
+	 * centring in the whole row would put the text off the table's middle. */
+	margin: 0;
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	line-height: 1.4;
-	/* Capped to contentRow's own rendered width (renderer.ts's positionFooter),
-	 * kept live via ResizeObserver — a footer line longer than the table wraps
-	 * onto more visual lines instead of widening the table's own wrapper past
-	 * it (wrapper's width: max-content otherwise follows whichever of its
-	 * children is currently widest — see .bt-table-wrapper's own comment). */
-	max-width: var(--bt-footer-max-width, none);
+	/* Exactly the table's own rendered width (renderer.ts's footer block), kept live through the layout sync: a
+	 * footer line longer than the table wraps onto more visual lines instead of widening the table's own wrapper
+	 * past it (wrapper's width: max-content otherwise follows whichever of its children is currently widest — see
+	 * .bt-table-wrapper's own comment), and a table wider than the view carries its footer along as it scrolls. */
+	width: var(--bt-footer-width, auto);
 }
 
 .bt-table-footer-line {

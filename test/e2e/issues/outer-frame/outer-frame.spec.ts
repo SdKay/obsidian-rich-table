@@ -40,8 +40,8 @@ test.describe('outer frame', () => {
 	// table alone; the handle and the status bar didn't follow that widened
 	// edge. Superseded by a follow-up report ("脚注的最大宽度应该不超过表格本身
 	// 的宽度，超过之后应该自动换行") asking for the OPPOSITE: the footer should
-	// now be capped to contentRow's own width (renderer.ts's positionFooter,
-	// --bt-footer-max-width) and wrap onto more lines instead of widening
+	// now be as wide as the table (renderer.ts's footer block,
+	// --bt-footer-width) and wrap onto more lines instead of widening
 	// wrapper at all — so this scenario no longer arises from a wide footer.
 	// Kept as a manually-set viewWidth instead, which still legitimately makes
 	// wrapper wider than <table>+addColBtn — the handle/frame/status-bar
