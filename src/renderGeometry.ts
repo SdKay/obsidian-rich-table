@@ -239,7 +239,9 @@ export function reserveSelectorLeftPad(root: HTMLElement): void {
 /**
  * The view's horizontal extent: the wrapper plus the left lane (toolbar +
  * row selector) when the wrapper is narrower than root, else root's own
- * width. When the status bar's natural width exceeds that, the view widens to
+ * width. Every length is on-screen px, the frame being outside the zoomed
+ * subtree: a lane measured in the zoomed subtree's own px (the toolbar's
+ * CTRL_COL_LEFT_GAP) is passed multiplied by the zoom. When the status bar's natural width exceeds that, the view widens to
  * fit it, taking the extra equally from both sides so the body stays
  * centered inside the view (clamped to root).
  */
@@ -304,7 +306,7 @@ export function applyOuterFrame(root: HTMLElement): void {
 		statusBar.removeClass('bt-measure-natural');
 		statusTabs.removeClass('bt-measure-natural');
 	}
-	const { left, right } = viewSpan(rr, wr, leftLane, barNatural);
+	const { left, right } = viewSpan(rr, wr, leftLane * measureZoomFactor(root), barNatural);
 	statusBar?.setCssProps({
 		'--sb-pinned-l': `${left - shellRect.left}px`,
 		'--sb-pinned-w': `${right - left}px`,

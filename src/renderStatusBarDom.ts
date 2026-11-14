@@ -283,7 +283,7 @@ export function renderStatusBar(ctx: StatusBarContext): void {
 	const writeOuterFrame = (m: ReturnType<typeof readOuterFrame>) => {
 		if (!m) return;
 		const { rr, wr, shellRect, tableRect, title, titleRect, barNatural } = m;
-		const { left, right } = viewSpan(rr, wr, CTRL_COL_LEFT_GAP, barNatural);
+		const { left, right } = viewSpan(rr, wr, CTRL_COL_LEFT_GAP * view.zoom, barNatural);
 		if (statusBar && !sliderDragging) {
 			statusBar.setCssProps({
 				'--sb-pinned-l': `${left - shellRect.left}px`,
