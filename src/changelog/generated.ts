@@ -9,6 +9,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.7.1", date: "2026-11-15", changes: [
+		"fix: blank lines in a cell keep their line",
+		"fix: an exported image is the table as the note shows it",
+		"fix: the table's own border is not left to the theme",
+		"fix: the toolbar sits inside the outer frame at every zoom",
+		"feat: the footer is drawn like a cell's text",
+		"fix: the footer is centred under the table, not under the row beside it",
+	] },
 	{ version: "1.7.0", date: "2026-11-12", changes: [
 		"docs: show the community download count, and say ticking a task is done in the note",
 		"feat: a title and a column name are drawn like a cell's text",
