@@ -13,6 +13,8 @@
  * make hidden/scrolled content fully visible first.
  */
 import * as htmlToImage from 'html-to-image';
+import { contentEndRow } from './snapshotEnd';
+import { withPixelDensity } from './pngDensity';
 
 /** Hover-only chrome, scroll-affordances, and the status bar / sheet tab bar
  *  — none of these have a place in a static, fully-expanded snapshot (the
@@ -35,12 +37,14 @@ const STRIP_SELECTORS = [
 	'.bt-view-resize-r',
 	'.bt-view-resize-br',
 	'.bt-view-resize-b',
+	'.bt-view-scroll',
 	'.bt-status-bar',
 	'.bt-sheet-tabbar',
 ].join(', ');
 
-const SNAPSHOT_OPTIONS: Parameters<typeof htmlToImage.toBlob>[1] = {
-	pixelRatio: 2, // crisp regardless of the screen's actual DPI — the whole point of this feature
+const SNAPSHOT_PIXEL_RATIO = 2;
+const SNAPSHOT_OPTIONS: NonNullable<Parameters<typeof htmlToImage.toBlob>[1]> = {
+	pixelRatio: SNAPSHOT_PIXEL_RATIO, // crisp regardless of the screen's actual DPI — the whole point of this feature
 	skipFonts: true, // avoid a slow/fragile fetch-and-embed of every @font-face the current theme happens to reference
 	imagePlaceholder: '', // a remote (non-vault) cell image that fails to fetch renders blank instead of failing the whole capture
 };
@@ -64,7 +68,7 @@ const SNAPSHOT_OPTIONS: Parameters<typeof htmlToImage.toBlob>[1] = {
  * viewport) rather than `display: none` — html-to-image (like any DOM-to-
  * image approach) needs the node genuinely laid out to measure it.
  */
-function prepareSnapshotClone(root: HTMLElement): { clone: HTMLElement; cleanup: () => void } {
+function prepareSnapshotClone(root: HTMLElement): { clone: HTMLElement; size: { width: number; height: number }; cleanup: () => void } {
 	const clone = root.cloneNode(true) as HTMLElement;
 	clone.querySelectorAll(STRIP_SELECTORS).forEach(el => el.remove());
 
@@ -87,27 +91,60 @@ function prepareSnapshotClone(root: HTMLElement): { clone: HTMLElement; cleanup:
 	if (wrapper) {
 		wrapper.classList.remove('bt-view-fixed-w', 'bt-view-fixed-h');
 		wrapper.classList.add('bt-snapshot-expanded');
-		// Wrapping columns are laid out against the view's width; at full natural width each would be one long line.
-		// The table's own width covers a table wider than the view, whose content cannot wrap.
-		const liveTable = root.querySelector<HTMLElement>('table.bt-table');
+		// The clone is laid out as wide as the note's view is, to the fraction (clientWidth rounds it), so columns that
+		// wrap break where they do in the note; a table wider than the view keeps its own width.
+		const zoom = Number.parseFloat(root.style.zoom) || 1;
 		const liveWrapper = root.querySelector<HTMLElement>('.bt-table-wrapper');
-		const row = liveTable?.parentElement;
-		const width = Math.max(liveWrapper?.clientWidth ?? 0, row?.scrollWidth ?? 0);
+		const liveTable = root.querySelector<HTMLElement>('table.bt-table');
+		const width = Math.max((liveWrapper?.getBoundingClientRect().width ?? 0) / zoom, (liveTable?.getBoundingClientRect().width ?? 0) / zoom);
 		if (width > 0) wrapper.setCssProps({ '--bt-snapshot-width': `${width}px` });
 	}
 
-	const host = document.body.createDiv({ cls: 'bt-snapshot-host' });
+	// Beside the live table, under the same ancestors, so the note's own rules (fonts, cell sizes, theme) apply to it
+	// exactly as they do to the table.
+	const host = (root.parentElement ?? document.body).createDiv({ cls: 'bt-snapshot-host' });
 	host.appendChild(clone);
 
-	return { clone, cleanup: () => host.remove() };
+	// Text wraps by the glyph widths of the zoom it is laid out at, so the clone keeps the note's zoom. The library takes
+	// clientWidth/Height, which leave a CSS `zoom` out, so the canvas is given the box measured on screen.
+	const rect = clone.getBoundingClientRect();
+	// The table sits centred in the view's width, which it was laid out against; the picture is only the table.
+	const row = clone.querySelector<HTMLElement>('.bt-table-content-row');
+	if (wrapper && row) {
+		const zoom = Number.parseFloat(root.style.zoom) || 1;
+		const rowWidth = row.getBoundingClientRect().width / zoom;
+		if (rowWidth > 0) {
+			wrapper.setCssProps({ '--bt-snapshot-width': `${rowWidth}px` });
+			const tight = clone.getBoundingClientRect();
+			return { clone, size: { width: Math.ceil(tight.width), height: Math.ceil(tight.height) }, cleanup: () => host.remove() };
+		}
+	}
+	return { clone, size: { width: Math.ceil(rect.width), height: Math.ceil(rect.height) }, cleanup: () => host.remove() };
+}
+
+/**
+ * How tall the picture comes out, in the clone's own px. The page cannot say (see snapshotEnd.ts): the clone is drawn
+ * with room to spare, carrying a marker as its last element, and the height is where the marker begins.
+ */
+async function measureHeight(clone: HTMLElement, size: { width: number; height: number }): Promise<number> {
+	const marker = clone.createDiv({ cls: 'bt-snapshot-end' });
+	try {
+		const room = { ...size, height: Math.ceil(size.height * 1.5) + 8 };
+		const probe = await htmlToImage.toCanvas(clone, { ...SNAPSHOT_OPTIONS, ...room });
+		const strip = probe.getContext('2d')?.getImageData(Math.floor(probe.width / 2), 0, 1, probe.height).data;
+		const end = strip ? contentEndRow(strip) : null;
+		return end === null ? size.height : Math.ceil(end / (probe.width / room.width));
+	} finally {
+		marker.remove();
+	}
 }
 
 export async function captureTablePng(root: HTMLElement): Promise<Blob> {
-	const { clone, cleanup } = prepareSnapshotClone(root);
+	const { clone, size, cleanup } = prepareSnapshotClone(root);
 	try {
-		const blob = await htmlToImage.toBlob(clone, SNAPSHOT_OPTIONS);
+		const blob = await htmlToImage.toBlob(clone, { ...SNAPSHOT_OPTIONS, ...size, height: await measureHeight(clone, size) });
 		if (!blob) throw new Error('toBlob produced no image');
-		return blob;
+		return new Blob([withPixelDensity(new Uint8Array(await blob.arrayBuffer()), SNAPSHOT_PIXEL_RATIO) as BlobPart], { type: 'image/png' });
 	} finally {
 		cleanup();
 	}
@@ -118,9 +155,9 @@ export async function captureTablePng(root: HTMLElement): Promise<Blob> {
  *  into a `.svg` file; saving the data URL verbatim would produce a file
  *  that isn't valid SVG (no viewer renders a data-URL string as an image). */
 export async function captureTableSvg(root: HTMLElement): Promise<string> {
-	const { clone, cleanup } = prepareSnapshotClone(root);
+	const { clone, size, cleanup } = prepareSnapshotClone(root);
 	try {
-		const dataUrl = await htmlToImage.toSvg(clone, SNAPSHOT_OPTIONS);
+		const dataUrl = await htmlToImage.toSvg(clone, { ...SNAPSHOT_OPTIONS, ...size, height: await measureHeight(clone, size) });
 		return decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
 	} finally {
 		cleanup();

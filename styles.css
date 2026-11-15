@@ -244,6 +244,10 @@
  * whatever's currently scrolled into view — !important since plain source
  * order can't be relied on to win over .bt-table-wrapper's own same-
  * specificity rule above once this is appended anywhere else in the file. */
+.bt-snapshot-end {
+	height: 4px;
+	background: rgb(255, 0, 255);
+}
 .bt-snapshot-expanded {
 	overflow: visible !important;
 	max-height: none !important;

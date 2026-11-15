@@ -173,6 +173,188 @@ test.describe('table snapshot', () => {
 		expect(svgHeight(svg)).toBeGreaterThan(600);
 	});
 
+	test('captures the whole table when the view is zoomed and bounded on both axes @geometry', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		const rows = Array.from({ length: 12 }, (_, i) => ({ 0: `row-${i}`, 6: `last-${i}` }));
+		await renderBlock(tableSource({ widths: [0, 0, 0, 0, 0, 0, 0], rows, viewHeight: 160, zoom: 156 }));
+		const natural = await page.evaluate(() => {
+			const b = document.querySelector<HTMLElement>('table.bt-table')!.getBoundingClientRect();
+			return { w: b.width, h: b.height };
+		});
+		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+		expect(await clickMenuItem(page, 'Save image (PNG) to vault')).toBe(true);
+		await expect.poll(() => page.evaluate(() => window.__btVault.binaryFiles.has('note table.png'))).toBe(true);
+		const size = await page.evaluate(() => {
+			const v = new DataView(window.__btVault.binaryFiles.get('note table.png')!);
+			return { w: v.getUint32(16), h: v.getUint32(20) };
+		});
+		// 2x pixel ratio over what the zoomed table covers on screen.
+		expect(size.h).toBeGreaterThanOrEqual(2 * natural.h - 4);
+		expect(size.w).toBeGreaterThanOrEqual(2 * natural.w - 4);
+	});
+
+	test('the saved SVG is as large as the table is on screen at its zoom @geometry', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		await renderBlock(tableSource({ widths: [100, 100], rows: [{ 0: 'a', 1: 'b' }], zoom: 150 }));
+		const onScreen = await page.evaluate(() => {
+			const b = document.querySelector<HTMLElement>('table.bt-table')!.getBoundingClientRect();
+			return { w: b.width, h: b.height };
+		});
+		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+		expect(await clickMenuItem(page, 'Save vector (SVG) to vault')).toBe(true);
+		await expect.poll(() => page.evaluate(() => window.__btVault.files.has('note table.svg'))).toBe(true);
+		const svg = (await page.evaluate(() => window.__btVault.files.get('note table.svg')))!;
+		const head = /<svg\b[^>]*>/.exec(svg)![0];
+		const num = (re: RegExp) => Number(re.exec(head)![1]);
+		expect(num(/\swidth="([\d.]+)"/)).toBeGreaterThanOrEqual(onScreen.w - 2);
+		expect(num(/\sheight="([\d.]+)"/)).toBeGreaterThanOrEqual(onScreen.h - 2);
+	});
+
+	test('the saved SVG carries the font the note gives the table, not the page\'s', async ({ page, renderBlock }) => {
+		await renderBlock(tableSource({ widths: [100], rows: [{ 0: 'a' }] }));
+		await page.evaluate(() => {
+			// A note sets its fonts on an ancestor inside the page, not on `body`, which the detached snapshot is mounted under.
+			const shell = document.querySelector('.bt-render-root-shell') ?? document.querySelector('.bt-render-root')!.parentElement!;
+			const note = document.createElement('div');
+			note.style.fontFamily = '"Fira Mono", monospace';
+			shell.parentElement!.insertBefore(note, shell);
+			note.appendChild(shell);
+		});
+		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+		expect(await clickMenuItem(page, 'Save vector (SVG) to vault')).toBe(true);
+		await expect.poll(() => page.evaluate(() => window.__btVault.files.has('note table.svg'))).toBe(true);
+		const svg = (await page.evaluate(() => window.__btVault.files.get('note table.svg')))!;
+		const root = /class="bt-render-root[^"]*"\s+style="([^"]*)"/.exec(svg)![1]!;
+		expect(root.replace(/&quot;/g, '"')).toContain('"Fira Mono", monospace');
+	});
+
+	test('the image is laid out as the note shows the table: every cell the same size @geometry', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		const rows = Array.from({ length: 9 }, (_, i) => (i === 0 ? { 0: '文档', 1: 'zephyr pm(AN+skill)' } : {}));
+		await renderBlock(tableSource({ widths: [0, 0, 0, 0], rows, zoom: 156, viewHeight: 249, theme: 'grid' }));
+		await page.evaluate(() => {
+			// A note's table sits under ancestors that size its cells; the snapshot must see the same ones.
+			const style = document.createElement('style');
+			style.textContent = '.note-ancestor td, .note-ancestor th { font-size: 17px; letter-spacing: 0.7px; }';
+			document.head.appendChild(style);
+			const shell = document.querySelector('.bt-render-root-shell') ?? document.querySelector('.bt-render-root')!.parentElement!;
+			const note = document.createElement('div');
+			note.className = 'note-ancestor';
+			shell.parentElement!.insertBefore(note, shell);
+			note.appendChild(shell);
+			const orig = Element.prototype.remove;
+			Element.prototype.remove = function (this: Element) { if (this.classList.contains('bt-snapshot-host')) return; orig.call(this); };
+		});
+		const cells = (sel: string) => page.evaluate((s) => Array.from(document.querySelectorAll(`${s} thead th, ${s} tbody td`)).map(c => { const b = c.getBoundingClientRect(); return [Math.round(b.width * 10) / 10, Math.round(b.height * 10) / 10]; }), sel);
+		const live = await cells('.bt-render-root');
+		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+		expect(await clickMenuItem(page, 'Save image (PNG) to vault')).toBe(true);
+		await expect.poll(() => page.evaluate(() => window.__btVault.binaryFiles.has('note table.png'))).toBe(true);
+		expect(await cells('.bt-snapshot-host .bt-render-root')).toEqual(live);
+	});
+
+	test('the PNG ends below the bottom border even when the page under-measures the table @geometry', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		await renderBlock(tableSource({ widths: [100, 100], rows: [{ 0: 'a', 1: 'b' }, { 0: 'c' }, { 0: 'd' }], zoom: 156, theme: 'grid' }));
+		// The picture is laid out again inside the SVG and can come out taller than the page says; stand in for that by
+		// having the clone report a height a few pixels short.
+		await page.evaluate(() => {
+			const get = Element.prototype.getBoundingClientRect;
+			Element.prototype.getBoundingClientRect = function (this: Element) {
+				const r = get.call(this);
+				if (this.parentElement?.classList.contains('bt-snapshot-host') && this.classList.contains('bt-render-root')) return new DOMRect(r.x, r.y, r.width, r.height - 6);
+				return r;
+			};
+		});
+		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+		expect(await clickMenuItem(page, 'Save image (PNG) to vault')).toBe(true);
+		await expect.poll(() => page.evaluate(() => window.__btVault.binaryFiles.has('note table.png'))).toBe(true);
+		const res = await page.evaluate(async () => {
+			const bmp = await createImageBitmap(new Blob([window.__btVault.binaryFiles.get('note table.png')!], { type: 'image/png' }));
+			const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+			const ctx = c.getContext('2d')!; ctx.drawImage(bmp, 0, 0);
+			const d = ctx.getImageData(0, 0, c.width, c.height).data;
+			const dark = (y: number) => { let n = 0; for (let x = 4; x < c.width - 4; x++) { const i = (y * c.width + x) * 4; if (d[i + 3]! > 128 && d[i]! < 120) n++; } return n; };
+			const magenta = (y: number) => { for (let x = 0; x < c.width; x++) { const i = (y * c.width + x) * 4; if (d[i]! > 240 && d[i + 1]! < 20 && d[i + 2]! > 240) return true; } return false; };
+			return { lastRowDark: dark(c.height - 1), width: c.width, anyMagenta: Array.from({ length: c.height }, (_, y) => magenta(y)).some(Boolean) };
+		});
+		expect(res.anyMagenta).toBe(false);
+		// the last row of the picture is the table's bottom border: dark across its whole width
+		expect(res.lastRowDark).toBeGreaterThan(res.width * 0.8);
+	});
+
+	test('the SVG ends below the bottom border even when the page under-measures the table @geometry', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		await renderBlock(tableSource({ widths: [100, 100], rows: [{ 0: 'a', 1: 'b' }, { 0: 'c' }, { 0: 'd' }], zoom: 156, theme: 'grid' }));
+		await page.evaluate(() => {
+			const get = Element.prototype.getBoundingClientRect;
+			Element.prototype.getBoundingClientRect = function (this: Element) {
+				const r = get.call(this);
+				if (this.parentElement?.classList.contains('bt-snapshot-host') && this.classList.contains('bt-render-root')) return new DOMRect(r.x, r.y, r.width, r.height - 6);
+				return r;
+			};
+		});
+		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+		expect(await clickMenuItem(page, 'Save vector (SVG) to vault')).toBe(true);
+		await expect.poll(() => page.evaluate(() => window.__btVault.files.has('note table.svg'))).toBe(true);
+		const res = await page.evaluate(async () => {
+			const svg = window.__btVault.files.get('note table.svg')!;
+			const img = new Image();
+			img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+			await img.decode();
+			const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+			const ctx = c.getContext('2d')!; ctx.drawImage(img, 0, 0);
+			const d = ctx.getImageData(0, 0, c.width, c.height).data;
+			const dark = (y: number) => { let n = 0; for (let x = 4; x < c.width - 4; x++) { const i = (y * c.width + x) * 4; if (d[i + 3]! > 128 && d[i]! < 120) n++; } return n; };
+			let magenta = false;
+			for (let i = 0; i < d.length; i += 4) if (d[i]! > 240 && d[i + 1]! < 20 && d[i + 2]! > 240 && d[i + 3]! > 200) { magenta = true; break; }
+			return { lastRowDark: dark(c.height - 1), width: c.width, magenta };
+		});
+		expect(res.magenta).toBe(false);
+		expect(res.lastRowDark).toBeGreaterThan(res.width * 0.8);
+	});
+
+	for (const [name, spec] of [['a view wider than the table', { widths: [0, 0, 0], viewWidth: 900 }], ['the default view', { widths: [0, 0, 0] }], ['a table wider than the view', { widths: [300, 300, 300], viewWidth: 400 }]] as const) {
+		test(`the PNG is just the table, with no blank margin: ${name} @geometry`, { tag: '@geometry' }, async ({ page, renderBlock }) => {
+			await renderBlock(tableSource({ ...spec, rows: [{ 0: 'a' }, {}, {}], zoom: 156, theme: 'grid' }));
+			const table = await page.evaluate(() => document.querySelector('table.bt-table')!.getBoundingClientRect().width);
+			await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+			expect(await clickMenuItem(page, 'Save image (PNG) to vault')).toBe(true);
+			await expect.poll(() => page.evaluate(() => window.__btVault.binaryFiles.has('note table.png'))).toBe(true);
+			const res = await page.evaluate(async () => {
+				const bmp = await createImageBitmap(new Blob([window.__btVault.binaryFiles.get('note table.png')!], { type: 'image/png' }));
+				const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+				const ctx = c.getContext('2d')!; ctx.drawImage(bmp, 0, 0);
+				const d = ctx.getImageData(0, 0, c.width, c.height).data;
+				let left = c.width, right = -1;
+				for (let y = 0; y < c.height; y += 2) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3]! > 0) { if (x < left) left = x; if (x > right) right = x; }
+				return { w: c.width, left, rightGap: c.width - 1 - right };
+			});
+			// Two device pixels at most: the size is rounded up to a whole pixel.
+			expect(res.left).toBeLessThanOrEqual(2);
+			expect(res.rightGap).toBeLessThanOrEqual(4);
+			expect(Math.abs(res.w - 2 * table)).toBeLessThanOrEqual(4);
+		});
+	}
+
+	test('the PNG and the SVG are shown at the same size: the PNG records its pixel density @geometry', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		await renderBlock(tableSource({ widths: [100, 100], rows: [{ 0: 'a' }, {}], zoom: 156, theme: 'grid' }));
+		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+		expect(await clickMenuItem(page, 'Save image (PNG) to vault')).toBe(true);
+		await expect.poll(() => page.evaluate(() => window.__btVault.binaryFiles.has('note table.png'))).toBe(true);
+		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
+		expect(await clickMenuItem(page, 'Save vector (SVG) to vault')).toBe(true);
+		await expect.poll(() => page.evaluate(() => window.__btVault.files.has('note table.svg'))).toBe(true);
+		const res = await page.evaluate(() => {
+			const png = new Uint8Array(window.__btVault.binaryFiles.get('note table.png')!);
+			const v = new DataView(png.buffer, png.byteOffset);
+			let at = 8, dpm = 0;
+			while (at < png.length) { const n = v.getUint32(at); const t = String.fromCharCode(png[at + 4]!, png[at + 5]!, png[at + 6]!, png[at + 7]!); if (t === 'pHYs') dpm = v.getUint32(at + 8); at += 12 + n; }
+			const svg = window.__btVault.files.get('note table.svg')!;
+			return { pxW: v.getUint32(16), pxH: v.getUint32(20), dpm, svgW: Number(/<svg\b[^>]*\swidth="([\d.]+)"/.exec(svg)![1]), svgH: Number(/<svg\b[^>]*\sheight="([\d.]+)"/.exec(svg)![1]) };
+		});
+		// Shown at its recorded density, the PNG covers the CSS px the SVG declares.
+		const cssW = res.pxW / (res.dpm / 3780);
+		const cssH = res.pxH / (res.dpm / 3780);
+		expect(Math.abs(cssW - res.svgW)).toBeLessThanOrEqual(1);
+		expect(Math.abs(cssH - res.svgH)).toBeLessThanOrEqual(3);
+	});
+
 	test('"Save image (PNG) to vault" writes a non-empty PNG', async ({ page, renderBlock }) => {
 		await renderBlock(tableSource({ widths: [80, 80], rows: [{ 0: 'a', 1: 'b' }] }));
 		await page.locator('.bt-ctrl-btn[aria-label="Snapshot"]').click();
