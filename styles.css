@@ -1251,7 +1251,11 @@
  * entire box-shadow value and would invalidate the frame/seam lines it's
  * combined with on the same cell (see renderFreeze.ts's addBoxShadow). */
 .bt-table {
-	border: var(--bt-border-outer, none);
+	/* The grid is ours, not the theme's: a cell owns only its right and bottom edge (see the one-border-per-edge
+	 * rule above), so the table's own border is the grid's top and left edge, and a theme rule that styles tables
+	 * (Minimal's `.markdown-source-view.mod-cm6 table`, two classes and an element) must not decide whether it is
+	 * drawn. !important, like the table's collapse mode and the cells' borders. */
+	border: var(--bt-border-outer, none) !important;
 	/* SEPARATE, NOT COLLAPSE — this is a load-bearing choice for frozen
 	 * rows/columns, not a style preference. Under border-collapse: collapse a
 	 * shared cell edge stops belonging to either cell: the TABLE paints one

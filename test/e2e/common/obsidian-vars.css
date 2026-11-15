@@ -74,6 +74,14 @@ body {
 	border-collapse: collapse;
 	border-spacing: 0;
 }
+/* A theme's rule for a table in Live Preview, read off Minimal. At 2 classes + an element it out-specifies a plain
+ * `.bt-table`, and `--border-color` is not defined by the app or by the theme, so the declaration is invalid at
+ * computed-value time and the table's border computes to `none`: the grid's top and left edge (the table's own border,
+ * since a cell owns only its right and bottom) disappears. */
+.markdown-source-view.mod-cm6 table {
+	border: var(--border-width, 1px) solid var(--border-color);
+	border-collapse: collapse;
+}
 .markdown-rendered th,
 .markdown-rendered td {
 	border: 1px solid var(--background-modifier-border);
