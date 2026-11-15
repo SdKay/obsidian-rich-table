@@ -21,6 +21,7 @@ import { showMenuPinned } from './renderHoverPin';
 import { takeLiveEdit } from './renderEditHandoff';
 import { growColForChoiceValue } from './renderAutofit';
 import { isInsideNestedTable } from './renderOwnScope';
+import { blankLinesBetweenBlocks, blockCount } from './cellBlankLines';
 import { contentOwnsPress } from './cellContentOwner';
 import { toggleTaskInCell } from './cellTaskToggle';
 import { taskBoxAt, taskBoxesOf } from './cellTaskItems';
@@ -655,6 +656,15 @@ async function renderDataCell(options: RenderDataCellOptions): Promise<void> {
 				next.textContent = next.textContent.replace(/^\n+/, '');
 			}
 		});
+		// The paragraphs have no margin, so the blank lines between them would show nothing: each is given back as a line.
+		const gaps = blankLinesBetweenBlocks(value);
+		const paragraphs = Array.from(el.children).filter((c): c is HTMLElement => c.tagName === 'P');
+		if (gaps && gaps.some(n => n > 0) && paragraphs.length === blockCount(value) && paragraphs.length === el.children.length) {
+			paragraphs.forEach((p, i) => {
+				const blanks = Array.from({ length: gaps[i] ?? 0 }, () => { const b = createEl('p'); b.createEl('br'); return b; });
+				p.after(...blanks);
+			});
+		}
 		// Convert <ul>/<ol> to <br>-separated inline content — the only reliable way
 		// to match <br> line spacing regardless of which theme variables are in use.
 		el.querySelectorAll<HTMLElement>('ul, ol').forEach(list => {

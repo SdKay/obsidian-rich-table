@@ -144,8 +144,11 @@ function appendLines(p: HTMLElement, text: string): void {
 export const MarkdownRenderer = {
 	render(_app: unknown, markdown: string, el: HTMLElement, _sourcePath: string, _component: unknown): Promise<void> {
 		if (markdown !== '' && !renderList(markdown, el)) {
-			const p = el.createEl('p');
-			appendWithLinks(p, markdown);
+			// A blank line ends a paragraph and any further ones add nothing: the real renderer draws no element for them.
+			for (const block of markdown.split(/\n[ \t]*\n(?:[ \t]*\n)*/)) {
+				if (block === '') continue;
+				appendWithLinks(el.createEl('p'), block);
+			}
 		}
 		return Promise.resolve();
 	},
