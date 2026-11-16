@@ -1,0 +1,49 @@
+name: Download stats
+
+# Once a day, after Obsidian's own bot has committed the day's community-plugin-stats.json, adds today's download total
+# to downloads.json and redraws the two charts the README shows. Everything it needs, script included, is on the `stats`
+# branch, so a daily commit never shows up in master's history (or triggers its CI). A scheduled workflow is only read
+# from the default branch, which is why this file is here.
+on:
+  schedule:
+    - cron: '17 1 * * *' # 01:17 UTC; the stats bot commits at about 00:15
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    if: github.repository == 'SdKay/obsidian-rich-table'
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: stats
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Test the script
+        run: node --test
+
+      - name: Add today's total and redraw the charts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node download-stats.mjs update downloads.json
+          node download-stats.mjs render downloads.json
+
+      - name: Commit if anything changed
+        run: |
+          if git diff --quiet; then
+            echo "Nothing changed."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add downloads.json downloads-light.svg downloads-dark.svg
+          git commit -m "stats: $(date -u +%Y-%m-%d)"
+          git push

@@ -28,6 +28,15 @@
 </p>
 
 <p>
+  <a href="https://obsidian.md/plugins?id=rich-table">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/SdKay/obsidian-rich-table/stats/downloads-dark.svg" />
+      <img src="https://raw.githubusercontent.com/SdKay/obsidian-rich-table/stats/downloads-light.svg" alt="Obsidian community downloads over time" width="720" />
+    </picture>
+  </a>
+</p>
+
+<p>
   <a href="#installation">Install</a> ·
   <a href="#demo">Demo</a> ·
   <a href="#keyboard">Keyboard</a> ·
