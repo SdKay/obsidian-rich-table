@@ -1,6 +1,6 @@
 # Table-level display fields
 
-Optional top-level fields that change how a table looks or behaves: `theme`, `locked`, `collapsed`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `wrap`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId`. The theme choices themselves are listed in [themes.md](themes.md).
+Optional top-level fields that change how a table looks or behaves: `theme`, `locked`, `collapsed`, `header`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `wrap`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId`. The theme choices themselves are listed in [themes.md](themes.md).
 
 ### `theme` (string, optional)
 Built-in visual theme applied to the table. Themes control appearance only
@@ -21,7 +21,10 @@ When `true`, all graphical editing is disabled for this table.
 
 ### `collapsed` (boolean, optional)
 When `true`, only the title (if any) and header row render — the table body
-and footer are hidden. Toggle via the fold-icon button in the top-left corner.
+and footer are hidden (with `header: false`, only the title). Toggle via the fold-icon button in the top-left corner.
+
+### `header` (boolean, optional)
+`false` hides the header row, for a table whose rows are records of their own. Absent = shown; write the field only as `false`. The columns keep their `name` (views, kanban and calendar labels and the `.xlsx` export use it) and the column selector strip still opens the column menu; only the row is not drawn. A style target or merge that names `header` stays in the block untouched and is drawn nowhere, so turning the header back on brings it back. Without a header, `freezeRows: N` freezes the first `N` rows of the body (see below), and an exported `.xlsx` has no header row: its first row is the first data row. Toggle via **View settings → Show header row**.
 
 ### `sort` (object, optional)
 Live/persistent row sort — the popup menu opened by selecting a single column
@@ -69,7 +72,7 @@ aggregate:
 ```
 
 ### `freezeRows` / `freezeCols` (non-negative integer, optional)
-Keeps the header row plus the first `freezeRows` data rows (`freezeRows: 0` = header only), and/or the first `freezeCols` columns, visible while the table scrolls. A position, not a set of IDs: reordering rows changes which rows are in the frozen region. Omit the field for no freeze. A count that would cut a merged cell in half is invalid; the plugin shrinks it to the largest count that does not, so do not write one.
+Keeps the header row plus the first `freezeRows` data rows (`freezeRows: 0` = header only; with `header: false`, the first `freezeRows` rows and `0` = none), and/or the first `freezeCols` columns, visible while the table scrolls. A position, not a set of IDs: reordering rows changes which rows are in the frozen region. Omit the field for no freeze. A count that would cut a merged cell in half is invalid; the plugin shrinks it to the largest count that does not, so do not write one.
 
 ```yaml
 freezeRows: 1

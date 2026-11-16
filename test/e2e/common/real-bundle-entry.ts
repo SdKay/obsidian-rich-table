@@ -34,6 +34,7 @@ export { Menu as ShimMenu } from './obsidian-shim';
 export { addCellHighlightItems, clearCellPickOutside } from '../../../src/renderEditorMenu';
 export { insertPlainText } from '../../../src/editorPaste';
 export { buildOccupied, getMergeOrigin } from '../../../src/renderGridHelpers';
+export { rowSpace } from '../../../src/rowSpace';
 export { canFreezeRows, canFreezeCols } from '../../../src/operations';
 export { cellEffectiveStyle, applyColStyle, applyStyleRulesV2, applyResolvedStyle } from '../../../src/renderCellStyle';
 

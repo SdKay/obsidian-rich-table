@@ -45,7 +45,7 @@ const STRUCTURAL: { [K in StructuralOpV2['type']]: OpEffect } = {
 	'set-col-width': 'look', 'set-col-align': 'look', 'set-col-wrap': 'look', 'set-table-wrap': 'look', 'set-row-height': 'look',
 	'set-cell-style': 'look', 'set-range-style': 'look', 'split-range-style': 'look', 'set-align': 'look',
 	'set-title': 'look', 'set-footer': 'look', 'set-theme': 'look',
-	'toggle-collapse': 'look', 'set-freeze-rows': 'look', 'set-freeze-cols': 'look',
+	'toggle-collapse': 'look', 'set-header': 'look', 'set-freeze-rows': 'look', 'set-freeze-cols': 'look',
 	'set-view-width': 'look', 'set-view-height': 'look', 'set-status-bar-mode': 'look', 'set-status-bar-scroll-width': 'look',
 	'set-zoom': 'look',
 	'create-view': 'look', 'delete-view': 'look', 'rename-view': 'look', 'set-view-group': 'look', 'set-view-date-col': 'look', 'set-active-view': 'look',

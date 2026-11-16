@@ -64,6 +64,7 @@ export const OPS: { [K in TableOpType]?: Make } = {
 	'set-footer': (i) => ({ type: 'set-footer', footer: `Footer ${i}` }),
 	'set-theme': (i) => ({ type: 'set-theme', theme: i % 2 ? 'grid' : 'academic' }),
 	'toggle-collapse': () => ({ type: 'toggle-collapse' }),
+	'set-header': (i) => ({ type: 'set-header', shown: i % 2 === 1 }),
 	// Between 1 and 2: every table here takes them (a freeze line cannot cut a merge, and the merges of the combined
 	// table rule out the counts from 3 to 10), and the freeze feature starts at 2, so the first repetition changes it too.
 	'set-freeze-rows': (i) => ({ type: 'set-freeze-rows', count: i % 2 ? 2 : 1 }),

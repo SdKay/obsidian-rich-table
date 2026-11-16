@@ -14,6 +14,7 @@
 import type { TableModelV2 } from './model';
 import { rowId, colId, isRowFiltered, getMergeOrigin } from './renderGridHelpers';
 import { findMergeCoveringCell } from './operations';
+import { rowSpace, HEADER_ROW_ID } from './rowSpace';
 
 export type NavDirection = 'up' | 'down' | 'left' | 'right';
 
@@ -31,12 +32,12 @@ export interface NavCell {
  * they can never collide with the sentinel.
  */
 function rowIdOrHeader(model: TableModelV2, row: number): string {
-	return row === 0 ? 'header' : rowId(model, row);
+	return rowSpace(model).idAt(row);
 }
 
 /** Visible = exists, not `hidden`, and not filtered out. The header is always visible. */
 function isRowVisible(model: TableModelV2, row: number): boolean {
-	if (row === 0) return true;
+	if (rowSpace(model).isHeaderRow(row)) return true;
 	const r = model.rows[row - 1];
 	if (!r || r.hidden) return false;
 	return !isRowFiltered(row, model);
@@ -47,9 +48,9 @@ function isColVisible(model: TableModelV2, col: number): boolean {
 	return !!c && !c.hidden;
 }
 
-/** Row 0 (header) through model.rows.length (last data row, 1-based). */
+/** The first row the table has (the header, or row 1 without one) through the last data row. */
 function inRowBounds(model: TableModelV2, row: number): boolean {
-	return row >= 0 && row <= model.rows.length;
+	return rowSpace(model).contains(row);
 }
 
 function inColBounds(model: TableModelV2, col: number): boolean {
@@ -73,7 +74,7 @@ function redirectToAnchor(model: TableModelV2, cell: NavCell): NavCell {
 	const anchorColId = covering.anchor.slice(dot + 1);
 	const anchorCol = model.columns.findIndex(c => c.id === anchorColId);
 	if (anchorCol < 0) return cell;
-	if (anchorRowId === 'header') return { row: 0, col: anchorCol };
+	if (anchorRowId === HEADER_ROW_ID) return { row: 0, col: anchorCol };
 	const rowsIdx = model.rows.findIndex(r => r.id === anchorRowId);
 	if (rowsIdx < 0) return cell; // anchor row no longer exists — leave the cell as-is
 	return { row: rowsIdx + 1, col: anchorCol };
@@ -118,8 +119,8 @@ function skipHidden(model: TableModelV2, cell: NavCell, direction: NavDirection)
 /** The first/last visible column, or null if every column is hidden. */
 function edgeCol(model: TableModelV2, side: 'first' | 'last'): number | null {
 	const from: NavCell = side === 'first'
-		? { row: 0, col: 0 }
-		: { row: 0, col: model.columns.length - 1 };
+		? { row: rowSpace(model).firstRow, col: 0 }
+		: { row: rowSpace(model).firstRow, col: model.columns.length - 1 };
 	const found = skipHidden(model, from, side === 'first' ? 'right' : 'left');
 	return found ? found.col : null;
 }

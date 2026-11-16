@@ -1,3 +1,4 @@
+import { rowSpace } from './rowSpace';
 import { parseSource } from './parser';
 import { getTableVersion, CURRENT_TABLE_VERSION, MIN_STABLE_VERSION } from './tableVersion';
 import { columnLetterFromIndex, formatSheetQualifiedRef } from '@office-kit/xlsx/utils';
@@ -33,7 +34,7 @@ export function isBlockAnchor(value: unknown): value is BlockAnchor {
 }
 
 /** Bump whenever extractBlock would return different output for the same source. Part of Rich Search's cache key. */
-export const BLOCK_EXTRACT_VERSION = 1;
+export const BLOCK_EXTRACT_VERSION = 2;
 
 export const BLOCK_LANGUAGES = ['rich-table'];
 
@@ -58,15 +59,19 @@ function pushTable(out: ExtractedLine[], model: TableModelV2, sheet: { id: strin
 	};
 	const label = (word: string): string => (sheet ? `${sheet.name} · ${word}` : word);
 	if (model.title) out.push({ text: model.title, location: label('title'), anchor: at({ kind: 'title' }) });
-	model.columns.forEach((col, c) => {
-		if (col.name === '') return;
-		out.push({ text: col.name, location: ref(c, 1), anchor: at({ kind: 'header', colId: col.id }) });
-	});
+	// A table without a header row draws no column names, so there is nothing of them to find.
+	const space = rowSpace(model);
+	if (space.hasHeader) {
+		model.columns.forEach((col, c) => {
+			if (col.name === '') return;
+			out.push({ text: col.name, location: ref(c, 1), anchor: at({ kind: 'header', colId: col.id }) });
+		});
+	}
 	model.rows.forEach((row, r) => {
 		model.columns.forEach((col, c) => {
 			const text = row.cells[col.id] ?? '';
 			if (text === '') return;
-			out.push({ text, location: ref(c, r + 2), anchor: at({ kind: 'cell', rowId: row.id, colId: col.id }) });
+			out.push({ text, location: ref(c, r + (space.hasHeader ? 2 : 1)), anchor: at({ kind: 'cell', rowId: row.id, colId: col.id }) });
 		});
 	});
 	footerLines(model).forEach((text, line) => out.push({ text, location: label('footer'), anchor: at({ kind: 'footer', line }) }));

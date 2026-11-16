@@ -194,6 +194,7 @@ export const en = {
 	autoHeight:    'Auto height',
 	wrapTextTable: 'Wrap text',
 	showTaskGroups: 'Show group headings',
+	showHeader: 'Show header row',
 	wrapTextCol:   'Wrap text',
 	noWrapTextCol: 'Don\'t wrap text',
 	showStatusBar: 'Show status bar',

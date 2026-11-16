@@ -36,6 +36,7 @@ import { renderRowJump, type RowJump } from './renderRowJump';
 import { renderVScroll } from './renderVScroll';
 import { renderViewToolbar } from './renderViews';
 import { applyZoom, zoomFactor } from './renderZoom';
+import { rowSpace } from './rowSpace';
 import { AUTOFIT_OFFSET, SEL_CELL, SEL_UNIT, VIEW_EDGE_GAP } from './selectorLayout';
 import { fillRuns } from './sequenceFill';
 import { shellStyled, whenStylesReady } from './stylesReady';
@@ -264,7 +265,7 @@ export async function renderTable(
 	// edge-add strips) can use position:absolute and stay naturally inside
 	// Obsidian's content pane — no viewport coordinate math needed.
 	const themeClass = model.theme ? `bt-render-root bt-theme-${model.theme}` : 'bt-render-root';
-	const root = shell.createDiv({ cls: themeClass + (model.collapsed ? ' bt-collapsed' : '') });
+	const root = shell.createDiv({ cls: themeClass + (model.collapsed ? ' bt-collapsed' : '') + (rowSpace(model).hasHeader ? '' : ' bt-headerless') });
 	onRootReady?.(root);
 	applyZoom(root, model.zoom);
 
@@ -813,12 +814,14 @@ export async function renderTable(
 	// Delegate drag events on tbody so we don't add listeners to every cell
 	// (mousedown/mouseover use the cell's data-row/col attributes)
 
+	// A table without a header keeps an empty <thead>, so the code that looks the group up needs no case of its own.
 	const thead = table.createEl('thead');
-	const headerTr = thead.createEl('tr');
-	await renderRow({
-		tr: headerTr, rowIdx: 0, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: true,
-		edits, merges, styleOf, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
-	});
+	if (rowSpace(model).hasHeader) {
+		await renderRow({
+			tr: thead.createEl('tr'), rowIdx: 0, model, occupied, registry, getRegistry, app, sourcePath, component, isHeader: true,
+			edits, merges, styleOf, onCellChange, columnKinds, cacheKey, getSingleClickEdit, onEditNavigate,
+		});
+	}
 
 	const tbody = table.createEl('tbody');
 

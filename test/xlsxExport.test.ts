@@ -215,6 +215,46 @@ describe('exportModelToXlsx', () => {
 	});
 });
 
+describe('exportModelToXlsx of a table without a header', () => {
+	const headerless = (): TableModelV2 => ({ ...sampleModel(), header: false });
+	const open = async (model: TableModelV2) => {
+		const wb = await loadWorkbook(fromArrayBuffer(await exportModelToXlsx(model, 'Plan')));
+		const entry = wb.sheets[0];
+		if (entry?.kind !== 'worksheet') throw new Error('expected worksheet');
+		return { wb, ws: entry.sheet };
+	};
+	const sheetOf = async (model: TableModelV2) => (await open(model)).ws;
+
+	it('writes no header row: the data starts at row 1', async () => {
+		const ws = await sheetOf(headerless());
+		expect(getCell(ws, 1, 1)?.value).toBe('Design');
+		expect(getCell(ws, 2, 1)?.value).toBe('Code');
+		expect(getCell(ws, 3, 1)?.value ?? null).toBeNull();
+	});
+
+	it('moves a merge up by the row the header would have taken', async () => {
+		const ws = await sheetOf(headerless());
+		expect(getMergedCells(ws)).toContainEqual({ minRow: 1, minCol: 2, maxRow: 2, maxCol: 2 });
+	});
+
+	it('leaves out a merge that still names the header, and a header style that has nothing to colour', async () => {
+		const model = headerless();
+		model.merges = [{ anchor: 'header.c_1', end: 'r_1.c_1' }];
+		const { wb, ws } = await open(model);
+		expect(getMergedCells(ws)).toEqual([]);
+		// the `header.c_1` style (bold, white on blue) must not land on the first data cell
+		const a1 = getCell(ws, 1, 1);
+		if (!a1) throw new Error('expected a cell');
+		expect(getCellFont(wb, a1).bold ?? false).toBe(false);
+	});
+
+	it('is unchanged for a table that has its header', async () => {
+		const ws = await sheetOf({ ...sampleModel(), header: undefined });
+		expect(getCell(ws, 1, 1)?.value).toBe('Task');
+		expect(getCell(ws, 2, 1)?.value).toBe('Design');
+	});
+});
+
 describe('exportWorkbookToXlsx', () => {
 	function sampleWorkbook(): WorkbookV3 {
 		return {

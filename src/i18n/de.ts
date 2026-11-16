@@ -171,6 +171,7 @@ export const de: Dict = {
 	autoHeight:    'Automatische Höhe',
 	wrapTextTable: 'Text umbrechen',
 	showTaskGroups: 'Gruppenüberschriften anzeigen',
+	showHeader: 'Kopfzeile anzeigen',
 	wrapTextCol:   'Text umbrechen',
 	noWrapTextCol: 'Text nicht umbrechen',
 	showStatusBar: 'Statusleiste anzeigen',

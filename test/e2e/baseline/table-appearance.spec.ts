@@ -286,3 +286,30 @@ for (const theme of [undefined, ...BUILTIN_THEME_IDS]) {
 		});
 	});
 }
+
+// The same table with no header row. Its lines, its frozen block and what scrolls under it are measured with the same
+// probes, which read the live DOM and so ask nothing of a first row being a header.
+for (const theme of [undefined, 'grid']) {
+	const headerless = (src: string) => src.replace('viewWidth:', `header: false\n${theme ? `theme: ${theme}\n` : ''}viewWidth:`);
+	test.describe(`no header, ${theme ?? 'default (no theme)'}`, () => {
+		test.beforeEach(async ({ page }) => { await page.addStyleTag({ content: PIN_ANIMATIONS }); });
+
+		test('every gridline the layout expects is painted, unfrozen, at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
+			await renderReal(headerless(source('')));
+			expect(await page.locator('thead tr').count()).toBe(0);
+			await expectLinesPainted(page, OFFSETS);
+		});
+
+		test('every gridline the layout expects is painted, frozen, at every scroll offset', { tag: '@geometry' }, async ({ page, renderReal }) => {
+			await renderReal(headerless(FROZEN));
+			expect(await page.locator('thead tr').count()).toBe(0);
+			expect(await page.locator('.bt-frozen-row').count(), 'freezeRows 2 must freeze rows of the body').toBeGreaterThan(0);
+			await expectLinesPainted(page, OFFSETS);
+		});
+
+		test('nothing from the scrolling region shows through the frozen block', { tag: '@geometry' }, async ({ page, renderReal }) => {
+			await renderReal(headerless(FROZEN));
+			await expectNoLeakThroughFrozenBlock(page, OFFSETS);
+		});
+	});
+}

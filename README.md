@@ -419,6 +419,8 @@ While editing a cell, right-click opens Obsidian's own menu (Paste behaves like 
 
 **Wrapping** — text wraps by default. An auto column then shares out the room the view leaves and its text folds onto several lines, so long text no longer makes the table scroll sideways; only content that cannot wrap (a long link, a wide image) does. A column with a width keeps it and wraps inside it. To keep a column on one line, choose **Don't wrap text** in its column menu (`wrap: false`); a column with a width then cuts its text off with an ellipsis. **View settings → Wrap text** turns it off for the whole table (top-level `wrap: false`), and a column's own setting overrides it.
 
+**No header row** — **View settings → Show header row** hides it, for a table whose rows are records of their own (top-level `header: false`). The columns keep their names, and the column strip still opens each column's menu. With no header, **Freeze rows** counts rows of the body, and an exported `.xlsx` starts with the first data row. Merges and styles that were set on the header stay in the note and come back when the header is shown again.
+
 **Style targets** (v2 ID-based):
 
 | Target | Meaning |

@@ -8,11 +8,13 @@
  *
  * Same coordinate convention as `xlsxSource.ts`, applied in reverse: xlsx row
  * 1 = the header, model row `rows[i]` = xlsx row `i + 2`; xlsx column `c` (1-
- * based) = model column `columns[c - 1]`. The header sentinel `"header"` used
+ * based) = model column `columns[c - 1]`. A table without a header writes none:
+ * `rows[i]` is then xlsx row `i + 1`. The header sentinel `"header"` used
  * throughout `MergeRangeV2`/`StyleRuleV2` targets maps to xlsx row 1, exactly
  * as `resolveMergeRowIndex`'s `-1` sentinel (`operations.ts`) already treats
  * it one position before the first data row.
  */
+import { rowSpace } from './rowSpace';
 import { createWorkbook, addWorksheet } from '@office-kit/xlsx/workbook';
 import { setCell, mergeCells, setColumnWidth, setRowHeight } from '@office-kit/xlsx/worksheet';
 import { setCellBackgroundColor, setFontColor, setBold, setItalic, setFontSize } from '@office-kit/xlsx/styles';
@@ -122,6 +124,11 @@ function estimateRowHeightPt(row: RowDefV2): number | undefined {
 	return maxLines > 1 ? maxLines * DEFAULT_ROW_HEIGHT_PT : undefined;
 }
 
+/** The xlsx row of display row `n` is `n + offset`: the header takes row 1 and the data follows it, or the data starts at 1. */
+function sheetRowOffset(model: TableModelV2): number {
+	return rowSpace(model).hasHeader ? 1 : 0;
+}
+
 /** `MergeRangeV2.anchor`/`.end` are `"rowId.colId"` strings, `"header"` being
  *  the literal sentinel for the header row (see this module's own doc
  *  comment) — resolves straight to 1-based xlsx (row, col), or `null` if
@@ -133,10 +140,10 @@ function resolveAnchor(model: TableModelV2, anchor: string): { row: number; col:
 	if (dot < 0) return null;
 	const rowId = anchor.slice(0, dot);
 	const colId = anchor.slice(dot + 1);
-	const row = rowId === 'header' ? 1 : model.rows.findIndex(r => r.id === rowId) + 2;
+	const at = rowSpace(model).rowOf(rowId);
 	const col = model.columns.findIndex(c => c.id === colId) + 1;
-	if (row < 1 || col < 1) return null;
-	return { row, col };
+	if (at < 0 || col < 1) return null;
+	return { row: at + sheetRowOffset(model), col };
 }
 
 /** Writes one `TableModelV2`'s columns/rows/merges/styles into a fresh
@@ -144,10 +151,13 @@ function resolveAnchor(model: TableModelV2, anchor: string): { row: number; col:
  *  `exportModelToXlsx` (single-sheet) and `exportWorkbookToXlsx` (one call
  *  per `SheetDefV2`) build on. */
 function writeModelIntoSheet(wb: Workbook, ws: Worksheet, model: TableModelV2): void {
+	const hasHeader = rowSpace(model).hasHeader;
 	model.columns.forEach((col, ci) => {
 		const c = ci + 1;
-		const headerCell = setCell(ws, 1, c, col.name);
-		applyResolvedStyleToCell(wb, headerCell, resolveHeaderStylesV2(model.styles, col.id, model));
+		if (hasHeader) {
+			const headerCell = setCell(ws, 1, c, col.name);
+			applyResolvedStyleToCell(wb, headerCell, resolveHeaderStylesV2(model.styles, col.id, model));
+		}
 		// An explicit width (the user dragged this column) always wins; only a
 		// column with none falls back to estimating one from its own content —
 		// see estimateColumnWidth's own doc comment for why.
@@ -155,7 +165,7 @@ function writeModelIntoSheet(wb: Workbook, ws: Worksheet, model: TableModelV2): 
 	});
 
 	model.rows.forEach((row, ri) => {
-		const r = ri + 2;
+		const r = ri + 1 + sheetRowOffset(model);
 		const heightPt = row.height ? pxToRowHeightPt(row.height) : estimateRowHeightPt(row);
 		if (heightPt !== undefined) setRowHeight(ws, r, heightPt);
 		model.columns.forEach((col, ci) => {

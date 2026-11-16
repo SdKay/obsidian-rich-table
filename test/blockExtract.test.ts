@@ -288,3 +288,26 @@ describe('isBlockAnchor', () => {
 		}
 	});
 });
+
+describe('a table without a header row', () => {
+	const HEADERLESS = TABLE.replace('columns:', 'header: false\ncolumns:');
+
+	it('offers no column names: none of them is drawn', () => {
+		expect(texts(HEADERLESS)).not.toContain('Task');
+		expect(texts(HEADERLESS)).not.toContain('Owner');
+		expect(lines(HEADERLESS).some(l => l.anchor.kind === 'header')).toBe(false);
+	});
+
+	it('numbers its rows from 1, as the table shows them', () => {
+		const at = (text: string) => lines(HEADERLESS).find(l => l.text === text)?.location;
+		expect(at('Write tests')).toBe('A1');
+		expect(at('Ship it')).toBe('A2');
+		expect(at('bob')).toBe('B2');
+	});
+
+	it('leaves a table with a header as it was', () => {
+		expect(texts(TABLE)).toContain('Task');
+		expect(lines(TABLE).find(l => l.text === 'Write tests')?.location).toBe('A2');
+	});
+});
+

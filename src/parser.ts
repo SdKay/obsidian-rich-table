@@ -63,6 +63,7 @@ function parseModelFields(yaml: Record<string, unknown> | null): Omit<TableModel
 		...(typeof yaml?.theme === 'string' ? { theme: yaml.theme } : {}),
 		...(yaml?.locked === true ? { locked: true } : {}),
 		...(yaml?.collapsed === true ? { collapsed: true } : {}),
+		...(yaml?.header === false ? { header: false as const } : {}),
 		...(typeof yaml?.wrap === 'boolean' ? { wrap: yaml.wrap } : {}),
 		...(sort ? { sort } : {}),
 		...(aggregate.length > 0 ? { aggregate } : {}),

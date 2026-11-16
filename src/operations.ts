@@ -81,6 +81,7 @@ export type StructuralOpV2 =
 	| { type: 'set-theme';       theme: string | null }
 	| { type: 'toggle-lock' }
 	| { type: 'toggle-collapse' }
+	| { type: 'set-header'; shown: boolean }
 	/** null = unfreeze rows entirely. A count that would split a vertical
 	 *  merge across the boundary is rejected (model left unchanged) — see
 	 *  canFreezeRows; callers should check that first to show the user why. */
@@ -196,6 +197,7 @@ const STRUCTURAL_OP_TYPE_MAP: { [K in StructuralOpV2['type']]: true } = {
 	'set-theme': true,
 	'toggle-lock': true,
 	'toggle-collapse': true,
+	'set-header': true,
 	'set-freeze-rows': true,
 	'set-freeze-cols': true,
 	'set-view-width': true,
@@ -683,6 +685,9 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 			break;
 		case 'toggle-collapse':
 			model.collapsed = !model.collapsed || undefined;
+			break;
+		case 'set-header':
+			if (op.shown) delete model.header; else model.header = false;
 			break;
 		case 'set-freeze-rows':
 			if (op.count === null) { delete model.freezeRows; break; }

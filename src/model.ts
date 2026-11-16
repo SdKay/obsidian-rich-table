@@ -175,6 +175,8 @@ export interface TableModelV2 {
 	theme?: string;   // e.g. 'academic' | 'grid' — absent = default (see src/themes/)
 	/** When true, only the title (if any) and header row render; body and footer are hidden. */
 	collapsed?: boolean;
+	/** False hides the header row: the columns keep their names, they are just not drawn. Absent = shown. */
+	header?: false;
 	/** Display-only row sort — never reorders `rows[]` itself, applied at render time. */
 	sort?: { colId: string; dir: 'asc' | 'desc' };
 	/** Active summary/aggregate rows, table-wide (not per-column) — array order is

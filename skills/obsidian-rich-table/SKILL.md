@@ -194,7 +194,7 @@ These fields are all optional and documented in separate files. When the user's 
 | Field(s) | Reference |
 | -------- | --------- |
 | `formulas` (computed cells, `=SUM(...)`, error values) | [references/formulas.md](references/formulas.md) |
-| `theme`, `locked`, `collapsed`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `wrap`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId` | [references/view-and-display.md](references/view-and-display.md) |
+| `theme`, `locked`, `collapsed`, `header`, `sort`, `aggregate`, `freezeRows`/`freezeCols`, `viewWidth`/`viewHeight`, `wrap`, `zoom`, `statusBarMode`, `statusBarScrollWidth`, `views`/`activeViewId` | [references/view-and-display.md](references/view-and-display.md) |
 | `sheets`/`active_sheet` (multi-sheet, `version: 3`), `xlsxSource` | [references/workbook-and-xlsx.md](references/workbook-and-xlsx.md) |
 | `tasks` (rows are the tasks a Tasks-plugin query finds), `columns[].field` | [references/tasks.md](references/tasks.md) |
 | `styles[].target` grammar and cascade | [references/styles.md](references/styles.md) |

@@ -171,6 +171,7 @@ export const fr: Dict = {
 	autoHeight:    'Hauteur automatique',
 	wrapTextTable: 'Renvoyer à la ligne',
 	showTaskGroups: 'Afficher les titres de groupe',
+	showHeader: "Afficher la ligne d'en-tête",
 	wrapTextCol:   'Renvoyer à la ligne',
 	noWrapTextCol: 'Ne pas renvoyer à la ligne',
 	showStatusBar: 'Afficher la barre d\'état',

@@ -1,3 +1,4 @@
+import { rowSpace } from './rowSpace';
 import type { TableModelV2 } from './model';
 
 // Convenience accessors: convert display index to v2 ID
@@ -17,10 +18,11 @@ export interface MergeBounds { rowLo: number; rowHi: number; colLo: number; colH
  * expansion).
  */
 export function resolveMergeBounds(model: TableModelV2): MergeBounds[] {
+	// A merge that names the header of a table with none is kept in the model but takes no part in the grid.
+	const space = rowSpace(model);
 	const rowIdxOf = (id: string): number | null => {
-		if (id === 'header') return 0;
-		const idx = model.rows.findIndex(r => r.id === id);
-		return idx >= 0 ? idx + 1 : null;
+		const row = space.rowOf(id);
+		return row >= 0 ? row : null;
 	};
 	const out: MergeBounds[] = [];
 	for (const m of model.merges) {
@@ -172,12 +174,11 @@ export interface ResolvedMerge {
  * This lets header cells and data rows share the same range-comparison logic
  * below instead of needing a parallel header-only code path. Real row IDs are
  * never the string `'header'` (they're generated as `r_xxxxxx`), so there's no
- * collision. Returns undefined when the ID matches no row and isn't the sentinel.
+ * collision. Returns undefined when the ID matches no row, or is the sentinel of a table that has no header.
  */
 function resolveMergeRowIndex(model: TableModelV2, id: string): number | undefined {
-	if (id === 'header') return -1;
-	const idx = model.rows.findIndex(r => r.id === id);
-	return idx >= 0 ? idx : undefined;
+	const row = rowSpace(model).rowOf(id);
+	return row >= 0 ? row - 1 : undefined;
 }
 
 /**

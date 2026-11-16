@@ -171,6 +171,7 @@ export const ja: Dict = {
 	autoHeight:    '高さを自動調整',
 	wrapTextTable: '折り返して表示',
 	showTaskGroups: 'グループ見出しを表示',
+	showHeader: 'ヘッダー行を表示',
 	wrapTextCol:   '折り返して表示',
 	noWrapTextCol: '折り返さない',
 	showStatusBar: 'ステータスバーを表示',

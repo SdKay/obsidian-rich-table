@@ -7783,6 +7783,7 @@ var STRUCTURAL_OP_TYPE_MAP = {
   "set-theme": true,
   "toggle-lock": true,
   "toggle-collapse": true,
+  "set-header": true,
   "set-freeze-rows": true,
   "set-freeze-cols": true,
   "set-view-width": true,
@@ -8203,6 +8204,10 @@ function applyStructuralOpV2(model, op) {
       break;
     case "toggle-collapse":
       model.collapsed = !model.collapsed || void 0;
+      break;
+    case "set-header":
+      if (op.shown) delete model.header;
+      else model.header = false;
       break;
     case "set-freeze-rows":
       if (op.count === null) {
@@ -9059,6 +9064,7 @@ function parseModelFields(yaml) {
     ...typeof yaml?.theme === "string" ? { theme: yaml.theme } : {},
     ...yaml?.locked === true ? { locked: true } : {},
     ...yaml?.collapsed === true ? { collapsed: true } : {},
+    ...yaml?.header === false ? { header: false } : {},
     ...typeof yaml?.wrap === "boolean" ? { wrap: yaml.wrap } : {},
     ...sort ? { sort } : {},
     ...aggregate.length > 0 ? { aggregate } : {},
@@ -9312,6 +9318,7 @@ function serializeModelFields(m) {
   if (m.theme) obj.theme = m.theme;
   if (m.locked) obj.locked = true;
   if (m.collapsed) obj.collapsed = true;
+  if (m.header === false) obj.header = false;
   if (typeof m.wrap === "boolean") obj.wrap = m.wrap;
   if (m.sort) obj.sort = { colId: m.sort.colId, dir: m.sort.dir };
   if (m.aggregate && m.aggregate.length > 0) obj.aggregate = m.aggregate;

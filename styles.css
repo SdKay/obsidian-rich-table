@@ -3379,6 +3379,11 @@ mark.bt-search-hit.bt-search-hit.bt-search-hit.bt-search-hit-active {
     box-shadow: inset 0 1.5px 0 var(--text-muted), inset 0 -0.8px 0 var(--text-muted);
 }
 
+/* Without a header the toprule goes on the first row of the body. */
+.bt-theme-academic.bt-headerless .bt-table tbody tr:first-child .bt-td {
+    box-shadow: inset 0 1.5px 0 var(--text-muted);
+}
+
 /* Midrule on continuation header rows. */
 .bt-theme-academic .bt-table thead tr:not(:first-child) .bt-th {
     box-shadow: inset 0 -0.8px 0 var(--text-muted);

@@ -27,7 +27,7 @@ export const COVERAGE: { [K in TableOpType]: Coverage } = {
 	'set-col-width': 'drag-col-width', 'set-col-align': 'rebuild:set-col-align', 'set-col-wrap': 'rebuild:set-col-wrap', 'set-table-wrap': 'rebuild:set-table-wrap', 'set-row-height': 'drag-row-height',
 	'set-cell-style': 'rebuild:set-cell-style', 'set-range-style': 'rebuild:set-range-style', 'split-range-style': 'rebuild:split-range-style',
 	'set-align': 'rebuild:set-align', 'set-title': 'rebuild:set-title', 'set-footer': 'rebuild:set-footer', 'set-theme': 'rebuild:set-theme',
-	'toggle-collapse': 'rebuild:toggle-collapse', 'set-freeze-rows': 'rebuild:set-freeze-rows', 'set-freeze-cols': 'rebuild:set-freeze-cols',
+	'toggle-collapse': 'rebuild:toggle-collapse', 'set-header': 'rebuild:set-header', 'set-freeze-rows': 'rebuild:set-freeze-rows', 'set-freeze-cols': 'rebuild:set-freeze-cols',
 	'set-view-width': 'drag-view-size', 'set-view-height': 'drag-view-size',
 	'set-status-bar-mode': 'rebuild:set-status-bar-mode', 'set-status-bar-scroll-width': 'drag-status-divider', 'set-zoom': 'zoom-slider',
 	'create-view': 'rebuild:create-view', 'delete-view': 'rebuild:delete-view', 'rename-view': 'rebuild:rename-view',

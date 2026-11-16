@@ -171,6 +171,7 @@ export const ko: Dict = {
 	autoHeight:    '높이 자동',
 	wrapTextTable: '텍스트 줄 바꿈',
 	showTaskGroups: '그룹 제목 표시',
+	showHeader: '머리글 행 표시',
 	wrapTextCol:   '텍스트 줄 바꿈',
 	noWrapTextCol: '줄 바꿈 안 함',
 	showStatusBar: '상태 표시줄 표시',

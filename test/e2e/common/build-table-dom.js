@@ -90,7 +90,7 @@ window.buildTableDom = function (model) {
 		return tr;
 	};
 
-	thead.appendChild(buildRow(0, true));
+	if (window.RichTableReal.rowSpace(model).hasHeader) thead.appendChild(buildRow(0, true));
 	for (let ri = 1; ri <= model.rows.length; ri++) {
 		tbody.appendChild(buildRow(ri, false));
 	}

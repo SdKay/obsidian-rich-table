@@ -172,6 +172,7 @@ export const zh: Dict = {
 	autoHeight:    '自动高度',
 	wrapTextTable: '自动换行',
 	showTaskGroups: '显示分组标题',
+	showHeader: '显示表头',
 	wrapTextCol:   '自动换行',
 	noWrapTextCol: '不换行',
 	showStatusBar: '显示状态栏',

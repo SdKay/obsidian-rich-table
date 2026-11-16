@@ -115,6 +115,7 @@ function serializeModelFields(m: TableModelV2): Record<string, unknown> {
 	if (m.theme)  obj.theme  = m.theme;
 	if (m.locked) obj.locked = true;
 	if (m.collapsed) obj.collapsed = true;
+	if (m.header === false) obj.header = false;
 	if (typeof m.wrap === 'boolean') obj.wrap = m.wrap;
 	if (m.sort) obj.sort = { colId: m.sort.colId, dir: m.sort.dir };
 	if (m.aggregate && m.aggregate.length > 0) obj.aggregate = m.aggregate;
