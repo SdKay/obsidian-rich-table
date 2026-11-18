@@ -9,6 +9,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.7.2", date: "2026-11-18", changes: [
+		"docs: show the Obsidian download history in the README",
+		"feat: a table can have no header row",
+	] },
 	{ version: "1.7.1", date: "2026-11-15", changes: [
 		"fix: blank lines in a cell keep their line",
 		"fix: an exported image is the table as the note shows it",
