@@ -134,4 +134,51 @@ describe('planMarkdownTableConversion', () => {
 	it('returns null when there is nothing to convert', () => {
 		expect(planMarkdownTableConversion(['plain text'], 0)).toBeNull();
 	});
+
+	const blockOf = (doc: string[], line: number) => {
+		const plan = planMarkdownTableConversion(doc, line);
+		expect(plan).not.toBeNull();
+		return { plan: plan!, model: parseTable(plan!.blockText.slice('```rich-table\n'.length, -'\n```'.length)) };
+	};
+
+	it('converts an ASCII table with a header rule, keeping the header', () => {
+		const { plan, model } = blockOf([
+			'+------+-----+',
+			'| name | age |',
+			'+------+-----+',
+			'| ann  |  30 |',
+			'+------+-----+',
+		], 3);
+		expect([plan.startLine, plan.endLine]).toEqual([0, 4]);
+		expect(model.columns.map(c => c.name)).toEqual(['name', 'age']);
+		expect(model.rows).toHaveLength(1);
+		expect(model.header).toBeUndefined();
+	});
+
+	it('converts an ASCII table without a header rule to a headerless table, every row data', () => {
+		const { model } = blockOf([
+			'┌─────┬────┐',
+			'│ ann │ 30 │',
+			'│ bob │ 25 │',
+			'└─────┴────┘',
+		], 1);
+		expect(model.header).toBe(false);
+		expect(model.rows.map(r => model.columns.map(c => r.cells[c.id]))).toEqual([['ann', '30'], ['bob', '25']]);
+	});
+
+	it('still converts a Markdown pipe table the same way', () => {
+		const { model } = blockOf(['| a | b |', '| --- | --- |', '| 1 | 2 |'], 0);
+		expect(model.columns.map(c => c.name)).toEqual(['a', 'b']);
+		expect(model.header).toBeUndefined();
+	});
+});
+
+describe('buildTableFromGrid without a header', () => {
+	it('keeps every row as data and hides the header', () => {
+		const model = buildTableFromGrid([['a', 'b'], ['1', '2']], undefined, false);
+		expect(model.header).toBe(false);
+		expect(model.columns).toHaveLength(2);
+		expect(model.rows).toHaveLength(2);
+		expect(model.rows[0]!.cells[model.columns[0]!.id]).toBe('a');
+	});
 });

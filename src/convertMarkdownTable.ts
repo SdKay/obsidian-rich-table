@@ -9,6 +9,7 @@ import type { TableModelV2 } from './model';
 import { genId } from './idGen';
 import { parseMarkdownPipeTable } from './renderClipboard';
 import { serializeTable } from './serializer';
+import { findAsciiTableAtCursor } from './asciiTable';
 
 /** True when `line` sits inside a fenced code block (```` ``` ```` or `~~~`),
  *  counting fence open/close toggles from the top of the document. Guards
@@ -51,22 +52,23 @@ export function findMarkdownTableAtCursor(
 }
 
 /** Builds a fresh v2 model from a parsed grid — the topmost row becomes
- *  column names, every row below becomes data. Same shape as `buildBlankTable`
+ *  column names, every row below becomes data. Without a header (`hasHeader`
+ *  false) every row is data, the columns are unnamed and the header is hidden. Same shape as `buildBlankTable`
  *  (blankTable.ts), just with cell content filled in from `values` instead of
  *  left empty. A data row shorter than the header fills the missing cells
  *  with '' (`row[i] ?? ''`); a data row longer than the header drops the
  *  extra cells — the header's width is what defines the table's column count. */
-export function buildTableFromGrid(values: string[][], theme?: string): TableModelV2 {
+export function buildTableFromGrid(values: string[][], theme?: string, hasHeader = true): TableModelV2 {
 	const colIds = new Set<string>();
 	const rowIds = new Set<string>();
-	const header = values[0] ?? [];
+	const header = hasHeader ? values[0] ?? [] : Array.from({ length: values[0]?.length ?? 0 }, () => '');
 	const columns = header.map(name => ({ id: genId('c', colIds), name }));
-	const rows = values.slice(1).map(row => {
+	const rows = (hasHeader ? values.slice(1) : values).map(row => {
 		const cells: Record<string, string> = {};
 		columns.forEach((col, i) => { cells[col.id] = row[i] ?? ''; });
 		return { id: genId('r', rowIds), cells };
 	});
-	return { version: 2, columns, rows, merges: [], styles: [], ...(theme ? { theme } : {}) };
+	return { version: 2, columns, rows, merges: [], styles: [], ...(hasHeader ? {} : { header: false as const }), ...(theme ? { theme } : {}) };
 }
 
 export interface MarkdownTableConversionPlan {
@@ -83,9 +85,10 @@ export function planMarkdownTableConversion(
 	cursorLine: number,
 	theme?: string,
 ): MarkdownTableConversionPlan | null {
-	const found = findMarkdownTableAtCursor(lines, cursorLine);
+	const markdown = findMarkdownTableAtCursor(lines, cursorLine);
+	const found = findAsciiTableAtCursor(lines, cursorLine) ?? (markdown && { ...markdown, hasHeader: true });
 	if (!found) return null;
-	const model = buildTableFromGrid(found.values, theme);
+	const model = buildTableFromGrid(found.values, theme, found.hasHeader);
 	const blockText = ['```rich-table', serializeTable(model).trimEnd(), '```'].join('\n');
 	return { startLine: found.startLine, endLine: found.endLine, blockText };
 }
