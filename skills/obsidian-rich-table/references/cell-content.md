@@ -28,6 +28,8 @@ c_000000: |-
   - Third item
 ```
 
+**Nested table fences** — when a nested block is written by hand in a note, the outer fence must be longer than the inner one (four backticks around three); with equal lengths the outer block ends at the inner block's closing fence and the rest is cut off.
+
 **Nested table example** — a cell's own value can be a complete, independent `rich-table` block (own `columns`/`rows`/`merges`/`styles`, sequential IDs starting at `c_000000`/`r_000000` again — nested IDs don't need to avoid colliding with the outer table's, they're two separate documents):
 ````yaml
 c_000001: |-
@@ -61,7 +63,7 @@ c_000000: '$\sqrt{2} \approx 1.414$'
 
 | Type ID       | Values (use the value string in cells) |
 | ------------- | -------------------------------------- |
-| `task-status` | `todo` · `pending` · `in-progress` · `done` · `cancel` |
+| `task-status` | `none` · `todo` · `pending` · `in-progress` · `done` · `cancel` |
 | `priority`    | `high` · `medium` · `low` |
 | `boolean`     | `yes` · `no` |
 | `rating`      | `1` ★ · `2` ★★ · `3` ★★★ · `4` ★★★★ · `5` ★★★★★ |

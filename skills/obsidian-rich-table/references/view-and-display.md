@@ -10,7 +10,7 @@ Built-in visual theme applied to the table. Themes control appearance only
 |-------|-----------|
 | *(omit)* | Default — no special styling |
 | `academic` | Booktabs style: three horizontal rules only (toprule / midrule / bottomrule), no vertical lines, no backgrounds |
-| `plain` | Purple/blue gradient header, rounded corners with outline border, row hover highlight, centered |
+| `grid` | Excel "All Borders" style: every cell boundary visible, a bolder outer frame, and a bolder rule between the header and the data |
 
 ```yaml
 theme: academic

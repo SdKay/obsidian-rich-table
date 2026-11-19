@@ -40,7 +40,7 @@ sheets:
 ```
 
 ### `xlsxSource` (object, optional)
-Backs this table with an external `.xlsx` file instead of the block's own data — **view-only**, and mutually exclusive with authoring real `columns`/`rows` content (when this field is present, ignore/omit `columns`/`rows` entirely; the plugin discards them on every read anyway).
+Backs this table with an external `.xlsx` file instead of the block's own data. Editing a cell's text or a column name, and merging or unmerging cells, write back into the file itself. Switching sheet and the view's width and height are kept in the block. Any other edit is dropped. The block is mutually exclusive with authoring real `columns`/`rows` content (when this field is present, ignore/omit `columns`/`rows` entirely; the plugin discards them on every read anyway).
 
 | Field   | Type | Description |
 | ------- | ---- | ----------- |
@@ -57,4 +57,4 @@ xlsxSource:
 
 Everything else about the block (`title`, `footer`, `theme`, `viewWidth`, `viewHeight`, …) still works normally alongside `xlsxSource` — those are genuine fields of this block; only `columns`/`rows`/`merges`/`styles` are meaningless here (real content comes from the file). Do not hand-author `columns`/`rows` on an `xlsxSource` block — they are silently discarded on every read, so there's no reason to write them, and the plugin's own writes never include them either.
 
-Known gaps (view-only phase 1): no formula engine (formula cells show their last-saved value only); theme-relative/indexed colors, cell borders and number formats aren't carried over; rich-text runs are flattened to plain text.
+Known gaps: no formula engine (formula cells show their last-saved value only); theme-relative/indexed colors, cell borders and number formats aren't carried over; rich-text runs are flattened to plain text.

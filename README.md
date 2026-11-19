@@ -241,7 +241,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![一键自适应](docs/demo-14-autofit.gif)
 
-**15 · Theme picker** — 🎨 icon switches between built-in themes (`academic`, `grid`, `plain`)
+**15 · Theme picker** — 🎨 icon switches between built-in themes (`academic`, `grid`)
 
 ![主题切换](docs/demo-15-theme.gif)
 

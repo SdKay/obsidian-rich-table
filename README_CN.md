@@ -245,7 +245,7 @@
 
 ![一键自适应](docs/demo-14-autofit.gif)
 
-**15 · 主题切换** — 🎨 图标切换内置主题（`academic`、`grid`、`plain`）
+**15 · 主题切换** — 🎨 图标切换内置主题（`academic`、`grid`）
 
 ![主题切换](docs/demo-15-theme.gif)
 
