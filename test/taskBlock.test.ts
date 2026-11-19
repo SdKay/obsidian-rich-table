@@ -11,6 +11,12 @@ describe('buildTasksBlock', () => {
 		for (const c of m.columns) expect(c.name, c.field).toBe(fieldById(c.field!)!.label);
 	});
 
+	it('names each column with the label function it is given, and keeps the field id as it is', () => {
+		const m = buildTasksBlock(undefined, (id, fallback) => `[${id}] ${fallback}`);
+		expect(m.columns.map(c => c.field)).toEqual([...DEFAULT_TASK_FIELDS]);
+		for (const c of m.columns) expect(c.name, c.field).toBe(`[${c.field}] ${fieldById(c.field!)!.label}`);
+	});
+
 	it('begins without a query: the user writes one when it is inserted', () => {
 		expect(buildTasksBlock().tasks).toEqual({ query: '' });
 	});

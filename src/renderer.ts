@@ -1,7 +1,7 @@
 import { clampToValidCell, moveCell, type NavCell } from './cellNav';
 import type { ChoiceRegistry } from './choiceRegistry';
 import { FillSequenceModal } from './fillSequenceModal';
-import { collapsedRowsLabel, deleteColsLabel, deleteRowsLabel, hideColsLabel, hideRowsLabel, t } from './i18n';
+import { collapsedRowsLabel, deleteColsLabel, deleteRowsLabel, hiddenRowsLabel, hideColsLabel, hideRowsLabel, t } from './i18n';
 import { createLayoutSync } from './layoutSync';
 import type { ColumnDefV2, CtrlColButtonId, TableModelV2 } from './model';
 import { renderAggregateRows } from './renderAggregate';
@@ -882,7 +882,7 @@ export async function renderTable(
 				});
 				td.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
 				td.createSpan({ cls: 'bt-indicator-label',
-					text: ` ${groupIds.length} hidden row${groupIds.length > 1 ? 's' : ''}` });
+					text: ` ${hiddenRowsLabel(groupIds.length)}` });
 				if (edits.can('show-row-group')) {
 					td.addEventListener('click', () =>
 						run({ type: 'show-row-group', rowIds: groupIds }));

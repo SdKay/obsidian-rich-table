@@ -532,7 +532,7 @@ columns:
 ```
 ````
 
-- **查询**的写法与 Tasks 插件一致，每行一个条件：`done` / `not done`、日期（`due before …`、`due this week`、`has due date`）、`priority`、`tags`、`path` / `filename` / `heading` / `description` 条件（含 `regex matches`）、`is recurring`、`sort by …`、`group by …`、`limit N`。可用工具栏的**编辑任务查询**修改，也可以直接改代码块。不支持 `filter by function`、布尔组合（`AND`、`OR`、`NOT`）和预设；**插件不认识的行不会生效**，请确认表格显示的是你想要的内容。
+- **查询**的写法与 Tasks 插件一致，每行一个条件：`done` / `not done`、日期（`due before …`、`due this week`、`has due date`）、`priority`、`tags`、`path` / `filename` / `heading` / `description` 条件（含 `regex matches`）、`is recurring`、`sort by …`、`group by …`、`limit N`。可用工具栏的**编辑任务查询**修改，也可以直接改代码块。不支持 `filter by function`、布尔组合（`AND`、`OR`、`NOT`）和预设；**插件不认识的行不会生效**，表格下方会逐行提示，请确认表格显示的是你想要的内容。
 - **列**各显示任务的一个属性（`field`）：状态、任务文字、各个日期、优先级、标签、重复规则、文件、路径、标题。可以像普通表格一样增删、排序、调宽、改名。要选择某列显示什么，打开列头菜单，在**显示字段**里选（普通表格在此处设置列类型）；仍以原字段命名的列会改用新字段的名字。
 - **跳转到任务**：在显示文件或路径的列里，点击名称会打开那篇笔记并定位到任务所在行；Ctrl/Cmd+点击在新标签页打开，与普通链接一致。没有这样的列时就没有跳转入口。
 - **分组**：查询里的 `group by …` 会把同一组的任务排在一起。想在每组前面再看到一行标题（组名和任务数），在视图设置里打开**显示分组标题**；默认关闭。

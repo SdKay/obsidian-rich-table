@@ -378,13 +378,14 @@ export class TableBlock extends MarkdownRenderChild {
 			const blockSource = this.sourceFor(isEmpty ? null : this.model);
 			let drawn: TableModelV2 | undefined;
 			let message: Extract<Loaded, { kind: 'message' }>['render'] | undefined;
+			let notes: string[] = [];
 			if (blockSource) {
 				const parsed: Parsed = this.workbook ? { model: null, workbook: this.workbook } : { model: this.model!, workbook: null };
 				const loaded = await blockSource.load(parsed);
 				this.model = loaded.parsed.model;
 				this.workbook = loaded.parsed.workbook;
 				if (loaded.kind === 'message') message = loaded.render;
-				else drawn = loaded.drawn;
+				else { drawn = loaded.drawn; notes = loaded.notes ?? []; }
 			}
 
 			const active = this.activeModel;
@@ -444,6 +445,11 @@ export class TableBlock extends MarkdownRenderChild {
 						forceStatusBarPinned: !!(this.workbook && this.workbook.sheets.length > 1),
 					},
 				);
+			}
+
+			if (notes.length > 0) {
+				const box = tmp.createDiv({ cls: 'bt-table-notes' });
+				for (const text of notes) box.createDiv({ cls: 'bt-table-note', text });
 			}
 
 			if (isEmpty) {

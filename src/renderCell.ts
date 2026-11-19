@@ -1,5 +1,5 @@
 import { App, Component, MarkdownRenderer, Menu, setIcon } from 'obsidian';
-import { t, sortActiveLabel, typeLabel } from './i18n';
+import { t, sortActiveLabel, typeLabel, hiddenColsLabel } from './i18n';
 import type { ColumnDefV2, TableModelV2 } from './model';
 import type { FormulaErrorCode } from './formula';
 import type { ChoiceRegistry } from './choiceRegistry';
@@ -177,8 +177,7 @@ export async function renderRow(options: RenderRowOptions): Promise<void> {
 			if (isHeader) {
 				indicator.createSpan({ cls: 'bt-indicator-arrow', text: '▶' });
 				indicator.createSpan({ cls: 'bt-indicator-count', text: `${groupIds.length}` });
-				indicator.setAttribute('aria-label',
-					`${groupIds.length} hidden column${groupIds.length > 1 ? 's' : ''}. Click to show.`);
+				indicator.setAttribute('aria-label', hiddenColsLabel(groupIds.length));
 				indicator.setAttribute('data-tooltip-position', 'top');
 				if (edits.can('show-col-group')) {
 					indicator.addEventListener('click', () =>

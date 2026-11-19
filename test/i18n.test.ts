@@ -3,7 +3,9 @@ import { __setLanguage } from 'obsidian';
 import {
 	t, fmt, pick, currentLang, gridSizeCaption, hideRowsLabel, hideColsLabel, deleteRowsLabel, deleteColsLabel,
 	statusBarStatsLabel, typeLabel, sortActiveLabel, calendarMoreEventsLabel, sheetFallbackName, tableVersionTooHighMsg,
+	taskFieldLabel, hiddenRowsLabel, hiddenColsLabel,
 } from '../src/i18n';
+import { TASK_FIELDS } from '../src/tasks/taskFields';
 
 const letter = (i: number) => String.fromCharCode(65 + i);
 
@@ -154,5 +156,48 @@ describe('dictionaries', () => {
 			__setLanguage(code);
 			expect(t('mergeCells').length).toBeGreaterThan(0);
 		}
+	});
+});
+
+describe('tasks table field names', () => {
+	const LANGS = ['en', 'zh', 'de', 'fr', 'ja', 'ko'];
+
+	it('has a name in every language for every field a tasks column can show', () => {
+		for (const lang of LANGS) {
+			__setLanguage(lang);
+			for (const f of TASK_FIELDS) {
+				const label = taskFieldLabel(f.id, '<<fallback>>');
+				expect(label, `${lang} ${f.id}`).not.toBe('<<fallback>>');
+				expect(label.trim(), `${lang} ${f.id}`).not.toBe('');
+			}
+		}
+	});
+
+	it('keeps the English names a table was always given', () => {
+		__setLanguage('en');
+		for (const f of TASK_FIELDS) expect(taskFieldLabel(f.id, '<<fallback>>'), f.id).toBe(f.label);
+	});
+
+	it('names fields in Chinese on a Chinese interface, and keeps the fallback for an unknown field', () => {
+		__setLanguage('zh');
+		expect(taskFieldLabel('due', 'Due')).toBe('截止');
+		expect(taskFieldLabel('nonsense', 'Fallback')).toBe('Fallback');
+	});
+});
+
+describe('hidden rows and columns marker', () => {
+	it('keeps the English wording and its plural', () => {
+		__setLanguage('en');
+		expect(hiddenRowsLabel(1)).toBe('1 hidden row');
+		expect(hiddenRowsLabel(3)).toBe('3 hidden rows');
+		expect(hiddenColsLabel(1)).toBe('1 hidden column. Click to show.');
+		expect(hiddenColsLabel(2)).toBe('2 hidden columns. Click to show.');
+	});
+
+	it('is translated, and says the same for one as for many where the language has no plural', () => {
+		__setLanguage('zh');
+		expect(hiddenRowsLabel(1)).toBe('1 个隐藏行');
+		expect(hiddenRowsLabel(4)).toBe('4 个隐藏行');
+		expect(hiddenColsLabel(2)).toBe('2 个隐藏列。点击显示。');
 	});
 });

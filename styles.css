@@ -2323,6 +2323,15 @@
 	background: var(--interactive-accent-hover);
 }
 
+/* Lines under a table that say something was left out, e.g. a query line that was not read */
+.bt-table-notes {
+	margin-top: var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-warning);
+	line-height: 1.4;
+}
+.bt-table-note { overflow-wrap: anywhere; }
+
 /* Upgrade-available notice — positive/blue tone, not a warning */
 .bt-upgrade-banner {
 	display: flex;

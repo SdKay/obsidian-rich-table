@@ -58,7 +58,7 @@ A new tasks table shows `status`, `body`, `due`, `priority`, `tags`, `file`. No 
 
 Supported: `done` / `not done`, status type and name, date conditions (`due before …`, `due today`, `has due date`, `no scheduled date`, `due this week`, …), `priority is|above|below|not …`, `has tags` / `no tags`, `tags include|do not include …`, `path|filename|folder|heading|description includes|does not include …` (also `regex matches`), `is recurring`, `exclude sub-items`, `sort by …` (with `reverse`), `group by …`, `limit N`.
 
-Not supported: `filter by function`, boolean groups (`AND`, `OR`, `NOT` with parentheses) and presets. A line the plugin does not understand is not applied, so the table shows the tasks the other lines allow. Write only lines the language has, and do not invent one.
+Not supported: `filter by function`, boolean groups (`AND`, `OR`, `NOT` with parentheses) and presets. A line the plugin does not understand is not applied, so the table shows the tasks the other lines allow; a note under the table names each such line. Write only lines the language has, and do not invent one.
 
 ### Editing
 

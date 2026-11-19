@@ -3,7 +3,7 @@
  * the rows are built on every draw and never written. See blockSource.ts.
  */
 import type { PaneType } from 'obsidian';
-import { fmt, t } from '../i18n';
+import { fmt, t, taskFieldLabel, queryErrorNote } from '../i18n';
 import type { ColumnDefV2, TableModelV2 } from '../model';
 import type { BlockSource, EntryHost, Loaded, Parsed, SourceHost, SourceKind } from '../blockSource';
 import type { EmptyEntry } from '../emptyEntries';
@@ -42,7 +42,7 @@ export class TasksBlockSource implements BlockSource {
 		this.stopWatch ??= this.vaultTasks.onChange(() => { void this.host.rerender(); });
 		const built = buildTasksTable(shell, this.vaultTasks.tasks(), toIso(new Date()));
 		this.places = built.sources;
-		return { kind: 'table', parsed, drawn: built.model };
+		return { kind: 'table', parsed, drawn: built.model, notes: built.errors.map(queryErrorNote) };
 	}
 
 	/** Where each drawn row's task is, from the last draw. */
@@ -94,13 +94,13 @@ export class TasksBlockSource implements BlockSource {
 		const choice = (field: string | null, label: string) => ({
 			label, current: (col.field ?? null) === field, op: { type: 'set-col-field' as const, colId: col.id, field },
 		});
-		const current = col.field ? fieldById(col.field)?.label ?? col.field : null;
+		const current = col.field ? taskFieldLabel(col.field, fieldById(col.field)?.label ?? col.field) : null;
 		return {
 			label: current ? fmt('tasksFieldWithName', { field: current }) : t('tasksFieldChoose'),
 			emits: 'set-col-field',
 			groups: [
 				[choice(null, t('tasksFieldNone'))],
-				TASK_FIELDS.map(f => choice(f.id, `${f.label} (${f.id})`)),
+				TASK_FIELDS.map(f => choice(f.id, `${taskFieldLabel(f.id, f.label)} (${f.id})`)),
 			],
 		};
 	}
@@ -154,7 +154,7 @@ function tasksEntry(host: SourceHost & EntryHost): EmptyEntry {
  * send an op to, and the text just written is the block. Closing the dialog without one leaves it asking for it.
  */
 async function insertTasksTable(host: SourceHost & EntryHost): Promise<void> {
-	const block = buildTasksBlock(host.defaultTheme());
+	const block = buildTasksBlock(host.defaultTheme(), taskFieldLabel);
 	await host.writeBlock(serializeTable(block));
 	new TaskQueryModal(host.app, '', query => {
 		if (query !== '') void host.writeBlock(serializeTable({ ...block, tasks: { query } }));

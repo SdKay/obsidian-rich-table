@@ -40,6 +40,20 @@ test.describe('a tasks table', () => {
 		expect(await texts(page, 0)).toEqual(['book the room', 'write the report', 'outside', 'call back', 'a sub task']);
 	});
 
+	test('says under the table which query line was not understood, and applies the others', async ({ page, renderBlock }) => {
+		await renderBlock(block('done\nis blocked\nsort by due'), { tasksFrom: NOTES });
+		expect(await texts(page, 0)).toEqual(['old thing']);
+		const notes = page.locator('.bt-table-note');
+		await expect(notes).toHaveCount(1);
+		await expect(notes).toHaveText('Query line 2 is not applied: is blocked');
+	});
+
+	test('shows no note when every query line is understood', async ({ page, renderBlock }) => {
+		await renderBlock(block('done\nsort by due'), { tasksFrom: NOTES });
+		expect(await texts(page, 0)).toEqual(['old thing']);
+		await expect(page.locator('.bt-table-note')).toHaveCount(0);
+	});
+
 	test('leaves out what the query leaves out', async ({ page, renderBlock }) => {
 		await renderBlock(block('done'), { tasksFrom: NOTES });
 		expect(await texts(page, 0)).toEqual(['old thing']);

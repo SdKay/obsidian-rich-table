@@ -36,7 +36,7 @@ export type Parsed = { model: TableModelV2; workbook: null } | { model: null; wo
  * is shown instead (rows built from the vault), never written. `message` is shown in place of a table.
  */
 export type Loaded =
-	| { kind: 'table'; parsed: Parsed; drawn?: TableModelV2 }
+	| { kind: 'table'; parsed: Parsed; drawn?: TableModelV2; notes?: string[] }
 	| { kind: 'message'; parsed: Parsed; render: (el: HTMLElement, can: (type: TableOpType) => boolean) => void };
 
 /** One render's answers about the table, given what `load` returned. */

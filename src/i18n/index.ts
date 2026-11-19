@@ -114,6 +114,19 @@ export function ctrlColButtonLabel(id: CtrlColButtonId): string {
 	return t(KEYS[id]);
 }
 
+/** The note under a tasks table for a query line that was not understood, so it is not silently left out. */
+export const queryErrorNote = (e: { line: number; text: string }): string => fmt('tasksQueryLineIgnored', { line: e.line, text: e.text });
+
+/** The marker left where rows or columns are hidden; `n` is how many are behind it. */
+export const hiddenRowsLabel = (n: number): string => fmt(n > 1 ? 'hiddenRowsMany' : 'hiddenRowsOne', { n });
+export const hiddenColsLabel = (n: number): string => fmt(n > 1 ? 'hiddenColsMany' : 'hiddenColsOne', { n });
+
+/** The column name for a tasks-table field, in the interface language; an id with no entry keeps `fallback`. */
+export function taskFieldLabel(id: string, fallback: string): string {
+	const key = `taskField_${id}`;
+	return key in en ? t(key as I18nKey) : fallback;
+}
+
 /** Settings tab heading label for one of the three ctrlCol scenarios. */
 export function ctrlColScenarioLabel(scenario: CtrlColScenario): string {
 	return t(scenario === 'locked' ? 'ctrlColScenarioLocked' : scenario === 'unlocked' ? 'ctrlColScenarioUnlocked' : 'ctrlColScenarioXlsxRef');

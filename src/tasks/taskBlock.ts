@@ -5,14 +5,14 @@ import type { TableModelV2 } from '../model';
 import { genId } from '../idGen';
 import { DEFAULT_TASK_FIELDS, fieldById } from './taskFields';
 
-/** A new tasks table starts without a query: the user writes one when it is inserted. */
-export function buildTasksBlock(theme?: string): TableModelV2 {
+/** A new tasks table starts without a query: the user writes one when it is inserted. `labelOf` names the columns. */
+export function buildTasksBlock(theme?: string, labelOf: (id: string, fallback: string) => string = (_id, fallback) => fallback): TableModelV2 {
 	const ids = new Set<string>();
 	const columns = DEFAULT_TASK_FIELDS.map(field => {
 		const def = fieldById(field);
 		return {
 			id: genId('c', ids),
-			name: def?.label ?? field,
+			name: labelOf(field, def?.label ?? field),
 			field,
 			...(def?.align ? { align: def.align } : {}),
 		};
