@@ -6,7 +6,7 @@ import type { ChoiceRegistry } from './choiceRegistry';
 import type { CellChangeHandler, EditNavigateHandler } from './renderTypes';
 import type { ColumnKinds } from './columnKind';
 import type { TableEdits } from './tableEdits';
-import { rowId, colId, getMergeOrigin, isRowFiltered, type ResolvedMerge } from './renderGridHelpers';
+import { rowId, colId, getMergeOrigin, isRowFiltered, splitChoices, type ResolvedMerge } from './renderGridHelpers';
 import {
 	cellEffectiveStyle, cellInheritedStyle, buildCellStyleContext,
 	applyColStyle, applyResolvedStyle,
@@ -319,14 +319,12 @@ async function renderHeaderCell(options: RenderHeaderCellOptions): Promise<void>
 			{ icon: 'eye-off',     label: t('hideColumn'),      emits: ['hide-col'],   action: () => run({ type: 'hide-col', colId: col.id }) },
 			{ icon: 'trash',       label: t('deleteColumn'), danger: true, emits: ['delete-col'], action: () => run({ type: 'delete-col', colId: col.id }) },
 			{ divider: true },
-			// Same gating as dataCellOps: a vertical-only merge can only split
-			// into columns (each keeping its own copy of the row-span), a
-			// horizontal-only merge only into rows, and a plain cell either way.
-			...((!merge || (merge.endRow === merge.startRow && merge.endCol > merge.startCol)) ? [
+			// Same gating as dataCellOps.
+			...(splitChoices(merge).rows ? [
 				{ icon: 'rows-2', label: t('splitCellRow'), emits: ['split-cell-row'],
 					action: () => run({ type: 'split-cell-row', rowId: 'header', colId: col.id }) },
 			] as CellOpEntry[] : []),
-			...((!merge || (merge.endCol === merge.startCol && merge.endRow > merge.startRow)) ? [
+			...(splitChoices(merge).cols ? [
 				{ icon: 'columns-2', label: t('splitCellCol'), emits: ['split-cell-col'],
 					action: () => run({ type: 'split-cell-col', rowId: 'header', colId: col.id }) },
 			] as CellOpEntry[] : []),

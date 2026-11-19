@@ -8002,7 +8002,7 @@ function applyStructuralOpV2(model, op) {
     case "split-cell-row": {
       const covering0 = findMergeCoveringCell(model, op.rowId, op.colId);
       if (covering0) {
-        splitMergedCellIntoRows(model, covering0);
+        splitMergedCellIntoRows(model, covering0) || halveMerge(model, covering0, "rows");
         break;
       }
       const rowIdx = op.rowId === "header" ? -1 : model.rows.findIndex((r) => r.id === op.rowId);
@@ -8033,7 +8033,7 @@ function applyStructuralOpV2(model, op) {
     case "split-cell-col": {
       const covering0 = findMergeCoveringCell(model, op.rowId, op.colId);
       if (covering0) {
-        splitMergedCellIntoCols(model, covering0);
+        splitMergedCellIntoCols(model, covering0) || halveMerge(model, covering0, "cols");
         break;
       }
       const colIdx = model.columns.findIndex((c) => c.id === op.colId);
@@ -8696,11 +8696,11 @@ function splitMergedCellIntoRows(model, covering) {
   const r2 = resolveMergeRowIndex(model, endRowId);
   const c1 = model.columns.findIndex((c) => c.id === anchorColId);
   const c2 = model.columns.findIndex((c) => c.id === endColId);
-  if (r1 === void 0 || r2 === void 0 || c1 < 0 || c2 < 0) return;
-  if (Math.abs(r2 - r1) + 1 > 1) return;
-  if (Math.abs(c2 - c1) + 1 <= 1) return;
+  if (r1 === void 0 || r2 === void 0 || c1 < 0 || c2 < 0) return false;
+  if (Math.abs(r2 - r1) + 1 > 1) return false;
+  if (Math.abs(c2 - c1) + 1 <= 1) return false;
   const rowIdx = anchorRowId === "header" ? -1 : model.rows.findIndex((r) => r.id === anchorRowId);
-  if (anchorRowId !== "header" && rowIdx < 0) return;
+  if (anchorRowId !== "header" && rowIdx < 0) return false;
   const existingRowIds = new Set(model.rows.map((r) => r.id));
   const newRow = { id: genId("r", existingRowIds), cells: {} };
   model.rows.splice(rowIdx + 1, 0, newRow);
@@ -8726,6 +8726,7 @@ function splitMergedCellIntoRows(model, covering) {
   }
   extendStylesPastSplitRow(model, anchorRowId, newRow.id);
   duplicateCellStyle(model, anchorRowId, anchorColId, newRow.id, anchorColId);
+  return true;
 }
 function splitMergedCellIntoCols(model, covering) {
   const [anchorRowId, anchorColId] = splitAnchor(covering.anchor);
@@ -8734,11 +8735,11 @@ function splitMergedCellIntoCols(model, covering) {
   const r2 = resolveMergeRowIndex(model, endRowId);
   const c1 = model.columns.findIndex((c) => c.id === anchorColId);
   const c2 = model.columns.findIndex((c) => c.id === endColId);
-  if (r1 === void 0 || r2 === void 0 || c1 < 0 || c2 < 0) return;
-  if (Math.abs(c2 - c1) + 1 > 1) return;
-  if (Math.abs(r2 - r1) + 1 <= 1) return;
+  if (r1 === void 0 || r2 === void 0 || c1 < 0 || c2 < 0) return false;
+  if (Math.abs(c2 - c1) + 1 > 1) return false;
+  if (Math.abs(r2 - r1) + 1 <= 1) return false;
   const colIdx = model.columns.findIndex((c) => c.id === anchorColId);
-  if (colIdx < 0) return;
+  if (colIdx < 0) return false;
   const existingColIds = new Set(model.columns.map((c) => c.id));
   const newCol = { id: genId("c", existingColIds), name: "" };
   model.columns.splice(colIdx + 1, 0, newCol);
@@ -8763,6 +8764,34 @@ function splitMergedCellIntoCols(model, covering) {
   }
   extendStylesPastSplitCol(model, anchorColId, newCol.id);
   duplicateCellStyle(model, anchorRowId, anchorColId, anchorRowId, newCol.id);
+  return true;
+}
+function halveMerge(model, merge, axis) {
+  const [anchorRowId, anchorColId] = splitAnchor(merge.anchor);
+  const [endRowId, endColId] = splitAnchor(merge.end);
+  const r1 = resolveMergeRowIndex(model, anchorRowId);
+  const r2 = resolveMergeRowIndex(model, endRowId);
+  const c1 = model.columns.findIndex((c) => c.id === anchorColId);
+  const c2 = model.columns.findIndex((c) => c.id === endColId);
+  if (r1 === void 0 || r2 === void 0 || c1 < 0 || c2 < 0) return;
+  const rows = Math.abs(r2 - r1) + 1;
+  const cols = Math.abs(c2 - c1) + 1;
+  const along = axis === "rows" ? rows : cols;
+  const across = axis === "rows" ? cols : rows;
+  if (across !== 1 || along < 2 || along % 2 !== 0) return;
+  const lo = axis === "rows" ? Math.min(r1, r2) : Math.min(c1, c2);
+  const half = Math.floor(along / 2);
+  const idAt = (i) => axis === "rows" ? i === -1 ? "header" : model.rows[i]?.id : model.columns[i]?.id;
+  const cell = (i) => {
+    const id = idAt(i);
+    if (id === void 0) return void 0;
+    return axis === "rows" ? `${id}.${anchorColId}` : `${anchorRowId}.${id}`;
+  };
+  const firstEnd = cell(lo + half - 1), secondStart = cell(lo + half), secondEnd = cell(lo + along - 1), firstStart = cell(lo);
+  if (!firstStart || !firstEnd || !secondStart || !secondEnd) return;
+  const at = model.merges.indexOf(merge);
+  const halves = half === 1 ? [] : [{ anchor: firstStart, end: firstEnd }, { anchor: secondStart, end: secondEnd }];
+  model.merges.splice(at, 1, ...halves);
 }
 function moveBlock(items, ids2, beforeId, snapshotAt) {
   const moving = new Set(ids2);

@@ -245,7 +245,7 @@ An empty `rich-table` code block shows one button per built-in template (current
 
 ![主题切换](docs/demo-15-theme.gif)
 
-**16 · Split cell** — double-click a plain cell → split into 2 rows/columns; other cells in that row/column keep their current shape. The header row can split too, and merge downward into data rows, from the same panel
+**16 · Split cell** — double-click a plain cell → split into 2 rows/columns; other cells in that row/column keep their current shape. A merged cell splits along the way it spans when it covers an even number of rows or columns: a two-row merge becomes two cells (the same as unmerging), a four-row merge two merges of two rows, and the text stays in the first half. A merge of an odd number has no middle to cut at, and one across both rows and columns has neither split. The header row can split too, and merge downward into data rows, from the same panel
 
 ![split-cell](docs/demo-cell-split.gif)
 

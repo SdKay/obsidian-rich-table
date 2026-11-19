@@ -5,7 +5,7 @@ import type { ChoiceRegistry } from './choiceRegistry';
 import { colIndexToLetter } from './utils';
 import { SPECIAL_TYPES, type StructuralOpHandler } from './renderTypes';
 import type { ColumnKinds } from './columnKind';
-import { rowId, colId, getMergeOrigin } from './renderGridHelpers';
+import { rowId, colId, getMergeOrigin, splitChoices } from './renderGridHelpers';
 import { cellEffectiveStyle } from './renderCellStyle';
 import { copyRangeToClipboard, copyRangeAsMarkdown } from './renderClipboard';
 import { pinHover, showMenuPinned } from './renderHoverPin';
@@ -131,23 +131,19 @@ export function dataCellOps(rowIdx: number, colIdx: number, model: TableModelV2,
 	const c1 = merge?.startCol ?? colIdx;
 	const c2 = merge?.endCol   ?? colIdx;
 	const spans = !!merge && (merge.endRow > merge.startRow || merge.endCol > merge.startCol);
+	const split = splitChoices(merge);
 
 	// Insert-row/insert-col live in the row/column selector strip's own menu,
 	// not here, to keep this per-cell menu short.
 	return withEdits([
 		...(merge && spans ? [{ icon: 'table-2', label: t('unmergeCells'), emits: ['unmerge-cells'],
 			action: () => run({ type: 'unmerge-cells', anchorRowId: merge.anchorRowId, anchorColId: merge.anchorColId }) }] as CellOpEntry[] : []),
-		// Splitting a plain (unmerged) cell works either way. A merged cell only
-		// has one axis left to split along — a vertical-only merge (spans rows,
-		// one column) can split into 2 columns (each keeping its own copy of the
-		// row-span); a horizontal-only merge, the mirror; a merge that already
-		// spans both axes has no single shape left to preserve and isn't offered
-		// either action — see splitMergedCellIntoRows/Cols in operations.ts.
-		...((!merge || (merge.endRow === merge.startRow && merge.endCol > merge.startCol)) ? [
+		// Which splits a cell offers, merged or not, is decided in splitChoices.
+		...(split.rows ? [
 			{ icon: 'rows-2',    label: t('splitCellRow'), emits: ['split-cell-row'],
 				action: () => run({ type: 'split-cell-row', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
 		] as CellOpEntry[] : []),
-		...((!merge || (merge.endCol === merge.startCol && merge.endRow > merge.startRow)) ? [
+		...(split.cols ? [
 			{ icon: 'columns-2', label: t('splitCellCol'), emits: ['split-cell-col'],
 				action: () => run({ type: 'split-cell-col', rowId: rowId(model, rowIdx), colId: colId(model, colIdx) }) },
 		] as CellOpEntry[] : []),

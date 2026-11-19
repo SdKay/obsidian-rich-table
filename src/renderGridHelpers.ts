@@ -168,6 +168,22 @@ export interface ResolvedMerge {
 }
 
 /**
+ * Which of "Split into 2 rows" / "Split into 2 columns" a cell offers. A plain cell takes either. A merge can be cut
+ * in half along the axis it spans when that span is even (two rows are two cells again, which is unmerging), and it
+ * can be split across the other axis when it spans only one of them; a rectangle, or an odd span, has no middle.
+ */
+export function splitChoices(merge: ResolvedMerge | undefined): { rows: boolean; cols: boolean } {
+	if (!merge) return { rows: true, cols: true };
+	const rowSpan = merge.endRow - merge.startRow + 1;
+	const colSpan = merge.endCol - merge.startCol + 1;
+	if (rowSpan > 1 && colSpan > 1) return { rows: false, cols: false };
+	return {
+		rows: rowSpan > 1 ? rowSpan % 2 === 0 : colSpan > 1,
+		cols: colSpan > 1 ? colSpan % 2 === 0 : rowSpan > 1,
+	};
+}
+
+/**
  * Resolves a merge anchor/end row-ID string to a 0-based row index, treating the
  * literal sentinel `'header'` (used by header-only merges, see `renderer.ts`'s
  * header drag-to-select) as index -1 — one position before the first data row.

@@ -74,13 +74,37 @@ describe('split-cell-col on a vertical-only merge', () => {
 		expect(model.merges).toContainEqual({ anchor: 'r_2.c_0', end: `r_2.${newColId}` });
 	});
 
-	it('is a no-op on a horizontal-only merge (already multi-column, wrong axis)', () => {
+	it('splits a two-column horizontal merge into its two cells, which is the same as unmerging it', () => {
 		const model = baseModel();
-		model.merges.push({ anchor: 'r_0.c_0', end: 'r_0.c_1' }); // horizontal, one row
+		model.rows[0]!.cells.c_0 = 'left text';
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_0.c_1' });
 		applyStructuralOpV2(model, { type: 'split-cell-col', rowId: 'r_0', colId: 'c_0' });
 
-		expect(model.columns).toHaveLength(3); // no column inserted
-		expect(model.merges).toEqual([{ anchor: 'r_0.c_0', end: 'r_0.c_1' }]); // untouched
+		expect(model.columns).toHaveLength(3);
+		expect(model.merges).toEqual([]);
+		expect(model.rows[0]!.cells.c_0).toBe('left text');
+	});
+
+	it('cuts a four-column horizontal merge in the middle, with no column added', () => {
+		const model = baseModel();
+		model.columns.push({ id: 'c_3', name: 'D' });
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_0.c_3' });
+		applyStructuralOpV2(model, { type: 'split-cell-col', rowId: 'r_0', colId: 'c_1' });
+
+		expect(model.columns.map(c => c.id)).toEqual(['c_0', 'c_1', 'c_2', 'c_3']);
+		expect(model.merges).toEqual([
+			{ anchor: 'r_0.c_0', end: 'r_0.c_1' },
+			{ anchor: 'r_0.c_2', end: 'r_0.c_3' },
+		]);
+	});
+
+	it('leaves an odd-length horizontal merge alone', () => {
+		const model = baseModel();
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_0.c_2' });
+		applyStructuralOpV2(model, { type: 'split-cell-col', rowId: 'r_0', colId: 'c_0' });
+
+		expect(model.columns).toHaveLength(3);
+		expect(model.merges).toEqual([{ anchor: 'r_0.c_0', end: 'r_0.c_2' }]);
 	});
 
 	it('is a no-op on a rectangular (both-axis) merge', () => {
@@ -106,13 +130,50 @@ describe('split-cell-row on a horizontal-only merge (column-axis mirror)', () =>
 		expect(model.merges).toContainEqual({ anchor: `${newRowId}.c_0`, end: `${newRowId}.c_2` });
 	});
 
-	it('is a no-op on a vertical-only merge (already multi-row, wrong axis)', () => {
+	it('splits a two-row vertical merge into its two cells, which is the same as unmerging it', () => {
 		const model = baseModel();
-		model.merges.push({ anchor: 'r_0.c_0', end: 'r_1.c_0' }); // vertical, one column
+		model.rows[0]!.cells.c_0 = 'top text';
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_1.c_0' });
 		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'r_0', colId: 'c_0' });
 
 		expect(model.rows).toHaveLength(3);
-		expect(model.merges).toEqual([{ anchor: 'r_0.c_0', end: 'r_1.c_0' }]);
+		expect(model.merges).toEqual([]);
+		expect(model.rows[0]!.cells.c_0).toBe('top text');
+		expect(model.rows[1]!.cells.c_0 ?? '').toBe('');
+	});
+
+	it('cuts a four-row vertical merge in the middle, with no row added and the text in the first half', () => {
+		const model = baseModel();
+		model.rows.push({ id: 'r_3', cells: {} });
+		model.rows[0]!.cells.c_0 = 'top text';
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_3.c_0' });
+		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'r_2', colId: 'c_0' });
+
+		expect(model.rows.map(r => r.id)).toEqual(['r_0', 'r_1', 'r_2', 'r_3']);
+		expect(model.merges).toEqual([
+			{ anchor: 'r_0.c_0', end: 'r_1.c_0' },
+			{ anchor: 'r_2.c_0', end: 'r_3.c_0' },
+		]);
+		expect(model.rows[0]!.cells.c_0).toBe('top text');
+	});
+
+	it('leaves an odd-length vertical merge alone', () => {
+		const model = baseModel();
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_2.c_0' });
+		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'r_0', colId: 'c_0' });
+
+		expect(model.rows).toHaveLength(3);
+		expect(model.merges).toEqual([{ anchor: 'r_0.c_0', end: 'r_2.c_0' }]);
+	});
+
+	it('leaves a five-row vertical merge alone, since it has no middle to cut at', () => {
+		const model = baseModel();
+		model.rows.push({ id: 'r_3', cells: {} }, { id: 'r_4', cells: {} });
+		model.merges.push({ anchor: 'r_0.c_0', end: 'r_4.c_0' });
+		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'r_2', colId: 'c_0' });
+
+		expect(model.rows).toHaveLength(5);
+		expect(model.merges).toEqual([{ anchor: 'r_0.c_0', end: 'r_4.c_0' }]);
 	});
 
 	it('is a no-op on a rectangular (both-axis) merge', () => {

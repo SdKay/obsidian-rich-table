@@ -74,9 +74,9 @@ describe('split-cell-row', () => {
 		expect(model.rows.map(r => r.id)).toEqual(['r_0', 'r_1', newRowId, 'r_2']);
 	});
 
-	it('no-ops when the target cell is already part of a merge', () => {
+	it('no-ops when the target cell is part of a merge that cannot be cut in half', () => {
 		const model = baseModel();
-		model.merges.push({ anchor: 'r_1.c_1', end: 'r_2.c_1' });
+		model.merges.push({ anchor: 'r_0.c_1', end: 'r_2.c_1' }); // three rows: no middle
 		const before = JSON.parse(JSON.stringify(model));
 		applyStructuralOpV2(model, { type: 'split-cell-row', rowId: 'r_1', colId: 'c_1' });
 		expect(model).toEqual(before);
@@ -195,9 +195,9 @@ describe('split-cell-col', () => {
 		expect(model.columns.map(c => c.id)).toEqual(['c_0', 'c_1', newColId, 'c_2']);
 	});
 
-	it('no-ops when the target cell is already part of a merge', () => {
+	it('no-ops when the target cell is part of a merge that cannot be cut in half', () => {
 		const model = baseModel();
-		model.merges.push({ anchor: 'r_1.c_1', end: 'r_1.c_2' });
+		model.merges.push({ anchor: 'r_1.c_0', end: 'r_1.c_2' }); // three columns: no middle
 		const before = JSON.parse(JSON.stringify(model));
 		applyStructuralOpV2(model, { type: 'split-cell-col', rowId: 'r_1', colId: 'c_1' });
 		expect(model).toEqual(before);

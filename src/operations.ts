@@ -465,7 +465,7 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		}
 		case 'split-cell-row': {
 			const covering0 = findMergeCoveringCell(model, op.rowId, op.colId);
-			if (covering0) { splitMergedCellIntoRows(model, covering0); break; }
+			if (covering0) { splitMergedCellIntoRows(model, covering0) || halveMerge(model, covering0, 'rows'); break; }
 			// The header has no entry in model.rows at all (it's derived from
 			// column.name, not a row) — splitting it inserts the new row at the
 			// very top, same position as insert-row's afterRowId: null. Every
@@ -508,7 +508,7 @@ export function applyStructuralOpV2(model: TableModelV2, op: StructuralOpV2): vo
 		}
 		case 'split-cell-col': {
 			const covering0 = findMergeCoveringCell(model, op.rowId, op.colId);
-			if (covering0) { splitMergedCellIntoCols(model, covering0); break; }
+			if (covering0) { splitMergedCellIntoCols(model, covering0) || halveMerge(model, covering0, 'cols'); break; }
 			const colIdx = model.columns.findIndex(c => c.id === op.colId);
 			if (colIdx < 0) break;
 			const existingIds = new Set(model.columns.map(c => c.id));
@@ -1354,20 +1354,20 @@ function clearMergesOverlapping(model: TableModelV2, r1: number, r2: number, c1:
  * closing off further splits; two separate vertical/horizontal merges can
  * each still be split again later.
  */
-function splitMergedCellIntoRows(model: TableModelV2, covering: MergeRangeV2): void {
+function splitMergedCellIntoRows(model: TableModelV2, covering: MergeRangeV2): boolean {
 	const [anchorRowId, anchorColId] = splitAnchor(covering.anchor);
 	const [endRowId, endColId]       = splitAnchor(covering.end);
 	const r1 = resolveMergeRowIndex(model, anchorRowId);
 	const r2 = resolveMergeRowIndex(model, endRowId);
 	const c1 = model.columns.findIndex(c => c.id === anchorColId);
 	const c2 = model.columns.findIndex(c => c.id === endColId);
-	if (r1 === undefined || r2 === undefined || c1 < 0 || c2 < 0) return;
-	if (Math.abs(r2 - r1) + 1 > 1) return; // multi-row (± multi-col) — not eligible, see doc comment
-	if (Math.abs(c2 - c1) + 1 <= 1) return; // not actually a horizontal merge
+	if (r1 === undefined || r2 === undefined || c1 < 0 || c2 < 0) return false;
+	if (Math.abs(r2 - r1) + 1 > 1) return false; // multi-row (± multi-col) — not eligible, see doc comment
+	if (Math.abs(c2 - c1) + 1 <= 1) return false; // not actually a horizontal merge
 
 	// The header has no entry in model.rows: the new row goes right below it.
 	const rowIdx = anchorRowId === 'header' ? -1 : model.rows.findIndex(r => r.id === anchorRowId);
-	if (anchorRowId !== 'header' && rowIdx < 0) return;
+	if (anchorRowId !== 'header' && rowIdx < 0) return false;
 	const existingRowIds = new Set(model.rows.map(r => r.id));
 	const newRow: RowDefV2 = { id: genId('r', existingRowIds), cells: {} };
 	model.rows.splice(rowIdx + 1, 0, newRow);
@@ -1395,24 +1395,25 @@ function splitMergedCellIntoRows(model: TableModelV2, covering: MergeRangeV2): v
 	}
 	extendStylesPastSplitRow(model, anchorRowId, newRow.id);
 	duplicateCellStyle(model, anchorRowId, anchorColId, newRow.id, anchorColId);
+	return true;
 }
 
 /** Column-axis mirror of {@link splitMergedCellIntoRows} — see its doc comment. */
-function splitMergedCellIntoCols(model: TableModelV2, covering: MergeRangeV2): void {
+function splitMergedCellIntoCols(model: TableModelV2, covering: MergeRangeV2): boolean {
 	const [anchorRowId, anchorColId] = splitAnchor(covering.anchor);
 	const [endRowId, endColId]       = splitAnchor(covering.end);
 	const r1 = resolveMergeRowIndex(model, anchorRowId);
 	const r2 = resolveMergeRowIndex(model, endRowId);
 	const c1 = model.columns.findIndex(c => c.id === anchorColId);
 	const c2 = model.columns.findIndex(c => c.id === endColId);
-	if (r1 === undefined || r2 === undefined || c1 < 0 || c2 < 0) return;
-	if (Math.abs(c2 - c1) + 1 > 1) return; // multi-col (± multi-row) — not eligible, see doc comment
-	if (Math.abs(r2 - r1) + 1 <= 1) return; // not actually a vertical merge
+	if (r1 === undefined || r2 === undefined || c1 < 0 || c2 < 0) return false;
+	if (Math.abs(c2 - c1) + 1 > 1) return false; // multi-col (± multi-row) — not eligible, see doc comment
+	if (Math.abs(r2 - r1) + 1 <= 1) return false; // not actually a vertical merge
 	// (A vertical-only merge can never be header-anchored — a merge crossing
 	// the header/data boundary is dropped elsewhere, not represented here.)
 
 	const colIdx = model.columns.findIndex(c => c.id === anchorColId);
-	if (colIdx < 0) return;
+	if (colIdx < 0) return false;
 	const existingColIds = new Set(model.columns.map(c => c.id));
 	const newCol: ColumnDefV2 = { id: genId('c', existingColIds), name: '' };
 	model.columns.splice(colIdx + 1, 0, newCol);
@@ -1439,6 +1440,44 @@ function splitMergedCellIntoCols(model: TableModelV2, covering: MergeRangeV2): v
 	}
 	extendStylesPastSplitCol(model, anchorColId, newCol.id);
 	duplicateCellStyle(model, anchorRowId, anchorColId, anchorRowId, newCol.id);
+	return true;
+}
+
+/**
+ * "Split into 2 rows" on a merge that already spans an even number of rows in one column (and "into 2 columns" on one
+ * that spans an even number of columns in one row): the merge is cut in half, with no row or column added. Its text
+ * stays on the anchor, in the first half. Halves of one row or column are plain cells again, so a two-row merge is
+ * the same as unmerging it. An odd span, or a merge that spans both axes, has no middle to cut at and is left alone.
+ */
+function halveMerge(model: TableModelV2, merge: MergeRangeV2, axis: 'rows' | 'cols'): void {
+	const [anchorRowId, anchorColId] = splitAnchor(merge.anchor);
+	const [endRowId, endColId]       = splitAnchor(merge.end);
+	const r1 = resolveMergeRowIndex(model, anchorRowId);
+	const r2 = resolveMergeRowIndex(model, endRowId);
+	const c1 = model.columns.findIndex(c => c.id === anchorColId);
+	const c2 = model.columns.findIndex(c => c.id === endColId);
+	if (r1 === undefined || r2 === undefined || c1 < 0 || c2 < 0) return;
+	const rows = Math.abs(r2 - r1) + 1;
+	const cols = Math.abs(c2 - c1) + 1;
+	const along = axis === 'rows' ? rows : cols;
+	const across = axis === 'rows' ? cols : rows;
+	if (across !== 1 || along < 2 || along % 2 !== 0) return;
+
+	const lo = axis === 'rows' ? Math.min(r1, r2) : Math.min(c1, c2);
+	const half = Math.floor(along / 2);
+	const idAt = (i: number): string | undefined => (axis === 'rows' ? (i === -1 ? 'header' : model.rows[i]?.id) : model.columns[i]?.id);
+	const cell = (i: number): string | undefined => {
+		const id = idAt(i);
+		if (id === undefined) return undefined;
+		return axis === 'rows' ? `${id}.${anchorColId}` : `${anchorRowId}.${id}`;
+	};
+	const firstEnd = cell(lo + half - 1), secondStart = cell(lo + half), secondEnd = cell(lo + along - 1), firstStart = cell(lo);
+	if (!firstStart || !firstEnd || !secondStart || !secondEnd) return;
+
+	const at = model.merges.indexOf(merge);
+	// Two halves of one cell each are not merges.
+	const halves = half === 1 ? [] : [{ anchor: firstStart, end: firstEnd }, { anchor: secondStart, end: secondEnd }];
+	model.merges.splice(at, 1, ...halves);
 }
 
 /** Moves the items named by `ids` (keeping their relative order) to just
