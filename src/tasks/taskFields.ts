@@ -56,7 +56,8 @@ export const shownTags = (tags: readonly string[]): string[] => tags.filter(t =>
 /** The description without its tags, which is what a person reads as the task. */
 export function bodyOf(t: ParsedTask): string {
 	let text = t.description;
-	for (const tag of t.tags) text = text.replace(tag, '');
+	// A colour is part of the text it sits in (`<mark style="background: #00FFFF;">`), not a tag to take out of it.
+	for (const tag of shownTags(t.tags)) text = text.replace(tag, '');
 	return text.replace(/\s+/g, ' ').trim();
 }
 

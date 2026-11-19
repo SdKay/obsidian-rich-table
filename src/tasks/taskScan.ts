@@ -11,6 +11,9 @@ const FRONTMATTER_END = /^(---|\.\.\.)\s*$/;
 /** The width of the leading whitespace, a tab counting as four columns like a list in Obsidian. */
 const indentOf = (s: string): number => s.replace(/\t/g, '    ').length - s.replace(/\t/g, '    ').trimStart().length;
 
+/** How many quotes deep a line starts: `> > - [ ] x` is 2. */
+const quoteDepth = (indentation: string): number => (indentation.match(/>/g) ?? []).length;
+
 /** Every task in `text`, in order. Code blocks and front-matter are skipped, as Tasks does. */
 export function scanTasks(path: string, text: string, statuses: readonly StatusDef[] = DEFAULT_STATUSES): LocatedTask[] {
 	const lines = text.split('\n');
@@ -23,7 +26,9 @@ export function scanTasks(path: string, text: string, statuses: readonly StatusD
 	let fence: string | null = null;
 	let heading: string | null = null;
 	// Indents of the list items above the current one that are still open: a task nested under one is a sub-item.
+	// A quote starts its own list, so the levels are kept per quote depth.
 	let open: number[] = [];
+	let openDepth = 0;
 
 	for (let i = start; i < lines.length; i++) {
 		const line = lines[i] ?? '';
@@ -32,19 +37,21 @@ export function scanTasks(path: string, text: string, statuses: readonly StatusD
 		if (fence !== null) continue;
 
 		const h = HEADING.exec(line);
-		if (h) { heading = (h[1] ?? '').trim() || null; open = []; continue; }
+		if (h) { heading = (h[1] ?? '').trim() || null; open = []; openDepth = 0; continue; }
 
 		const item = splitTaskLine(line);
 		if (!item) {
 			// A list line that is not a task still opens a level; a blank or plain line closes nothing.
 			const bullet = /^([\s>]*)([-*+]|\d+[.)])\s/.exec(line);
 			if (bullet) {
+				if (quoteDepth(bullet[1]!) !== openDepth) { open = []; openDepth = quoteDepth(bullet[1]!); }
 				const ind = indentOf(bullet[1]!.replace(/>/g, ''));
 				open = open.filter(o => o < ind);
 				open.push(ind);
 			}
 			continue;
 		}
+		if (quoteDepth(item.indentation) !== openDepth) { open = []; openDepth = quoteDepth(item.indentation); }
 		const ind = indentOf(item.indentation.replace(/>/g, ''));
 		open = open.filter(o => o < ind);
 		const isSubItem = open.length > 0;

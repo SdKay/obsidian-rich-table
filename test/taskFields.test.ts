@@ -51,6 +51,14 @@ describe('the task body', () => {
 	});
 });
 
+describe('a colour in the text', () => {
+	it('stays in the body, so a highlight keeps its colour', () => {
+		const t = parseTaskLine('- [ ] see <mark style="background: #00FFFF;">this</mark> #real')!;
+		expect(bodyOf(t)).toBe('see <mark style="background: #00FFFF;">this</mark>');
+		expect(fieldText({ ...t, path: 'a.md', line: 0, heading: null, isSubItem: false }, 'tags')).toBe('#real');
+	});
+});
+
 describe('tags shown', () => {
 	it('leaves out a colour left by a highlight, and keeps every tag a person typed', () => {
 		expect(shownTags(['#00FFFF;', '#FF0000;', '#fff;', '#project/zephyr', '#2026', '#beef', '#fff'])).toEqual(['#project/zephyr', '#2026', '#beef', '#fff']);

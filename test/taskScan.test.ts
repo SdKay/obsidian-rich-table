@@ -52,6 +52,16 @@ describe('scanTasks', () => {
 		expect(t.map(x => [x.description, x.isSubItem])).toEqual([['quoted', false], ['top', false], ['tabbed', true]]);
 	});
 
+	it('does not count a task in a quote as a sub-item of the list outside it', () => {
+		const t = scan('- plain\n- [ ] top\n> - [ ] quoted\n- [ ] next');
+		expect(t.map(x => [x.description, x.isSubItem])).toEqual([['top', false], ['quoted', false], ['next', false]]);
+	});
+
+	it('still nests a task under a list item of the same quote', () => {
+		const t = scan('> - [ ] parent\n>   - [ ] child\n> > - [ ] deeper quote\n- [ ] outside');
+		expect(t.map(x => [x.description, x.isSubItem])).toEqual([['parent', false], ['child', true], ['deeper quote', false], ['outside', false]]);
+	});
+
 	it('is empty for text with no tasks', () => {
 		expect(scan('')).toEqual([]);
 		expect(scan('- not a task\n[ ] no bullet')).toEqual([]);
