@@ -233,42 +233,55 @@ function sortTasks(tasks: LocatedTask[], sorts: Sort[], today: string): LocatedT
 	});
 }
 
-function groupKeys(t: LocatedTask, key: GroupKey, today: string): string[] {
-	const date = (d: string | null) => [d ?? 'No ' + key + ' date'];
+/** A group's heading, and where it sorts when that is not the heading's own spelling. */
+interface GroupKey1 { text: string; rank?: number }
+
+const PRIORITY_HEADINGS = ['Highest', 'High', 'Medium', 'Normal', 'Low', 'Lowest'];
+
+function groupKeys(t: LocatedTask, key: GroupKey, today: string): GroupKey1[] {
+	const one = (text: string, rank?: number): GroupKey1[] => [rank === undefined ? { text } : { text, rank }];
+	const date = (d: string | null) => one(d ?? 'No ' + key + ' date');
 	switch (key) {
-		case 'folder': return [folderOf(t.path)];
-		case 'filename': return [filenameOf(t.path)];
-		case 'path': return [t.path.replace(/\.md$/i, '')];
-		case 'heading': return [t.heading ?? '(No heading)'];
-		case 'status': return [isDoneType(t.statusType) ? 'Done' : 'Todo'];
-		case 'status.name': return [t.statusName];
-		case 'status.type': return [t.statusType];
-		case 'priority': return [['Highest priority', 'High priority', 'Medium priority', 'No priority', 'Low priority', 'Lowest priority'][t.priority]!];
-		case 'tags': return t.tags.length ? t.tags : ['(No tags)'];
+		case 'folder': return one(folderOf(t.path));
+		case 'filename': return one(filenameOf(t.path));
+		case 'path': return one(t.path.replace(/\.md$/i, ''));
+		case 'heading': return one(t.heading ?? '(No heading)');
+		case 'status': return one(isDoneType(t.statusType) ? 'Done' : 'Todo');
+		case 'status.name': return one(t.statusName);
+		case 'status.type': return one(t.statusType, STATUS_RANK[t.statusType]);
+		// Tasks lists the most urgent first and calls "none" Normal.
+		case 'priority': return one(`${PRIORITY_HEADINGS[t.priority]!} priority`, t.priority);
+		case 'tags': return t.tags.length ? t.tags.map(text => ({ text })) : one('(No tags)');
 		case 'due': case 'start': case 'scheduled': case 'created': case 'done': return date(t[key]);
 		case 'happens': return date(dateOf(t, 'happens'));
-		case 'recurring': return [t.recurrence ? 'Recurring' : 'Not Recurring'];
-		case 'urgency': return [urgency(t, today).toFixed(2)];
+		case 'recurring': return one(t.recurrence ? 'Recurring' : 'Not Recurring');
+		case 'urgency': return one(urgency(t, today).toFixed(2));
 	}
 }
 
 function groupTasks(tasks: LocatedTask[], groups: Group[], today: string): TaskGroup[] {
 	if (groups.length === 0) return [{ heading: '', tasks }];
-	// Several group lines nest; for a flat table they join into one heading, outermost first.
-	const buckets = new Map<string, LocatedTask[]>();
+	// Several group lines nest; for a flat table they join into one heading, outermost first. A bucket sorts by its
+	// parts' ranks, then by their text, so "High" does not land before "Highest" for being shorter.
+	const buckets = new Map<string, { heading: string; order: string; tasks: LocatedTask[] }>();
 	for (const t of tasks) {
-		let heads = [''];
-		for (const g of groups) heads = heads.flatMap(h => groupKeys(t, g.key, today).map(k => (h ? `${h} / ${k}` : k)));
+		let heads: { heading: string; order: string }[] = [{ heading: '', order: '' }];
+		for (const g of groups) {
+			heads = heads.flatMap(h => groupKeys(t, g.key, today).map(k => ({
+				heading: h.heading ? `${h.heading} / ${k.text}` : k.text,
+				order: `${h.order}${String(k.rank ?? 0).padStart(3, '0')}\u0000${k.text}\u0001`,
+			})));
+		}
 		for (const h of heads) {
-			const list = buckets.get(h) ?? [];
-			list.push(t);
-			buckets.set(h, list);
+			const bucket = buckets.get(h.heading) ?? { ...h, tasks: [] };
+			bucket.tasks.push(t);
+			buckets.set(h.heading, bucket);
 		}
 	}
 	const first = groups[0]!;
-	return [...buckets.entries()]
-		.sort(([a], [b]) => (first.reverse ? -1 : 1) * a.localeCompare(b, undefined, { numeric: true }))
-		.map(([heading, list]) => ({ heading, tasks: list }));
+	return [...buckets.values()]
+		.sort((a, b) => (first.reverse ? -1 : 1) * a.order.localeCompare(b.order, undefined, { numeric: true }))
+		.map(({ heading, tasks: list }) => ({ heading, tasks: list }));
 }
 
 /** Filters, sorts, groups and limits `tasks` as the query says. `today` is `YYYY-MM-DD`. */

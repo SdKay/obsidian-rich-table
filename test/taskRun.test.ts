@@ -201,6 +201,31 @@ describe('runTaskQuery sorting, grouping and limit', () => {
 		expect(rr.groups.map(g => g.heading)).toEqual(['b', 'a']);
 	});
 
+	it('groups by priority from the most urgent, with "none" called Normal in its place', () => {
+		const t = [
+			task('- [ ] lowest ⏬'), task('- [ ] none'), task('- [ ] highest 🔺'), task('- [ ] low 🔽'),
+			task('- [ ] high ⏫'), task('- [ ] medium 🔼'),
+		];
+		const r = runTaskQuery(t, parseTaskQuery('group by priority'), TODAY);
+		expect(r.groups.map(g => g.heading)).toEqual([
+			'Highest priority', 'High priority', 'Medium priority', 'Normal priority', 'Low priority', 'Lowest priority',
+		]);
+		const rr = runTaskQuery(t, parseTaskQuery('group by priority reverse'), TODAY);
+		expect(rr.groups.map(g => g.heading)[0]).toBe('Lowest priority');
+	});
+
+	it('groups by status type in the order Tasks lists them, not alphabetically', () => {
+		const t = [task('- [-] c'), task('- [x] d'), task('- [ ] t'), task('- [/] p')];
+		const r = runTaskQuery(t, parseTaskQuery('group by status.type'), TODAY);
+		expect(r.groups.map(g => g.heading)).toEqual(['IN_PROGRESS', 'TODO', 'DONE', 'CANCELLED']);
+	});
+
+	it('sorts nested groups by the first line, then the second, each in its own order', () => {
+		const t = [task('- [ ] a ⏫', 'b.md'), task('- [ ] b 🔺', 'a.md'), task('- [ ] c ⏫', 'a.md')];
+		const r = runTaskQuery(t, parseTaskQuery('group by priority\ngroup by filename'), TODAY);
+		expect(r.groups.map(g => g.heading)).toEqual(['Highest priority / a', 'High priority / a', 'High priority / b']);
+	});
+
 	it('a task with several tags is in each tag group', () => {
 		const t = [task('- [ ] x #a #b'), task('- [ ] y')];
 		const r = runTaskQuery(t, parseTaskQuery('group by tags'), TODAY);
