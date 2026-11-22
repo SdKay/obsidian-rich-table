@@ -9,6 +9,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.7.3", date: "2026-11-22", changes: [
+		"fix: translate hidden-row markers and tasks field names, and report unread query lines",
+		"docs: correct the skill and README where they disagreed with the code",
+		"feat: split a merged cell along the way it spans",
+		"fix: tasks table keeps highlight colours and quoted tasks",
+		"fix: tasks table groups in the order Tasks lists them",
+		"feat: convert ASCII and box-drawing tables in place",
+	] },
 	{ version: "1.7.2", date: "2026-11-18", changes: [
 		"docs: show the Obsidian download history in the README",
 		"feat: a table can have no header row",
