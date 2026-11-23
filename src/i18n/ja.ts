@@ -343,8 +343,6 @@ export const ja: Dict = {
 	sheetFallback:       'シート {n}',
 	xlsxNotFound:        'xlsx ファイルが見つかりません：{path}',
 	xlsxEmptyWorkbook:        'このブックには表示できるシートまたはデータがありません',
-	upgradeBannerText:   'この表は古いフォーマットを使用しています。新しいフォーマットではより多くの機能を使えます。変換するとコードブロックが書き換えられます — Ctrl+Z で元に戻せます。',
-	upgradeBannerConvert: '新しいフォーマットに変換',
-	upgradeBannerKeep:   '古いフォーマットのまま使う',
+	blockUnreadable: 'Rich Table はこのブロックを読み込めません。このプラグインが読める形式の表ではありません（1.0 より前のバージョンの表はサポートを終了しました）。ブロックはそのまま表示され、変更されません。',
 	openCommunityStore:  'コミュニティストアで開く',
 };

@@ -345,8 +345,6 @@ export const fr: Dict = {
 	sheetFallback:       'Feuille {n}',
 	xlsxNotFound:        'Fichier xlsx introuvable : {path}',
 	xlsxEmptyWorkbook:        'Ce classeur n’a aucune feuille visible ou aucune donnée',
-	upgradeBannerText:   'Ce tableau utilise un ancien format. Le nouveau format prend en charge davantage de fonctionnalités. La conversion modifie le bloc de code — vous pouvez l\'annuler avec Ctrl+Z.',
-	upgradeBannerConvert: 'Convertir au nouveau format',
-	upgradeBannerKeep:   'Conserver l\'ancien format',
+	blockUnreadable: 'Rich Table ne peut pas lire ce bloc : ce n\'est pas un tableau dans un format lu par ce plugin (les tableaux des versions antérieures à 1.0 ne sont plus pris en charge). Le bloc est affiché tel quel et n\'est pas modifié.',
 	openCommunityStore:  'Ouvrir dans le magasin communautaire',
 };

@@ -4,7 +4,7 @@ import { effectOf, effectOfWorkbook, type OpEffect } from '../src/opEffect';
 import type { StructuralOpV2 } from '../src/operations';
 import type { WorkbookOpV2 } from '../src/workbookOperations';
 
-const base: PolicyInput = { surface: 'live', readingEdit: false, locked: false, legacy: false, empty: false };
+const base: PolicyInput = { surface: 'live', readingEdit: false, locked: false, empty: false };
 const with_ = (p: Partial<PolicyInput>) => editPolicy({ ...base, ...p });
 const EDITING: OpEffect[] = ['content', 'structure', 'look', 'derived'];
 
@@ -38,11 +38,6 @@ describe('editPolicy', () => {
 			const p = with_({ surface: 'reading', readingEdit: true, locked: true });
 			for (const e of EDITING) expect(p.permits(e), e).toBe(false);
 		});
-	});
-
-	it('a table in an old format is only shown: no editing, no locking, no switching sheets', () => {
-		const p = with_({ legacy: true });
-		for (const e of [...EDITING, 'state', 'navigate'] as OpEffect[]) expect(p.permits(e), e).toBe(false);
 	});
 
 	it('a block with nothing in it has nothing to change or to open', () => {

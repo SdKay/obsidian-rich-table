@@ -7257,7 +7257,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse(src, reviver, options) {
+    function parse2(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7298,7 +7298,7 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports2.parse = parse;
+    exports2.parse = parse2;
     exports2.parseAllDocuments = parseAllDocuments;
     exports2.parseDocument = parseDocument;
     exports2.stringify = stringify;
@@ -9062,6 +9062,9 @@ function splitRangeStyleV2(model, rangeTarget, excludeRowId, excludeColId) {
   }
 }
 
+// src/tableVersion.ts
+var CURRENT_TABLE_VERSION = 3;
+
 // src/parser.ts
 var AGG_TYPES = ["sum", "avg", "min", "max", "count"];
 function parseTable(source) {
@@ -9153,13 +9156,50 @@ function parseSheet(raw, existingIds) {
 function parseSource(source) {
   return parseWorkbook(source) ?? parseTable(source);
 }
+var DELIMITER = /^---[ \t]*$/;
+var OPENER = /^[ \t]*---[ \t]*$/;
+var BLANK = /^[ \t]*$/;
+function normalize(source) {
+  const lines = source.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
+  const indents = lines.filter((l) => !BLANK.test(l)).map((l) => /^[ \t]*/.exec(l)[0].length);
+  const shared = indents.length === 0 ? 0 : Math.min(...indents);
+  return (shared === 0 ? lines : lines.map((l) => BLANK.test(l) ? "" : l.slice(shared))).join("\n");
+}
+function blockYaml(source) {
+  const lines = normalize(source).split("\n");
+  const open = lines.findIndex((l) => !BLANK.test(l));
+  if (open === -1 || !OPENER.test(lines[open] ?? "")) return lines.join("\n");
+  const close = lines.findIndex((l, i) => i > open && DELIMITER.test(l));
+  return lines.slice(open + 1, close === -1 ? void 0 : close).join("\n");
+}
 function extractFrontmatter(source) {
-  const lines = source.split("\n");
-  if (lines[0]?.trim() !== "---") return null;
-  const closeIdx = lines.findIndex((l, i) => i > 0 && /^---\s*$/.test(l));
-  if (closeIdx === -1) return null;
-  const yamlStr = lines.slice(1, closeIdx).join("\n");
-  return parseYaml(yamlStr) ?? null;
+  const yaml = parseYaml(blockYaml(source));
+  return isRecord(yaml) ? yaml : null;
+}
+function isRecord(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function readBlock(source) {
+  if (normalize(source).split("\n").every((l) => BLANK.test(l))) return { kind: "empty" };
+  let yaml;
+  try {
+    yaml = extractFrontmatter(source);
+  } catch (err) {
+    return { kind: "unreadable", yamlError: (err instanceof Error ? err.message.split("\n")[0] : void 0) ?? "unknown error" };
+  }
+  if (!yaml) return { kind: "unreadable" };
+  const version = yaml.version === void 0 ? 2 : yaml.version;
+  if (typeof version !== "number" || !Number.isInteger(version) || version < 0) return { kind: "unreadable" };
+  if (version > CURRENT_TABLE_VERSION) return { kind: "too-new", version };
+  if (version < 2) return { kind: "unreadable" };
+  return isTableYaml(yaml) ? { kind: "table", version } : { kind: "unreadable" };
+}
+function isTableYaml(yaml) {
+  if (Array.isArray(yaml.sheets) && yaml.sheets.some((s) => isRecord(s) && typeof s.id === "string")) return true;
+  if (isRecord(yaml.xlsxSource) || isRecord(yaml.tasks)) return true;
+  if (!Array.isArray(yaml.columns)) return false;
+  if (yaml.rows !== void 0) return Array.isArray(yaml.rows);
+  return yaml.columns.some((c) => isRecord(c) && typeof c.id === "string");
 }
 function parseColumns(raw) {
   if (!Array.isArray(raw)) return [];
@@ -9275,6 +9315,16 @@ function parseViews(raw) {
     }
     return view;
   }).filter((v) => v !== null);
+}
+
+// src/blockSplice.ts
+function spliceBlock(content, lineStart, lineEnd, body) {
+  const lines = content.split("\n");
+  const fence = lines[lineStart] ?? "";
+  const indent = /^[ \t]*/.exec(fence)[0];
+  const eol = fence.endsWith("\r") ? "\r" : "";
+  const bodyLines = body.trimEnd() === "" ? [] : body.trimEnd().split("\n").map((l) => (l === "" ? l : indent + l) + eol);
+  return [...lines.slice(0, lineStart + 1), ...bodyLines, ...lines.slice(lineEnd)].join("\n");
 }
 
 // src/serializer.ts
@@ -9477,6 +9527,13 @@ function targetTable(doc, sheetId) {
 
 // src/core.ts
 var isWorkbook = (doc) => "sheets" in doc;
+function parse(source) {
+  const read = readBlock(source);
+  if (read.kind === "too-new") throw new Error(`This block was written by a newer Rich Table (format ${read.version}; this one reads up to ${CURRENT_TABLE_VERSION})`);
+  if (read.kind === "empty") throw new Error("This block is empty: there is no table to read");
+  if (read.kind === "unreadable") throw new Error(read.yamlError ? `This block could not be read: ${read.yamlError}` : "This block is not a table this version reads");
+  return parseSource(source);
+}
 function serialize(doc) {
   return isWorkbook(doc) ? serializeWorkbook(doc) : serializeTable(doc);
 }
@@ -9497,12 +9554,13 @@ function findBlocks(markdown) {
   const lines = markdown.split("\n");
   const blocks = [];
   for (let i = 0; i < lines.length; i++) {
-    const open = /^(\s*)(`{3,}|~{3,})\s*rich-table\s*$/.exec(lines[i] ?? "");
+    const open = /^([ \t]*)(`{3,}|~{3,})\s*rich-table\s*$/.exec(lines[i] ?? "");
     if (!open) continue;
+    const indent = open[1] ?? "";
     const fence = open[2] ?? "```";
     const close = lines.findIndex((l, j) => j > i && new RegExp(`^\\s*${fence[0] === "`" ? "`" : "~"}{${fence.length},}\\s*$`).test(l));
     if (close < 0) break;
-    blocks.push({ start: i, end: close, source: lines.slice(i + 1, close).join("\n") });
+    blocks.push({ start: i, end: close, source: lines.slice(i + 1, close).join("\n"), indent });
     i = close;
   }
   return blocks;
@@ -9511,11 +9569,9 @@ function editBlock(markdown, ops, index = 0) {
   const blocks = findBlocks(markdown);
   const block = blocks[index];
   if (!block) throw new Error(`No rich-table block #${index} (this note has ${blocks.length})`);
-  const doc = parseSource(block.source);
+  const doc = parse(block.source);
   for (const op of Array.isArray(ops) ? ops : [ops]) applyOp(doc, op);
-  const lines = markdown.split("\n");
-  lines.splice(block.start + 1, block.end - block.start - 1, ...serialize(doc).trimEnd().split("\n"));
-  return lines.join("\n");
+  return spliceBlock(markdown, block.start, block.end, serialize(doc));
 }
 
 // src/cli.ts
@@ -9556,7 +9612,7 @@ function main(argv) {
       console.error(`No rich-table block #${index}`);
       return 1;
     }
-    console.log(JSON.stringify(parseSource(block.source), null, 2));
+    console.log(JSON.stringify(parse(block.source), null, 2));
     return 0;
   }
   if (command === "apply") {

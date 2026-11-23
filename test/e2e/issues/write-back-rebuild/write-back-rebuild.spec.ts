@@ -12,9 +12,6 @@ import { tableSource } from '../../common/fixtures';
 // run twice over the same table with a real write in between. That's what these
 // tests do.
 test.describe('write-back-rebuild', () => {
-	// Built through the shared helper rather than hand-written: the front-matter
-	// delimiters are load-bearing, and without the leading one the block parses as
-	// the legacy format and renders an upgrade banner instead of a table.
 	const SOURCE = tableSource({
 		widths: [80, 80],
 		rows: [{ 0: 'one', 1: 'x' }, { 0: 'two', 1: 'y' }, { 0: 'three', 1: 'z' }],

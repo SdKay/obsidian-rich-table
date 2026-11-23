@@ -176,9 +176,7 @@ Minimum Obsidian version: **1.8.7**
 
 ## Demo
 
-> **⬆️ Upgrading from v0.x?** — v1 → v2 migration: the upgrade banner on old-format tables, converting in one click or keeping the old format read-only.
->
-> ![Upgrade](docs/demo-00-migration.gif)
+> **Tables from v0.x** (a pipe table under the YAML) are no longer read. Such a block is shown as written, with a notice, and is never changed. To keep one, open the note in Rich Table 1.7.x, convert it there, then upgrade.
 **1 · Quick start from template — or a blank table**
 
 Type `` ```rich-table `` yourself, or skip typing it: run **Insert rich-table block** from the command palette (bind it your own hotkey under Settings → Hotkeys), click the ribbon icon, or right-click in the editor and pick it from the context menu — all three drop an empty block at the cursor.

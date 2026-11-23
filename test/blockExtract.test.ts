@@ -244,10 +244,12 @@ describe('extractBlock: blocks that are not read', () => {
 		if (!r.ok) expect(r.error).toMatch(/newer/i);
 	});
 
-	it('an old v1 table is an error, not a guess', () => {
-		const r = extractBlock('| a | b |\n|---|---|\n| 1 | 2 |\n');
-		expect(r.ok).toBe(false);
-		if (!r.ok) expect(r.error).toMatch(/old format/i);
+	it('a block that is not a table, such as the pre-1.0 pipe-table format, is an error, not a guess', () => {
+		for (const source of ['| a | b |\n|---|---|\n| 1 | 2 |\n', '---\ncolumns:\n  - { name: A }\n---\n| A |\n|---|\n| 1 |\n']) {
+			const r = extractBlock(source);
+			expect(r.ok).toBe(false);
+			if (!r.ok) expect(r.error).toMatch(/not a table|could not be read/i);
+		}
 	});
 
 	it('never throws, whatever it is given', () => {

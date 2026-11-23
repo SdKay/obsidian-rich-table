@@ -5,7 +5,7 @@
  * Three facts decide it, and none of them belongs to the data source:
  *  - the surface the table is on: live preview or reading view (the setting can allow editing in the latter),
  *  - whether the table is locked, which is the user's own choice and is saved in the note,
- *  - whether the table is in an old format that must be upgraded before it is touched.
+ *  - whether the block is empty, so there is no table yet.
  */
 import type { OpEffect } from './opEffect';
 
@@ -14,8 +14,6 @@ export interface PolicyInput {
 	/** The setting that lets a table in reading view be edited. */
 	readingEdit: boolean;
 	locked: boolean;
-	/** A table in an older format is shown but not changed until the user upgrades it. */
-	legacy: boolean;
 	/** A block with nothing in it yet: there is no table to change. */
 	empty: boolean;
 }
@@ -28,12 +26,12 @@ export interface EditPolicy {
 }
 
 export function editPolicy(input: PolicyInput): EditPolicy {
-	const { surface, readingEdit, locked, legacy, empty } = input;
-	const editable = !empty && !legacy && !locked && (surface === 'live' || readingEdit);
+	const { surface, readingEdit, locked, empty } = input;
+	const editable = !empty && !locked && (surface === 'live' || readingEdit);
 	// Locking is itself a change to the note, so it is a live-preview action only, never from reading view.
-	const mayToggleLock = !empty && !legacy && surface === 'live';
-	// Another sheet can be opened on a locked table; an empty or old-format one has nothing to open.
-	const mayNavigate = !empty && !legacy;
+	const mayToggleLock = !empty && surface === 'live';
+	// Another sheet can be opened on a locked table; an empty one has nothing to open.
+	const mayNavigate = !empty;
 
 	const permits = (effect: OpEffect): boolean => {
 		switch (effect) {

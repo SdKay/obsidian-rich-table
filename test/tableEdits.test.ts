@@ -6,7 +6,7 @@ import { withEdits, type CellOpEntry } from '../src/renderPanel';
 import { isWorkbookOp, WORKBOOK_OP_TYPES } from '../src/workbookOperations';
 import { STRUCTURAL_OP_TYPES } from '../src/operations';
 
-const base: PolicyInput = { surface: 'live', readingEdit: false, locked: false, legacy: false, empty: false };
+const base: PolicyInput = { surface: 'live', readingEdit: false, locked: false, empty: false };
 const make = (policy: Partial<PolicyInput>, accepts: (t: TableOpType) => boolean = () => true) => {
 	const written: TableOp[] = [];
 	const edits = tableEdits(accepts, editPolicy({ ...base, ...policy }).permits, op => { written.push(op); });

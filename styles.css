@@ -2333,58 +2333,7 @@
 .bt-table-note { overflow-wrap: anywhere; }
 
 /* Upgrade-available notice — positive/blue tone, not a warning */
-.bt-upgrade-banner {
-	display: flex;
-	align-items: flex-start;
-	gap: var(--size-4-2);
-	padding: var(--size-4-3) var(--size-4-4);
-	background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
-	border: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, transparent);
-	border-radius: var(--radius-m);
-	font-size: var(--font-ui-small);
-	color: var(--text-normal);
-	line-height: 1.5;
-	margin-bottom: var(--size-4-2);
-}
-.bt-upgrade-banner-icon {
-	flex-shrink: 0;
-	color: var(--interactive-accent);
-	margin-top: 1px;
-}
-.bt-upgrade-banner-icon svg { width: 16px; height: 16px; }
-.bt-upgrade-banner-body {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-4-2);
-}
-.bt-upgrade-banner-btns {
-	display: flex;
-	gap: var(--size-4-2);
-	flex-wrap: wrap;
-}
-.bt-upgrade-banner-btn {
-	padding: 3px var(--size-4-3);
-	border-radius: var(--radius-s);
-	border: 1px solid color-mix(in srgb, var(--interactive-accent) 50%, transparent);
-	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
-	color: var(--text-normal);
-	font-size: var(--font-ui-small);
-	cursor: pointer;
-}
-.bt-upgrade-banner-btn:hover {
-	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
-}
-.bt-upgrade-banner-btn-muted {
-	border-color: var(--background-modifier-border);
-	background: transparent;
-	color: var(--text-muted);
-}
-.bt-upgrade-banner-btn-muted:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-
-/* Version-too-high notice — softer warning style, not a hard error */
+/* A block this build does not read (too new, or not a table): a notice, then the source as written */
 .bt-version-banner {
 	display: flex;
 	align-items: flex-start;
@@ -2408,6 +2357,10 @@
 	flex-direction: column;
 	gap: var(--size-4-2);
 }
+.bt-version-banner-detail {
+	font-family: var(--font-monospace);
+	color: var(--text-muted);
+}
 .bt-version-banner-btn {
 	align-self: flex-start;
 	padding: 3px var(--size-4-3);
@@ -2420,6 +2373,17 @@
 }
 .bt-version-banner-btn:hover {
 	background: color-mix(in srgb, var(--color-yellow) 25%, transparent);
+}
+.bt-unread-source {
+	margin: var(--size-4-2) 0 0;
+	padding: var(--size-4-2) var(--size-4-3);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+	white-space: pre-wrap;
+	overflow-x: auto;
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
 }
 
 /* Error display */

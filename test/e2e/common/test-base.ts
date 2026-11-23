@@ -181,7 +181,7 @@ export const test = base.extend<{
 	 *  why a byte array, not ArrayBuffer/Uint8Array. */
 	/** Mounts the real XlsxFileViewer on an in-memory vault holding `files` (path → bytes) and opens `open`. */
 	renderXlsxFile: (files: Record<string, number[]>, open: string, opts?: { searchHost?: FakeSearchHost; pendingReveal?: unknown; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderXlsxFileResult>;
-	renderBlock: (blockSource: string, opts?: { tasksFrom?: Record<string, string>; binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown>; searchHost?: FakeSearchHost; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderBlockResult>;
+	renderBlock: (blockSource: string, opts?: { fenceIndent?: string; tasksFrom?: Record<string, string>; binaryFiles?: Record<string, number[]>; sourcePath?: string; settings?: Record<string, unknown>; searchHost?: FakeSearchHost; initialQuery?: { query: string; caseSensitive?: boolean; wholeWord?: boolean } }) => Promise<RenderBlockResult>;
 }>({
 	renderReal: async ({ page }, use) => {
 		await page.addInitScript({ path: POLYFILL });
@@ -436,14 +436,16 @@ export const test = base.extend<{
 			await page.goto(`file://${SHELL}`);
 			await page.addScriptTag({ path: BUNDLE });
 
-			await page.evaluate(({ src, tasksFrom, binaryFiles, sourcePath, settings, searchHost, initialQuery }) => {
+			await page.evaluate(({ src, fenceIndent, tasksFrom, binaryFiles, sourcePath, settings, searchHost, initialQuery }) => {
 				const R = window.RichTableReal;
 				const NOTE = sourcePath ?? 'note.md';
+				// A fence under a list item: its line and every content line carry the indent, as in the note.
+				const pad = (text: string) => text.split('\n').map(l => (l === '' ? l : fenceIndent + l)).join('\n');
 				const vault = new R.FakeVault();
 				// A note with the block preceded by a line of prose, so lineStart is
 				// non-zero and an off-by-one in the line splice can't pass unnoticed.
 				const header = '# note\n\n';
-				vault.files.set(NOTE, `${header}\`\`\`rich-table\n${src}\`\`\`\n`);
+				vault.files.set(NOTE, `${header}${fenceIndent}\`\`\`rich-table\n${fenceIndent ? pad(src) : src}${fenceIndent}\`\`\`\n`);
 				// Seeded BEFORE the first mount below — an xlsx-backed block's very
 				// first render() already needs vault.readBinary to resolve.
 				for (const [path, bytes] of Object.entries(binaryFiles ?? {})) {
@@ -490,8 +492,8 @@ export const test = base.extend<{
 				// PRE-first-write layout, corrupting whichever write applies second.
 				const findBlockRange = (text: string) => {
 					const lines = text.split('\n');
-					const lineStart = lines.findIndex(l => l.startsWith('```rich-table'));
-					const lineEnd = lines.findIndex((l, i) => i > lineStart && l.startsWith('```'));
+					const lineStart = lines.findIndex(l => l.trimStart().startsWith('```rich-table'));
+					const lineEnd = lines.findIndex((l, i) => i > lineStart && l.trimStart().startsWith('```'));
 					return { lineStart, lineEnd };
 				};
 				w.__btMount = (into?: HTMLElement, fenceLineOverride?: number) => {
@@ -509,16 +511,17 @@ export const test = base.extend<{
 					return container;
 				};
 				w.__btMount();
-			}, { src: blockSource, tasksFrom: opts?.tasksFrom, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath, settings: opts?.settings, searchHost: opts?.searchHost, initialQuery: opts?.initialQuery });
+			}, { src: blockSource, fenceIndent: opts?.fenceIndent ?? '', tasksFrom: opts?.tasksFrom, binaryFiles: opts?.binaryFiles, sourcePath: opts?.sourcePath, settings: opts?.settings, searchHost: opts?.searchHost, initialQuery: opts?.initialQuery });
 
 			// The first paint is async (a cell at a time), so wait for any outcome — a rendered table, the error banner
-			// render() falls back to (an xlsx-backed block whose file can't be read), or a tasks table's request for
-			// its query.
+			// render() falls back to (an xlsx-backed block whose file can't be read), a tasks table's request for
+			// its query, or the notice for a block this build does not read.
 			await Promise.race([
 				// Attached, not visible: a table stays hidden until the plugin's stylesheet is there.
 				page.locator('.bt-table').first().waitFor({ state: 'attached' }),
 				page.locator('.bt-error').first().waitFor(),
 				page.locator('.bt-tasks-query-missing').first().waitFor(),
+				page.locator('.bt-version-banner').first().waitFor(),
 			]);
 
 			return {

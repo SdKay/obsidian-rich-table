@@ -343,8 +343,6 @@ export const ko: Dict = {
 	sheetFallback:       '시트 {n}',
 	xlsxNotFound:        'xlsx 파일을 찾을 수 없습니다: {path}',
 	xlsxEmptyWorkbook:        '이 통합 문서에는 표시할 시트나 데이터가 없습니다',
-	upgradeBannerText:   '이 표는 이전 형식을 사용합니다. 새 형식은 더 많은 기능을 지원합니다. 변환하면 코드 블록이 수정되며, Ctrl+Z로 되돌릴 수 있습니다.',
-	upgradeBannerConvert: '새 형식으로 변환',
-	upgradeBannerKeep:   '이전 형식 유지',
+	blockUnreadable: 'Rich Table이 이 블록을 읽을 수 없습니다. 이 플러그인이 읽을 수 있는 형식의 표가 아닙니다(1.0 이전 버전의 표는 더 이상 지원하지 않습니다). 블록은 작성된 그대로 표시되며 변경되지 않습니다.',
 	openCommunityStore:  '커뮤니티 스토어에서 열기',
 };

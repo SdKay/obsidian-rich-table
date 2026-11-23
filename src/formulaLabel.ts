@@ -7,9 +7,7 @@ export interface RangeIds { start: CellIds; end: CellIds; }
 const LABEL_RE = /^([A-Za-z]+)(\d+)$/;
 
 /** "A2" -> ids, using row 1 = first DATA row (no header offset) — matches
- *  what the row-selector strip already shows on screen. Deliberately NOT
- *  utils.ts's parseCellCoord (that's the v1-legacy "row 1 = header" scheme,
- *  one row off from the current UI). */
+ *  what the row-selector strip already shows on screen. */
 export function labelToCellIds(model: TableModelV2, label: string): CellIds | null {
 	const m = LABEL_RE.exec(label.trim());
 	if (!m) return null;

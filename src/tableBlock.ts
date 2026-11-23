@@ -1,9 +1,10 @@
 import { MarkdownPostProcessorContext, MarkdownRenderChild, Notice, Platform, TFile, setIcon } from 'obsidian';
 import { t, pick, tableVersionTooHighMsg } from './i18n';
-import { CURRENT_TABLE_VERSION, MIN_STABLE_VERSION, getTableVersion, migrateSource } from './tableVersion';
+import { CURRENT_TABLE_VERSION } from './tableVersion';
+import { spliceBlock } from './blockSplice';
 import type BetterTablePlugin from './main';
 import type { CtrlColButtonId, SheetDefV2, TableModelV2, WorkbookV3 } from './model';
-import { parseTable, parseSource } from './parser';
+import { parseTable, parseSource, readBlock } from './parser';
 import { serializeTable, serializeWorkbook } from './serializer';
 import { renderTable } from './renderer';
 import { applyStructuralOpV2, type StructuralOpV2 } from './operations';
@@ -163,17 +164,6 @@ function getEmptyTemplate(): string {
 	return getTemplateContent(BUILTIN_TEMPLATES[0]?.id ?? 'demo');
 }
 
-/** True when the table's YAML front-matter contains `noUpgrade: true`. */
-function hasUpgradeSuppressed(source: string): boolean {
-	const lines = source.split('\n');
-	if (lines[0]?.trim() !== '---') return false;
-	for (let i = 1; i < lines.length; i++) {
-		if (lines[i]?.trim() === '---') break;
-		if (/^noUpgrade:\s*true/.test(lines[i] ?? '')) return true;
-	}
-	return false;
-}
-
 /** One queued op, tagged by which reducer it belongs to — see `queueOp`. */
 type PendingOp =
 	| { kind: 'cell';     op: StructuralOpV2 }
@@ -282,55 +272,26 @@ export class TableBlock extends MarkdownRenderChild {
 
 	private async render(): Promise<void> {
 		const tmp = createDiv();
-		const isEmpty = this.source.trim() === '';
+		const read = readBlock(this.source);
+		const isEmpty = read.kind === 'empty';
 
 		// ── Format-version gate ───────────────────────────────────────────────
-		if (!isEmpty) {
-			const tableV = getTableVersion(this.source);
-			if (tableV > CURRENT_TABLE_VERSION) {
-				// Table was written by a newer plugin — refuse to parse and tell the user.
-				const banner = tmp.createDiv({ cls: 'bt-version-banner' });
-				const icon = banner.createSpan({ cls: 'bt-version-banner-icon' });
-				setIcon(icon, 'arrow-up-circle');
-				const msg = banner.createDiv({ cls: 'bt-version-banner-body' });
-				msg.createSpan({ text: tableVersionTooHighMsg(tableV, CURRENT_TABLE_VERSION) });
-				const btn = msg.createEl('button', {
-					cls: 'bt-version-banner-btn',
-					text: t('openCommunityStore'),
-				});
-				btn.addEventListener('click', () => {
-					window.open('obsidian://show-plugin?id=rich-table');
-				});
-				this.containerEl.empty();
-				while (tmp.firstChild) this.containerEl.appendChild(tmp.firstChild);
-				return;
+		// A block this build cannot read is shown as it is and never written back.
+		if (read.kind === 'too-new' || read.kind === 'unreadable') {
+			const too = read.kind === 'too-new';
+			const banner = tmp.createDiv({ cls: 'bt-version-banner' });
+			setIcon(banner.createSpan({ cls: 'bt-version-banner-icon' }), too ? 'arrow-up-circle' : 'file-question');
+			const msg = banner.createDiv({ cls: 'bt-version-banner-body' });
+			msg.createSpan({ text: too ? tableVersionTooHighMsg(read.version, CURRENT_TABLE_VERSION) : t('blockUnreadable') });
+			if (!too && read.yamlError) msg.createSpan({ cls: 'bt-version-banner-detail', text: read.yamlError });
+			if (too) {
+				msg.createEl('button', { cls: 'bt-version-banner-btn', text: t('openCommunityStore') })
+					.addEventListener('click', () => { window.open('obsidian://show-plugin?id=rich-table'); });
 			}
-			// MIN_STABLE_VERSION, not CURRENT_TABLE_VERSION — a plain v2 table is
-			// NOT "outdated", it just doesn't have sheets (see tableVersion.ts's
-			// doc comment on why these two constants deliberately differ as of
-			// v3). Only a real v1 table needs the upgrade-and-convert banner.
-			if (tableV < MIN_STABLE_VERSION && !hasUpgradeSuppressed(this.source)) {
-				// Table uses an older format — show upgrade banner; user must opt in.
-				const banner = tmp.createDiv({ cls: 'bt-upgrade-banner' });
-				const iconEl = banner.createSpan({ cls: 'bt-upgrade-banner-icon' });
-				setIcon(iconEl, 'sparkles');
-				const msg = banner.createDiv({ cls: 'bt-upgrade-banner-body' });
-				msg.createSpan({
-					text: t('upgradeBannerText'),
-				});
-				const btnRow = msg.createDiv({ cls: 'bt-upgrade-banner-btns' });
-				const upgradeBtn = btnRow.createEl('button', {
-					cls: 'bt-upgrade-banner-btn',
-					text: t('upgradeBannerConvert'),
-				});
-				upgradeBtn.addEventListener('click', () => void this.applyMigration(tableV));
-				const ignoreBtn = btnRow.createEl('button', {
-					cls: 'bt-upgrade-banner-btn bt-upgrade-banner-btn-muted',
-					text: t('upgradeBannerKeep'),
-				});
-				ignoreBtn.addEventListener('click', () => void this.suppressUpgradeBanner());
-				// Also render the table below the banner so it remains usable.
-			}
+			tmp.createEl('pre', { cls: 'bt-unread-source', text: this.source });
+			this.containerEl.empty();
+			while (tmp.firstChild) this.containerEl.appendChild(tmp.firstChild);
+			return;
 		}
 
 		// Defer one frame so containerEl is in its final DOM position.
@@ -345,31 +306,15 @@ export class TableBlock extends MarkdownRenderChild {
 		const isReadingView = !!(this.containerEl.closest('.markdown-reading-view'));
 		if (!this.containerEl.isConnected) this.recheckViewModeOnAttach(isReadingView);
 
-		const source     = isEmpty ? getEmptyTemplate() : this.source;
-		const tableV     = isEmpty ? CURRENT_TABLE_VERSION : getTableVersion(source);
-		// isOldFormat: v1 tables are read-only until the user explicitly upgrades.
-		// Also prevents the lock button from accidentally triggering a v1→v2 write-back.
-		const isOldFormat   = !isEmpty && tableV < MIN_STABLE_VERSION;
+		const source = isEmpty ? getEmptyTemplate() : this.source;
 
 		try {
-			if (tableV >= MIN_STABLE_VERSION) {
-				// Current-format table (v2 single-sheet or v3 workbook): parse
-				// directly. isEmpty always resolves to a fresh single-sheet
-				// template, never a workbook, so parseTable is enough there —
-				// parseSource's structural detection is only needed for real
-				// on-disk content.
-				const parsed = isEmpty ? parseTable(source) : parseSource(source);
-				if (parsed.version === 3) { this.workbook = parsed; this.model = null; }
-				else                      { this.model = parsed; this.workbook = null; }
-				if (this.workbook && this.hitSheetId && this.workbook.sheets.some(sh => sh.id === this.hitSheetId)) {
-					this.workbook.activeSheetId = this.hitSheetId;
-				}
-			} else {
-				// Older format: migrate in-memory for a read-only preview. A v1
-				// table always migrates to a plain v2 single-sheet model —
-				// v1→v3 isn't a real migration path (see tableVersion.ts).
-				this.model = parseTable(migrateSource(source, tableV));
-				this.workbook = null;
+			// isEmpty always resolves to a fresh single-sheet template, never a workbook.
+			const parsed = isEmpty ? parseTable(source) : parseSource(source);
+			if (parsed.version === 3) { this.workbook = parsed; this.model = null; }
+			else                      { this.model = parsed; this.workbook = null; }
+			if (this.workbook && this.hitSheetId && this.workbook.sheets.some(sh => sh.id === this.hitSheetId)) {
+				this.workbook.activeSheetId = this.hitSheetId;
 			}
 
 			// A block whose rows come from elsewhere (an .xlsx file, a task query) asks its source what to draw and
@@ -396,7 +341,6 @@ export class TableBlock extends MarkdownRenderChild {
 				surface: isReadingView ? 'reading' : 'live',
 				readingEdit: this.plugin.settings.allowReadingViewEdit,
 				locked,
-				legacy: isOldFormat,
 				empty: isEmpty,
 			});
 			// What the table accepts depends on its kind (the source); the user's situation (policy) narrows it further.
@@ -404,7 +348,7 @@ export class TableBlock extends MarkdownRenderChild {
 				if (isWorkbookOp(op)) void this.handleWorkbookOp(op);
 				else void this.handleStructuralOp(op);
 			});
-			const actions = this.tableActions(blockSource, isEmpty, isOldFormat, edits.can);
+			const actions = this.tableActions(blockSource, isEmpty, edits.can);
 
 			const hiddenCtrlColButtons = new Set<CtrlColButtonId>(this.plugin.settings.ctrlColHiddenButtons[answers.scenario(locked)]);
 			const onWorkbookOp = edits.can('rename-sheet') ? (op: WorkbookOpV2) => edits.run(op) : undefined;
@@ -995,8 +939,8 @@ export class TableBlock extends MarkdownRenderChild {
 	 *  `model` into a 1-sheet workbook so `applyWorkbookOp`'s own `create-sheet`
 	 *  case (append + activate) has something to append to. A no-op if already
 	 *  a workbook. Never runs automatically on load — only from this explicit
-	 *  user action — per the "v2→v3 is opt-in, not a forced migration" design
-	 *  (tableVersion.ts's MIN_STABLE_VERSION doc comment). */
+	 *  user action — a v2 table is never asked to
+	 *  become a workbook (tableVersion.ts). */
 	private convertToWorkbook(): void {
 		if (this.workbook || !this.model) return;
 		const existingIds = new Set<string>();
@@ -1029,7 +973,7 @@ export class TableBlock extends MarkdownRenderChild {
 	}
 
 	/** The toolbar buttons the kind of table offers that do not change it. */
-	private tableActions(source: BlockSource | null, isEmpty: boolean, isOldFormat: boolean, can: (type: TableOpType) => boolean): TableAction[] {
+	private tableActions(source: BlockSource | null, isEmpty: boolean, can: (type: TableOpType) => boolean): TableAction[] {
 		const actions: TableAction[] = [...(source?.actions(can) ?? [])];
 		actions.push({
 			id: 'snapshot', label: t('snapshotButton'), place: 'last',
@@ -1040,7 +984,7 @@ export class TableBlock extends MarkdownRenderChild {
 			],
 		});
 		// A table already backed by an .xlsx file has "open" and "detach" for the same purpose.
-		if ((source?.exportable ?? true) && !isEmpty && !isOldFormat) {
+		if ((source?.exportable ?? true) && !isEmpty) {
 			actions.push({ id: 'exportXlsx', label: t('exportToXlsx'), place: 'last', run: () => void this.exportToXlsx() });
 		}
 		return actions;
@@ -1304,55 +1248,7 @@ export class TableBlock extends MarkdownRenderChild {
 		info: ReturnType<typeof this.ctx.getSectionInfo>,
 	): Promise<void> {
 		if (!info) return;
-		await vault.process(file, content => {
-			const lines = content.split('\n');
-			const bodyLines = newSource === '' ? [] : newSource.trimEnd().split('\n');
-			return [
-				...lines.slice(0, info.lineStart + 1),
-				...bodyLines,
-				...lines.slice(info.lineEnd),
-			].join('\n');
-		});
-	}
-
-	/** Write `noUpgrade: true` into the code block front-matter to suppress future banners. */
-	private async suppressUpgradeBanner(): Promise<void> {
-		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
-		if (!(file instanceof TFile)) return;
-		const info = this.ctx.getSectionInfo(this.containerEl);
-		if (!info) return;
-		await this.plugin.app.vault.process(file, content => {
-			const lines = content.split('\n');
-			const blockLines = lines.slice(info.lineStart + 1, info.lineEnd);
-			if (blockLines[0]?.trim() === '---') {
-				// Front-matter exists — insert noUpgrade after opening ---
-				blockLines.splice(1, 0, 'noUpgrade: true');
-			} else {
-				// No front-matter yet — add a minimal one
-				blockLines.unshift('---', 'noUpgrade: true', '---');
-			}
-			return [
-				...lines.slice(0, info.lineStart + 1),
-				...blockLines,
-				...lines.slice(info.lineEnd),
-			].join('\n');
-		});
-	}
-
-	private async applyMigration(fromVersion: number): Promise<void> {
-		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
-		if (!(file instanceof TFile)) return;
-		const info = this.ctx.getSectionInfo(this.containerEl);
-		if (!info) return;
-		const migratedSource = migrateSource(this.source, fromVersion);
-		await this.plugin.app.vault.process(file, content => {
-			const lines = content.split('\n');
-			return [
-				...lines.slice(0, info.lineStart + 1),
-				...migratedSource.trimEnd().split('\n'),
-				...lines.slice(info.lineEnd),
-			].join('\n');
-		});
+		await vault.process(file, content => spliceBlock(content, info.lineStart, info.lineEnd, newSource));
 	}
 
 	private async insertTemplate(templateId: string): Promise<void> {
@@ -1374,21 +1270,13 @@ export class TableBlock extends MarkdownRenderChild {
 	/** Shared by insertTemplate/insertBlank/insertXlsxSource/detachFromXlsx —
 	 *  all four just splice fresh content (v2 for the first three, v2 or v3
 	 *  for detachFromXlsx) into the code block's current line range
-	 *  (replacing whatever is there, empty or not), same pattern as
-	 *  applyMigration. */
+	 *  (replacing whatever is there, empty or not). */
 	private async insertBlock(content: string): Promise<void> {
 		const file = this.plugin.app.vault.getAbstractFileByPath(this.sourcePath);
 		if (!(file instanceof TFile)) return;
 		const info = this.ctx.getSectionInfo(this.containerEl);
 		if (!info) return;
-		await this.plugin.app.vault.process(file, fileContent => {
-			const lines = fileContent.split('\n');
-			return [
-				...lines.slice(0, info.lineStart + 1),
-				...content.trimEnd().split('\n'),
-				...lines.slice(info.lineEnd),
-			].join('\n');
-		});
+		await this.plugin.app.vault.process(file, fileContent => spliceBlock(fileContent, info.lineStart, info.lineEnd, content));
 	}
 
 	/** Per-sheet analogue of insertTemplate — populates just the active (empty)

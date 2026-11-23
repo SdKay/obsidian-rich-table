@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { parse as parseDoc, stringify as stringifyDoc } from 'yaml';
-import { setYamlAdapter, editBlock, findBlocks, applyOp, parse, serialize, isWorkbook } from '../src/core';
+import { setYamlAdapter, editBlock, findBlocks, applyOp, parse, serialize, isWorkbook, type RichTableOp } from '../src/core';
 import { STRUCTURAL_OP_TYPES } from '../src/operations';
 import { setYamlAdapter as restore } from '../src/yamlAdapter';
 import { parseYaml, stringifyYaml } from 'obsidian';
@@ -149,5 +149,69 @@ describe('applyOp on a workbook', () => {
 
 	it('a sheet op on a plain table is an error, not a silent no-op', () => {
 		expect(() => applyOp(parse(BLOCK), { type: 'create-sheet' })).toThrow(/multi-sheet/);
+	});
+});
+
+describe('blocks this version does not read', () => {
+	const note = (body: string) => `# n\n\n\`\`\`rich-table\n${body}\`\`\`\n`;
+	const PRE_1_0 = '---\ncolumns:\n  - { name: A }\n---\n| A |\n|---|\n| 1 |\n';
+	const NEWER = 'columns:\n  - { id: c_a, name: A }\nrows: []\nversion: 99\n';
+	const insertRow = { type: 'insert-row', afterRowId: null } as RichTableOp;
+
+	it.each([['a pre-1.0 block', PRE_1_0, /not a table/], ['a block from a newer version', NEWER, /newer/]])('refuses to edit %s, leaving it as it was', (_, body, message) => {
+		expect(() => editBlock(note(body), insertRow)).toThrow(message);
+		expect(() => parse(body)).toThrow(message);
+	});
+
+	it('edits a block written without the --- lines, and writes them back', () => {
+		const out = editBlock(note('version: 2\ncolumns:\n  - { id: c_a, name: A }\nrows: []\n'), insertRow);
+		const source = findBlocks(out)[0]!.source;
+		expect(source.startsWith('---\n')).toBe(true);
+		expect(source.trimEnd().endsWith('---')).toBe(true);
+		const doc = parse(source);
+		expect(!isWorkbook(doc) && doc.rows).toHaveLength(1);
+	});
+});
+
+describe('a note written with CRLF line breaks', () => {
+	it('is edited, and the rewritten block keeps CRLF like the rest of the note', () => {
+		const note = '# n\r\n\r\n```rich-table\r\n---\r\nversion: 2\r\ncolumns:\r\n  - { id: c_a, name: A }\r\nrows: []\r\n---\r\n```\r\ntail\r\n';
+		const out = editBlock(note, { type: 'insert-row', afterRowId: null } as RichTableOp);
+		expect(out.split('\n').slice(0, -1).every(l => l.endsWith('\r'))).toBe(true);
+		const doc = parse(findBlocks(out)[0]!.source);
+		expect(!isWorkbook(doc) && doc.rows).toHaveLength(1);
+	});
+});
+
+describe('a block indented under a list item', () => {
+	const BODY = ['---', 'version: 2', 'columns:', '  - { id: c_a, name: A }', 'rows: []', '---'];
+	const noteWith = (fence: string, content: string) => `- item\n\n${fence}\`\`\`rich-table\n${BODY.map(l => content + l).join('\n')}\n${fence}\`\`\`\n- next\n`;
+	const insertRow = { type: 'insert-row', afterRowId: null } as RichTableOp;
+
+	it.each([
+		['content at the fence indent', '    ', '    '],
+		['content indented more than the fence', '    ', '        '],
+		['content with no indent at all', '    ', ''],
+	])('is read with %s', (_, fence, content) => {
+		const block = findBlocks(noteWith(fence, content))[0]!;
+		expect(block.indent).toBe(fence);
+		expect(parse(block.source)).toMatchObject({ version: 2 });
+	});
+
+	it('is written back at the fence indent, so it stays inside the list item', () => {
+		const out = editBlock(noteWith('    ', '        '), insertRow);
+		const block = findBlocks(out)[0]!;
+		const lines = out.split('\n');
+		for (const l of lines.slice(block.start + 1, block.end)) expect(l.startsWith('    ')).toBe(true);
+		// The top-level keys sit exactly at the fence indent: the read-side indent was taken off, not doubled.
+		expect(lines.slice(block.start + 1, block.end).filter(l => /^ *version:/.test(l))).toEqual(['    version: 2']);
+		expect(out.endsWith('- next\n')).toBe(true);
+		expect(parse(block.source)).toMatchObject({ rows: [{}] });
+	});
+
+	it('keeps a ---  inside a cell, which sits deeper than the block', () => {
+		const note = '- item\n  ```rich-table\n  version: 2\n  columns:\n    - { id: c_a, name: A }\n  rows:\n    - id: r_a\n      cells:\n        c_a: |\n          above\n          ---\n          below\n  ```\n';
+		const doc = parse(findBlocks(note)[0]!.source);
+		expect(!isWorkbook(doc) && doc.rows[0]?.cells['c_a']).toBe('above\n---\nbelow\n');
 	});
 });

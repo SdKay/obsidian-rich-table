@@ -374,9 +374,7 @@ export const en = {
 	sheetFallback:       'Sheet {n}',
 	xlsxNotFound:        'xlsx file not found: {path}',
 	xlsxEmptyWorkbook:        'This workbook has no visible sheets or no data',
-	upgradeBannerText:   'This table uses an older format. The new format supports more features. Converting will update the code block — you can undo with Ctrl+Z.',
-	upgradeBannerConvert: 'Convert to new format',
-	upgradeBannerKeep:   'Keep old format',
+	blockUnreadable: 'Rich Table cannot read this block: it is not a table in a format this plugin reads (tables from versions before 1.0 are no longer supported). The block is shown as written and left unchanged.',
 	openCommunityStore:  'Open in Community Store',
 } as const;
 

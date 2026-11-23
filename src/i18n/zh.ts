@@ -340,8 +340,6 @@ export const zh: Dict = {
 	sheetFallback:       '表 {n}',
 	xlsxNotFound:        '未找到 xlsx 文件：{path}',
 	xlsxEmptyWorkbook:        '此工作簿没有可见的工作表，或没有数据',
-	upgradeBannerText:   '该表格使用旧版格式，新版格式支持更多功能。转换时将自动修改表格代码块，可用 Ctrl+Z 撤回。',
-	upgradeBannerConvert: '转换到新版格式',
-	upgradeBannerKeep:   '继续使用旧版',
+	blockUnreadable: 'Rich Table 无法读取该代码块：内容不是本插件可读的表格格式（1.0 之前版本的表格已不再支持）。代码块按原文显示，不会被修改。',
 	openCommunityStore:  '前往社区商店升级',
 };

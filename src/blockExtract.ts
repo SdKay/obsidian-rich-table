@@ -1,6 +1,5 @@
 import { rowSpace } from './rowSpace';
-import { parseSource } from './parser';
-import { getTableVersion, CURRENT_TABLE_VERSION, MIN_STABLE_VERSION } from './tableVersion';
+import { parseSource, readBlock } from './parser';
 import { columnLetterFromIndex, formatSheetQualifiedRef } from '@office-kit/xlsx/utils';
 import type { TableModelV2 } from './model';
 import type { ExtractedLine, ExtractResult } from './richSearchApi';
@@ -79,12 +78,14 @@ function pushTable(out: ExtractedLine[], model: TableModelV2, sheet: { id: strin
 
 /** Reads one block's source. Never throws. */
 export function extractBlock(source: string): ExtractResult {
-	if (source.trim() === '') return { ok: true, value: [] };
 	try {
-		const version = getTableVersion(source);
-		if (version > CURRENT_TABLE_VERSION) return fail(`The table was written by a newer Rich Table (format ${version}) and cannot be read`);
-		// A v1 table renders as a read-only upgrade preview; it is not read here, so its source is searched instead.
-		if (version < MIN_STABLE_VERSION) return fail('The table uses the old format (v1) and is not read; upgrade it to search its cells');
+		const read = readBlock(source);
+		if (read.kind === 'empty') return { ok: true, value: [] };
+		if (read.kind === 'too-new') return fail(`The table was written by a newer Rich Table (format ${read.version}) and cannot be read`);
+		// Shown as its source, so the source is searched instead.
+		if (read.kind === 'unreadable') {
+			return fail(read.yamlError ? `The table could not be read: ${read.yamlError}` : 'The block is not a table this version reads');
+		}
 		const doc = parseSource(source);
 
 		const out: ExtractedLine[] = [];

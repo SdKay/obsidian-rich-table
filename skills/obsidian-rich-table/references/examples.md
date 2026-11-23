@@ -4,20 +4,6 @@ Complete example blocks to adapt.
 
 ## Common patterns
 
-### Minimal table (no YAML needed)
-For very simple tables, omit the YAML and use the legacy v1 format — the plugin will show an upgrade banner but still render the table:
-
-````markdown
-```rich-table
-| Name   | Role      | Team  |
-| ------ | --------- | ----- |
-| Alice  | Engineer  | Core  |
-| Bob    | Designer  | UX    |
-```
-````
-
-For new tables, always prefer v2 format with explicit IDs.
-
 ### Task board (v2)
 ````markdown
 ```rich-table

@@ -63,7 +63,7 @@ footer: "Updated weekly · click any cell to edit"
 ````
 
 **Structure rules:**
-- The **YAML front-matter is the entire block** — everything the table needs lives between the two `---` lines. There is nothing below the closing `---` to write or maintain (an older note may still have a read-only pipe-table mirror left over from before that was removed from the format; harmless, ignore it, don't add one to a new block).
+- The **YAML is the entire block**. Always write it between two `---` lines, as above: plugin builds before 1.8 need them, and read a block without them as an empty table. The plugin reads a block with both lines, with only the opening one, or with neither. Below a closing `---` nothing is read (an older note may still have a pipe-table mirror there; harmless, ignore it, don't add one to a new block).
 - `version: 2` is required for the current format.
 - Columns and rows each have a stable `id` field. Use sequential IDs: `c_000000`, `c_000001`, … for columns and `r_000000`, `r_000001`, … for rows.
 - Cell values are stored in `rows[].cells` as a record keyed by column ID.
@@ -208,7 +208,7 @@ These fields are all optional and documented in separate files. When the user's 
 
 1. Read the target file with `Read`
 2. Identify the insertion point
-3. Insert the fenced block using `Edit` — the YAML front-matter is the whole block, nothing else needed below the closing `---`
+3. Insert the fenced block using `Edit` — the YAML between the two `---` lines is the whole block, nothing else needed below the closing `---`
 
 ## Modifying an existing table
 
@@ -240,7 +240,7 @@ For a multi-sheet table add `"sheetId"` to target a sheet other than the active 
 Only when the tool cannot run, or to create a brand-new block:
 
 1. Read the file and locate the ` ```rich-table ` block
-2. Edit the YAML front-matter (ignore any trailing content below the closing `---` — an old note may still have a legacy pipe-table mirror there; the parser never reads it, and it's fine to leave it as-is)
+2. Edit the YAML (ignore any trailing content below the closing `---` — an old note may still have a pipe-table mirror there; the parser never reads it, and it's fine to leave it as-is)
 3. Write back with `Edit`
 
 **Add a row:** append a new entry to `rows[]` with the next sequential `id` (`r_000003`, etc.) and appropriate `cells`.

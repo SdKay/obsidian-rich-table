@@ -26,7 +26,7 @@ UI interaction → StructuralOpV2 (operations.ts) → TableBlock.handleStructura
 - `renderer.ts` never touches the filesystem; it only emits ops. New behaviour belongs in a reducer op or a pure module first, DOM second.
 - Large behaviours are split into `render*.ts` siblings; pure decision logic lives apart from DOM code (`cellNav.ts`, `reorderPlan.ts`, `renderFreezePlan.ts`, `selectorLayout.ts`) so it can be unit-tested. Prefer that split for new features.
 - Tables are ID-based (`r_…`, `c_…`); styles and merges address IDs, never positions. Style targets are parsed in `styleTarget.ts`.
-- v1 (Excel-style coordinates) is migration-only (`src/history/v1`, `src/migrations`).
+- The block is YAML; the `---` lines around it are optional on read (`blockYaml`, `readBlock` in `parser.ts`) and still written. The pre-1.0 pipe-table format is no longer read: such a block is shown as its source and never written.
 - A block whose rows come from elsewhere (an `.xlsx` file, a task query) has a `BlockSource` (`blockSource.ts`) that loads it, says what it accepts and routes its ops; `TableBlock` never tests which kind it is. A new kind is one source module plus one entry in `sourceKinds`. Its rules are applied in `queueOp`, which every op passes, not only in the buttons.
 - Every write-back rebuilds the table in a fresh container. State that must survive a rebuild (hover, in-progress edit, selection) goes through a `cacheKey`-keyed handoff module (`render*Handoff.ts`), and `injectLiveSnapshot` keeps the old look in place while the new render completes. You cannot reach the previous instance's DOM from the new one.
 
@@ -65,8 +65,8 @@ UI interaction → StructuralOpV2 (operations.ts) → TableBlock.handleStructura
 A block is user content in people's notes; breaking it is data loss.
 
 - Extend with new optional YAML fields; never rename or remove existing ones. Parsers ignore unknown fields and trailing content.
-- A change that alters how existing fields are interpreted, or that an old parser would misread, needs a `CURRENT_TABLE_VERSION` bump plus a migration in `src/migrations` (the chain runner needs only a new entry).
-- A table written with a newer version is refused with a banner rather than half-parsed; an older one renders read-only with an upgrade banner.
+- A change that alters how existing fields are interpreted, or that an old parser would misread, needs a `CURRENT_TABLE_VERSION` bump.
+- A table written with a newer version is refused with a banner rather than half-parsed; so is a block that is not a table this build reads. Neither is ever written back.
 - Prefer a discriminated-union extension (scalar vs object) over pre-generalizing a field.
 - **Any change to the code block's fields (add, remove, rename, or change what a field means) must update the skill in `skills/obsidian-rich-table/` in the same commit.** It is the agent-facing format reference; a stale one makes agents write blocks the plugin misreads. Core fields live in `SKILL.md`; the rest are in `references/` (formulas, display fields, workbook/xlsx, style targets, cell content, examples, themes). Update the field's section, the examples that use it, and the style-target reference if targets changed, and keep the index table in `SKILL.md` in step when a field moves or is added. Pure UI changes that leave the block untouched do not need it.
 

@@ -1,9 +1,6 @@
 /**
- * v2 parser. Reads ONLY the YAML front-matter — anything after the closing
- * `---` is ignored. This is what keeps parsing backward compatible with notes
- * written before the pipe-table mirror was removed: an old note that still
- * has one below the front-matter keeps parsing exactly as before, and the
- * next write-back drops it since the serializer no longer regenerates it.
+ * Block parser. The block is YAML, optionally between `---` lines; see
+ * `blockYaml` for what is read when they are there.
  */
 
 import { parseYaml } from './yamlAdapter';
@@ -21,6 +18,7 @@ import type {
 import { genId } from './idGen';
 import { recomputeFormulas } from './formula';
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT } from './operations';
+import { CURRENT_TABLE_VERSION } from './tableVersion';
 
 const AGG_TYPES: AggType[] = ['sum', 'avg', 'min', 'max', 'count'];
 
@@ -163,21 +161,78 @@ export function parseSource(source: string): TableModelV2 | WorkbookV3 {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const DELIMITER = /^---[ \t]*$/;
+const OPENER = /^[ \t]*---[ \t]*$/;
+const BLANK = /^[ \t]*$/;
+
+/**
+ * No byte-order mark, LF line breaks, and the indent every non-blank line shares taken off, so every line test
+ * below sees the same lines whether or not the block sits under a list item. Moving all lines the same distance
+ * changes nothing in YAML.
+ */
+function normalize(source: string): string {
+	const lines = source.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
+	const indents = lines.filter(l => !BLANK.test(l)).map(l => /^[ \t]*/.exec(l)![0].length);
+	const shared = indents.length === 0 ? 0 : Math.min(...indents);
+	return (shared === 0 ? lines : lines.map(l => (BLANK.test(l) ? '' : l.slice(shared)))).join('\n');
+}
+
+/**
+ * The YAML of a block. The `---` lines around it are optional: with an opening
+ * one, the YAML ends at the next `---` at column 0 (an indented one is content,
+ * such as a rule inside a block-scalar cell) and what follows is ignored, which
+ * is where an older note keeps its pipe-table mirror.
+ */
+function blockYaml(source: string): string {
+	const lines = normalize(source).split('\n');
+	const open = lines.findIndex(l => !BLANK.test(l));
+	if (open === -1 || !OPENER.test(lines[open] ?? '')) return lines.join('\n');
+	const close = lines.findIndex((l, i) => i > open && DELIMITER.test(l));
+	return lines.slice(open + 1, close === -1 ? undefined : close).join('\n');
+}
+
 function extractFrontmatter(source: string): Record<string, unknown> | null {
-	const lines = source.split('\n');
-	if (lines[0]?.trim() !== '---') return null;
-	// No leading whitespace allowed (only trailing, e.g. a stray \r) — the
-	// serializer always writes the real closing delimiter at column 0. An
-	// INDENTED "---" is YAML content, not the delimiter: a cell value can be
-	// a block-scalar (`c_0: |`) whose own text contains a line that's just
-	// "---" — a nested rich-table block's own frontmatter delimiters, or even
-	// just a plain Markdown horizontal rule typed into a cell — and matching
-	// on a trimmed comparison mistook that indented line for the outer
-	// frontmatter's close, silently truncating everything after it.
-	const closeIdx = lines.findIndex((l, i) => i > 0 && /^---\s*$/.test(l));
-	if (closeIdx === -1) return null;
-	const yamlStr = lines.slice(1, closeIdx).join('\n');
-	return (parseYaml(yamlStr) as Record<string, unknown>) ?? null;
+	const yaml: unknown = parseYaml(blockYaml(source));
+	return isRecord(yaml) ? yaml : null;
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+	return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+export type BlockRead =
+	| { kind: 'table'; version: number }
+	| { kind: 'empty' }
+	| { kind: 'too-new'; version: number }
+	| { kind: 'unreadable'; yamlError?: string };
+
+/**
+ * What a block is, before parsing it: a table this build reads, an empty block,
+ * one written by a newer build, or anything else. "Anything else" includes the
+ * v1 format (a pipe table, with YAML whose columns have no ids above it), which
+ * is no longer read; the caller shows it and never writes it.
+ */
+export function readBlock(source: string): BlockRead {
+	if (normalize(source).split('\n').every(l => BLANK.test(l))) return { kind: 'empty' };
+	let yaml: Record<string, unknown> | null;
+	try { yaml = extractFrontmatter(source); } catch (err) {
+		return { kind: 'unreadable', yamlError: (err instanceof Error ? err.message.split('\n')[0] : undefined) ?? 'unknown error' };
+	}
+	if (!yaml) return { kind: 'unreadable' };
+	const version = yaml.version === undefined ? 2 : yaml.version;
+	// A version that is not a whole number is not guessed at: written as `1`, it may be the old format.
+	if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) return { kind: 'unreadable' };
+	if (version > CURRENT_TABLE_VERSION) return { kind: 'too-new', version };
+	if (version < 2) return { kind: 'unreadable' };
+	return isTableYaml(yaml) ? { kind: 'table', version } : { kind: 'unreadable' };
+}
+
+function isTableYaml(yaml: Record<string, unknown>): boolean {
+	if (Array.isArray(yaml.sheets) && yaml.sheets.some(s => isRecord(s) && typeof s.id === 'string')) return true;
+	if (isRecord(yaml.xlsxSource) || isRecord(yaml.tasks)) return true;
+	if (!Array.isArray(yaml.columns)) return false;
+	if (yaml.rows !== undefined) return Array.isArray(yaml.rows);
+	return yaml.columns.some(c => isRecord(c) && typeof c.id === 'string');
 }
 
 function parseColumns(raw: unknown): ColumnDefV2[] {

@@ -345,8 +345,6 @@ export const de: Dict = {
 	sheetFallback:       'Blatt {n}',
 	xlsxNotFound:        'xlsx-Datei nicht gefunden: {path}',
 	xlsxEmptyWorkbook:        'Diese Arbeitsmappe hat keine sichtbaren Blätter oder keine Daten',
-	upgradeBannerText:   'Diese Tabelle verwendet ein älteres Format. Das neue Format unterstützt mehr Funktionen. Beim Umwandeln wird der Codeblock geändert – mit Strg+Z lässt sich das rückgängig machen.',
-	upgradeBannerConvert: 'In neues Format umwandeln',
-	upgradeBannerKeep:   'Altes Format beibehalten',
+	blockUnreadable: 'Rich Table kann diesen Block nicht lesen: Er ist keine Tabelle in einem Format, das dieses Plugin liest (Tabellen aus Versionen vor 1.0 werden nicht mehr unterstützt). Der Block wird unverändert angezeigt.',
 	openCommunityStore:  'Im Community-Store öffnen',
 };
