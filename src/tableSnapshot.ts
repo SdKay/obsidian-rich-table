@@ -15,32 +15,7 @@
 import * as htmlToImage from 'html-to-image';
 import { contentEndRow } from './snapshotEnd';
 import { withPixelDensity } from './pngDensity';
-
-/** Hover-only chrome, scroll-affordances, and the status bar / sheet tab bar
- *  — none of these have a place in a static, fully-expanded snapshot (the
- *  status bar's own totals/tabs are chrome ABOUT the table, not the table's
- *  content, and the sheet tab bar reflects an interactive multi-sheet
- *  workbook UI, not something meant to be shared as a picture of one sheet).
- *  `.bt-sheet-tabbar` is listed on its own, not just implied by
- *  `.bt-status-bar`, because it has two possible mount points (tableBlock.ts):
- *  nested inside `.bt-status-bar .bt-status-tabs` for a table-view sheet, or
- *  a separate standalone bar when the active sheet is a kanban/calendar view
- *  (which renders no status bar of its own at all). See
- *  prepareSnapshotClone's own doc comment for why removing these here (on a
- *  detached clone) is safe, unlike removing them from the live table. */
-const STRIP_SELECTORS = [
-	'.bt-ctrl-col',
-	'.bt-col-selector',
-	'.bt-row-selector',
-	'.bt-edge-add-row',
-	'.bt-edge-add-col',
-	'.bt-view-resize-r',
-	'.bt-view-resize-br',
-	'.bt-view-resize-b',
-	'.bt-view-scroll',
-	'.bt-status-bar',
-	'.bt-sheet-tabbar',
-].join(', ');
+import { stripToTable } from './staticClone';
 
 const SNAPSHOT_PIXEL_RATIO = 2;
 const SNAPSHOT_OPTIONS: NonNullable<Parameters<typeof htmlToImage.toBlob>[1]> = {
@@ -51,7 +26,7 @@ const SNAPSHOT_OPTIONS: NonNullable<Parameters<typeof htmlToImage.toBlob>[1]> = 
 
 /**
  * Clones `root` and returns a version prepared for capture:
- *  - hover-only chrome removed (STRIP_SELECTORS) — safe to mutate freely
+ *  - hover-only chrome removed (staticClone.ts) — safe to mutate freely
  *    here specifically BECAUSE it's a clone with no event listeners and no
  *    effect on the live table, unlike the render-cache placeholder's more
  *    careful de-fanging of a clone that's still shown to the user.
@@ -70,27 +45,8 @@ const SNAPSHOT_OPTIONS: NonNullable<Parameters<typeof htmlToImage.toBlob>[1]> = 
  */
 function prepareSnapshotClone(root: HTMLElement): { clone: HTMLElement; size: { width: number; height: number }; cleanup: () => void } {
 	const clone = root.cloneNode(true) as HTMLElement;
-	clone.querySelectorAll(STRIP_SELECTORS).forEach(el => el.remove());
-
-	// --bt-sel-pad(-left/-right) is `root`'s own inline-style reservation for
-	// the hover selector strips/edge-add buttons (renderer.ts's TOP_STRIP_PAD
-	// et al) — set once at first paint and, for an UNTITLED table
-	// specifically, padded an extra 28px on top so the strip clears
-	// Obsidian's own floating block toolbar (see the no-title-top-clearance
-	// e2e test). Cloning `root` carries this inline style over verbatim,
-	// leaving a tall blank band above an untitled table's snapshot even
-	// though the strips themselves are already stripped above — this
-	// reservation has no purpose once there's no strip left to reserve room
-	// for. Removed here, not on the live root, for the same reason
-	// everything else in this function only ever touches the clone.
-	clone.style.removeProperty('--bt-sel-pad');
-	clone.style.removeProperty('--bt-sel-pad-left');
-	clone.style.removeProperty('--bt-sel-pad-right');
-
-	const wrapper = clone.querySelector<HTMLElement>('.bt-table-wrapper');
+	const wrapper = stripToTable(clone);
 	if (wrapper) {
-		wrapper.classList.remove('bt-view-fixed-w', 'bt-view-fixed-h');
-		wrapper.classList.add('bt-snapshot-expanded');
 		// The clone is laid out as wide as the note's view is, to the fraction (clientWidth rounds it), so columns that
 		// wrap break where they do in the note; a table wider than the view keeps its own width.
 		const zoom = Number.parseFloat(root.style.zoom) || 1;
