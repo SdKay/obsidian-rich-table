@@ -522,6 +522,9 @@ export const test = base.extend<{
 				page.locator('.bt-error').first().waitFor(),
 				page.locator('.bt-tasks-query-missing').first().waitFor(),
 				page.locator('.bt-version-banner').first().waitFor(),
+				// A sheet drawn as a kanban board or a calendar has no table.
+				page.locator('.bt-kanban-board').first().waitFor({ state: 'attached' }),
+				page.locator('.bt-cal-nav').first().waitFor({ state: 'attached' }),
 			]);
 
 			return {

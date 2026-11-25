@@ -59,3 +59,4 @@ export { MarkdownRenderer as ShimMarkdownRenderer } from './obsidian-shim';
 export { applyCellPadding } from '../../../src/cellPadding';
 export { scanTasks } from '../../../src/tasks/taskScan';
 export { exportSheetHtml, STATIC_EXPORT_CSS } from '../../../src/staticExport';
+export { exportWorkbookHtml } from '../../../src/staticExport';

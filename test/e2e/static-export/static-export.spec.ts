@@ -156,6 +156,37 @@ test.describe('static export of a sheet', () => {
 		expect(overlap).toBe(false);
 	});
 
+	test('a table wider than the page stays inside its frame and scrolls there @geometry', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		const cols = Array.from({ length: 14 }, (_, i) => `  - { id: c_${i}, name: 很长的列名${i}, width: 120 }`).join('\n');
+		await renderBlock(`---\nversion: 2\nlocked: true\ntheme: grid\ncolumns:\n${cols}\nrows:\n  - { id: r_1, cells: { c_0: first, c_13: last } }\n---\n`);
+		await placeIn(page, await exportShown(page), 520);
+		const m = await page.evaluate(() => {
+			const root = document.querySelector('.bt-render-root')!.getBoundingClientRect();
+			const wrapper = document.querySelector('.bt-table-wrapper') as HTMLElement;
+			const before = wrapper.scrollLeft; wrapper.scrollLeft = wrapper.scrollWidth;
+			const last = Array.from(document.querySelectorAll('.bt-td')).find(td => td.textContent === 'last')!.getBoundingClientRect();
+			return { rootRight: root.right, rootWidth: root.width, pageWidth: document.documentElement.clientWidth, overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth, scrolls: wrapper.scrollWidth > wrapper.clientWidth, before, after: wrapper.scrollLeft, lastRight: last.right };
+		});
+		expect(m.overflowX, 'the page itself does not scroll sideways').toBe(false);
+		expect(m.rootRight).toBeLessThanOrEqual(m.pageWidth);
+		expect(m.scrolls, 'the table scrolls inside the frame').toBe(true);
+		expect(m.after).toBeGreaterThan(m.before);
+		expect(m.lastRight, 'the last column can be scrolled into the frame').toBeLessThanOrEqual(m.rootRight + 1);
+	});
+
+	test('a kanban board wider than the page stays inside its frame and scrolls there @geometry', { tag: '@geometry' }, async ({ page, renderBlock }) => {
+		await renderBlock(`---\nversion: 2\nlocked: true\ntheme: grid\ncolumns:\n  - { id: c_a, name: 项 }\n  - { id: c_s, name: 状态, type: task-status }\nrows:\n  - { id: r_1, cells: { c_a: 任务一, c_s: todo } }\n  - { id: r_2, cells: { c_a: 任务二, c_s: done } }\nviews:\n  - { id: v_k, type: kanban, name: K, kanban: { groupByColId: c_s } }\nactiveViewId: v_k\n---\n`);
+		await placeIn(page, await exportShown(page), 520).catch(() => undefined);
+		const m = await page.evaluate(() => {
+			const root = document.querySelector('.bt-render-root')!.getBoundingClientRect();
+			const board = document.querySelector('.bt-kanban-board') as HTMLElement;
+			return { rootRight: root.right, pageWidth: document.documentElement.clientWidth, overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth, scrolls: board.scrollWidth > board.clientWidth };
+		});
+		expect(m.overflowX, 'the page itself does not scroll sideways').toBe(false);
+		expect(m.rootRight).toBeLessThanOrEqual(m.pageWidth);
+		expect(m.scrolls, 'the board scrolls inside the frame').toBe(true);
+	});
+
 	test('shows the whole of a table taller than its view', { tag: '@geometry' }, async ({ page, renderBlock }) => {
 		const rows = Array.from({ length: 60 }, (_, i) => `  - { id: r_${i}, cells: { c_a: row-${i}, c_b: x } }`).join('\n');
 		await renderBlock(`---\nversion: 2\nlocked: true\nviewHeight: 120\ncolumns:\n  - { id: c_a, name: 项 }\n  - { id: c_b, name: 值 }\nrows:\n${rows}\n---\n`);
