@@ -1,6 +1,6 @@
 /**
- * What a copy of a rendered table keeps when it leaves the note as something to look at, such as the picture
- * tableSnapshot.ts makes: the table, with none of the parts that only work while it is being edited.
+ * What a copy of a rendered table keeps when it leaves the note as something to look at, a picture (tableSnapshot.ts)
+ * or a page (staticExport.ts): the table, with none of the parts that only work while it is being edited.
  */
 
 /** Hover-only chrome, scroll affordances, and the bars about the table rather than in it. `.bt-sheet-tabbar` is named
