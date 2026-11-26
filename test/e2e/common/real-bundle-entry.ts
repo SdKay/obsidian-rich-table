@@ -60,3 +60,5 @@ export { applyCellPadding } from '../../../src/cellPadding';
 export { scanTasks } from '../../../src/tasks/taskScan';
 export { exportSheetHtml, STATIC_EXPORT_CSS } from '../../../src/staticExport';
 export { exportWorkbookHtml } from '../../../src/staticExport';
+export { createBlockExportProvider } from '../../../src/blockExportProvider';
+export { exportCss } from '../../../src/blockExportProvider';

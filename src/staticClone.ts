@@ -27,9 +27,12 @@ export const STRIP_SELECTORS = [
  */
 export function stripToTable(clone: HTMLElement, expandClass = 'bt-snapshot-expanded'): HTMLElement | null {
 	clone.querySelectorAll(STRIP_SELECTORS).forEach(el => el.remove());
-	clone.style.removeProperty('--bt-sel-pad');
-	clone.style.removeProperty('--bt-sel-pad-left');
-	clone.style.removeProperty('--bt-sel-pad-right');
+	// The reservation is on the table's root: `clone` is that root (the snapshot), or the shell around it (the export).
+	for (const el of [clone, ...Array.from(clone.querySelectorAll<HTMLElement>('.bt-render-root'))]) {
+		el.style.removeProperty('--bt-sel-pad');
+		el.style.removeProperty('--bt-sel-pad-left');
+		el.style.removeProperty('--bt-sel-pad-right');
+	}
 	const wrapper = clone.querySelector<HTMLElement>('.bt-table-wrapper');
 	if (wrapper) {
 		wrapper.classList.remove('bt-view-fixed-w', 'bt-view-fixed-h');

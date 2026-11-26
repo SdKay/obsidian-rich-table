@@ -38,7 +38,6 @@ function cutDown(shell: HTMLElement): HTMLElement {
 	const clone = shell.cloneNode(true) as HTMLElement;
 	clone.querySelectorAll('.bt-outer-frame').forEach(el => el.remove());
 	stripToTable(clone, 'bt-export-view');
-	clone.querySelector<HTMLElement>('.bt-render-root')?.style.removeProperty('--bt-sel-pad');
 	clone.style.removeProperty('visibility');
 	clone.classList.add('bt-export');
 	return clone;
@@ -74,7 +73,7 @@ export function exportWorkbookHtml(sheets: ExportSheetInput[], opts: { idPrefix:
 	});
 	const panels = book.createDiv({ cls: 'bt-export-panels' });
 	for (const sheet of sheets) panels.createDiv({ cls: 'bt-export-panel' }).appendChild(cutDown(sheet.shell));
-	const tabs = book.createDiv({ cls: 'bt-export-tabs bt-sheet-tabbar' });
+	const tabs = book.createDiv({ cls: 'bt-export-tabs bt-status-tabs' }).createDiv({ cls: 'bt-sheet-tabbar' });
 	sheets.forEach((sheet, i) => {
 		const tab = tabs.createEl('label', { cls: 'bt-sheet-tab', attr: { for: idOf(i) } });
 		if (sheet.tabColor) tab.style.setProperty('--bt-sheet-tab-bg', sheet.tabColor);
@@ -85,9 +84,13 @@ export function exportWorkbookHtml(sheets: ExportSheetInput[], opts: { idPrefix:
 	return { html: `<style>${sheets.map((_, n) => workbookRules(idOf(n), n + 1)).join('\n')}</style>${book.outerHTML}` };
 }
 
-/** What the n-th radio (1-based, `id`) being checked does: shows the n-th panel and gives the n-th tab the open tab's look. */
+/**
+ * What the n-th radio (1-based, `id`) being checked does: shows the n-th panel and gives the n-th tab the look the open
+ * tab has in the status bar (`.bt-status-tabs .bt-sheet-tab-active` in styles.css: the accent line under it). Which tab
+ * is open is not a class here, since the page changes it with no script.
+ */
 function workbookRules(id: string, n: number): string {
 	const checked = `#${CSS.escape(id)}:checked`;
 	return `${checked} ~ .bt-export-panels > .bt-export-panel:nth-child(${n}) { display: block; }\n`
-		+ `${checked} ~ .bt-export-tabs > .bt-sheet-tab:nth-child(${n}) { color: var(--bt-sheet-tab-color, var(--text-normal)); background: var(--bt-sheet-tab-bg, var(--background-primary)); border-color: var(--bt-sheet-tab-bg, var(--interactive-accent)); box-shadow: var(--shadow-s); font-weight: var(--font-semibold); }`;
+		+ `${checked} ~ .bt-export-tabs .bt-sheet-tab:nth-child(${n}) { border-bottom-color: var(--bt-sheet-tab-bg, var(--interactive-accent)); }`;
 }

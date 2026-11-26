@@ -33,10 +33,11 @@ async function exportBook(page: Page, renderBlock: (src: string) => Promise<unkn
 	}, { shells, specs: SHEETS, opts });
 }
 
+/** Puts the export in a page that has only what an export brings: its stylesheet, cut from styles.css, and the page's variables. */
 async function open(page: Page, html: string, width: number) {
-	const css = await page.evaluate(() => (window.RichTableReal as unknown as { STATIC_EXPORT_CSS: string }).STATIC_EXPORT_CSS);
+	const css = await page.evaluate(() => (window.RichTableReal as unknown as { exportCss(): string }).exportCss());
 	await page.setViewportSize({ width, height: 560 });
-	await page.setContent(`<!doctype html><meta charset=utf-8><style>${VARS}${STYLES}${css}body{margin:0;padding:8px;font-family:sans-serif}</style><div id="page" style="width:${width - 16}px">${html}</div>`);
+	await page.setContent(`<!doctype html><meta charset=utf-8><style>${VARS}${css}body{margin:0;padding:8px;font-family:sans-serif}</style><div id="page" style="width:${width - 16}px">${html}</div>`);
 }
 
 const shown = (page: Page) => page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>('.bt-export-panel')).map(p => getComputedStyle(p).display !== 'none'));
@@ -84,16 +85,31 @@ test.describe('static export of a workbook', () => {
 		expect(tabs[1]!.bg).toBe('#d9f0ff');
 	});
 
-	test('the tab of the shown sheet looks selected, and the look follows the click', async ({ page, renderBlock }) => {
+	test('the tabs are apart from each other, flat, and the open one has a line under it in the accent colour', async ({ page, renderBlock }) => {
 		await open(page, await exportBook(page, renderBlock, { idPrefix: 'wb5', activeSheetId: 's_a' }), 869);
-		const weights = () => page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>('label.bt-sheet-tab')).map(t => getComputedStyle(t).fontWeight));
-		const first = await weights();
-		expect(first[0], 'the shown sheet\'s tab is set apart from the others').not.toBe(first[1]);
-		expect(first[1]).toBe(first[2]);
+		const tabs = () => page.evaluate(() => {
+			const all = Array.from(document.querySelectorAll<HTMLElement>('label.bt-sheet-tab'));
+			const accent = getComputedStyle(document.documentElement).getPropertyValue('--interactive-accent').trim();
+			return {
+				accent,
+				gaps: all.slice(1).map((t, i) => Math.round(t.getBoundingClientRect().left - all[i]!.getBoundingClientRect().right)),
+				lines: all.map(t => { const s = getComputedStyle(t); return { width: parseFloat(s.borderBottomWidth), style: s.borderBottomStyle, color: s.borderBottomColor, shadow: s.boxShadow, bg: s.backgroundColor }; }),
+			};
+		});
+		const first = await tabs();
+		for (const gap of first.gaps) expect(gap, 'space between tabs').toBeGreaterThanOrEqual(8);
+		for (const l of first.lines) { expect(l.width).toBe(2); expect(l.style).toBe('solid'); expect(l.shadow, 'flat: no shadow').toBe('none'); expect(l.bg, 'flat: no fill').toBe('rgba(0, 0, 0, 0)'); }
+		const only = (i: number) => first.lines.map((_, k) => k === i);
+		const lit = (t: Awaited<ReturnType<typeof tabs>>) => t.lines.map(l => l.color !== 'rgba(0, 0, 0, 0)');
+		expect(lit(first), 'only the open tab has a line').toEqual(only(0));
 		await page.locator('label.bt-sheet-tab').nth(2).click();
-		const after = await weights();
-		expect(after[2]).toBe(first[0]);
-		expect(after[0]).toBe(first[1]);
+		expect(lit(await tabs()), 'the line follows the click').toEqual(only(2));
+	});
+
+	test('the line under the open tab takes the sheet\'s own colour when it has one', async ({ page, renderBlock }) => {
+		await open(page, await exportBook(page, renderBlock, { idPrefix: 'wb5b', activeSheetId: 's_b' }), 869);
+		const color = await page.evaluate(() => { const t = document.querySelectorAll<HTMLElement>('label.bt-sheet-tab')[1]!; return getComputedStyle(t).borderBottomColor; });
+		expect(color).toBe('rgb(217, 240, 255)');
 	});
 
 	test('two workbooks in one page switch independently', async ({ page, renderBlock }) => {

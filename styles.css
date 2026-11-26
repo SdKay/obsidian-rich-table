@@ -230,10 +230,11 @@
 .bt-render-root .bt-table-wrapper.bt-view-fixed-w {
 	width: var(--bt-view-width);
 }
-/* tableSnapshot.ts's off-screen host for the detached clone it rasterizes —
+/* The off-screen host of tableSnapshot.ts's clone and of blockExportProvider.ts's drawing —
  * laid out (not display:none, which most DOM-to-image approaches can't
  * measure) but far outside the viewport, so nothing ever paints it visibly. */
-.bt-snapshot-host {
+.bt-snapshot-host,
+.bt-export-host {
 	position: fixed;
 	top: 0;
 	left: -99999px;

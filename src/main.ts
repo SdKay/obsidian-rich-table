@@ -1,4 +1,4 @@
-import { Editor, MarkdownView, Plugin, parseYaml, stringifyYaml } from 'obsidian';
+import { Component, Editor, MarkdownView, Plugin, parseYaml, stringifyYaml } from 'obsidian';
 import { TaskSource } from './tasks/taskSource';
 import { XlsxFileView, XLSX_VIEW_TYPE } from './xlsxFileView';
 import { enableXlsxView, disableXlsxView, type ViewRegistryLike } from './xlsxViewRegistration';
@@ -20,6 +20,8 @@ import { setListStartAnyNumber } from './cellList';
 import { addCellHighlightItems, clearCellPickOutside } from './renderEditorMenu';
 import { createRichSearchProvider } from './richSearchProvider';
 import type { RichSearchHostApi, RichSearchProvider } from './richSearchApi';
+import { createBlockExportProvider } from './blockExportProvider';
+import type { BlockExportProvider } from './blockExportApi';
 import { SearchPanelFollower } from './searchPanel';
 export default class BetterTablePlugin extends Plugin {
 	settings!: BetterTableSettings;
@@ -33,6 +35,8 @@ export default class BetterTablePlugin extends Plugin {
 	readonly searchPanel = new SearchPanelFollower(() => this.searchHost());
 	/** Read by the Rich Search plugin (`app.plugins.plugins['rich-table'].richSearch`) to search workbook text. */
 	richSearch!: RichSearchProvider;
+	/** Read by another plugin (`app.plugins.plugins['rich-table'].blockExport`) to turn a `rich-table` block into static HTML. */
+	blockExport!: BlockExportProvider;
 	/** Whether this plugin's own `.xlsx` file view is registered. False until that view exists. */
 	private xlsxViewRegistered = false;
 	/** True when the user wants the view but Obsidian refused the extension (another plugin owns it). */
@@ -63,6 +67,12 @@ export default class BetterTablePlugin extends Plugin {
 				const found = await waitForBlockAt(path, fromLine, view.containerEl, () => leaf.view === view && view.file?.path === path);
 				return found ? found.block.revealSearchHit(anchor, query, found.framesLeft) : false;
 			},
+		});
+
+		this.blockExport = createBlockExportProvider({
+			app: this.app,
+			choiceRegistry: () => this.choiceRegistry,
+			newComponent: () => { const c = new Component(); c.load(); return c; },
 		});
 
 		this.registerMarkdownCodeBlockProcessor('rich-table', (source, el, ctx) => {

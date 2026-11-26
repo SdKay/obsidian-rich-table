@@ -10,6 +10,7 @@ export default defineConfig(
 		'test',
 		'esbuild.config.mjs',
 		'changelog-gen.mjs',
+		'static-export-css-gen.mjs',
 		// Node command-line tool for agents, not plugin code: it prints to the terminal by design.
 		'src/cli.ts',
 		'skills',
