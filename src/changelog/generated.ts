@@ -9,6 +9,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
+	{ version: "1.7.4", date: "2026-11-26", changes: [
+		"ci: add a workflow that runs the whole suite on demand",
+		"feat: let another plugin ask Rich Table for a block as static HTML",
+		"feat: export a workbook as static HTML that switches sheets without script",
+		"feat: export a rendered sheet as static HTML whose frame follows the table",
+		"refactor: share the cut-down of a rendered table with whatever else needs a static copy",
+		"feat: read blocks without --- lines or under a list item, and stop reading the pre-1.0 format",
+	] },
 	{ version: "1.7.3", date: "2026-11-22", changes: [
 		"fix: translate hidden-row markers and tasks field names, and report unread query lines",
 		"docs: correct the skill and README where they disagreed with the code",
