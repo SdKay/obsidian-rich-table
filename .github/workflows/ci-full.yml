@@ -1,0 +1,52 @@
+name: Full test run
+
+# The whole suite, which is too heavy to run on a developer's machine before every release: the unit tests and the
+# browser tests (test/e2e, see playwright.config.ts). Not on every push. Push a branch named ci-full/<anything> to run it
+# on that commit, then delete the branch; or start it by hand from the Actions tab for the branch you pick.
+on:
+  push:
+    branches: ['ci-full/**']
+  workflow_dispatch: {}
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      # The whole history and its tags: the changelog is built from them, and from a shallow clone the check below passes
+      # without checking anything.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      # The build also regenerates what the tests read (themes, templates, the export stylesheet).
+      - run: npm run build
+      - run: npm run changelog:check
+      - run: npm test
+
+  e2e:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Two workers: this is a check that has to be steady, not the fastest one. The suite is not made to run flat out
+      # (see CLAUDE.md), and a timeout from a starved runner is not a finding.
+      - run: npx playwright test --workers=2
+      - name: Keep the traces of what failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
